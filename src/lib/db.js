@@ -119,3 +119,112 @@ export async function signIn({ email, password }) {
 export async function signOut() {
   await supabase.auth.signOut()
 }
+
+/* ---------- worlds ---------- */
+
+/** Catalog rows only. Never pulls world_data — that would drag every
+    blob across the wire just to render a grid of cards. */
+export async function loadWorlds(userId) {
+  const { data, error } = await supabase
+    .from('worlds')
+    .select('id, owner_id, title, blurb, status, published, plays, room_count, mob_count, cover_path, failure_note, created_at')
+    .or(`published.eq.true,owner_id.eq.${userId}`)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+
+  const ownerIds = [...new Set((data ?? []).map((w) => w.owner_id))]
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, display_name, gamer_tag')
+    .in('id', ownerIds.length ? ownerIds : ['00000000-0000-0000-0000-000000000000'])
+
+  const byId = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
+
+  return (data ?? []).map((w) => ({
+    id: w.id,
+    title: w.title,
+    blurb: w.blurb ?? '',
+    status: w.status,
+    published: w.published,
+    plays: w.plays ?? 0,
+    rooms: w.room_count ?? 0,
+    mobs: w.mob_count ?? 0,
+    failureNote: w.failure_note,
+    authorId: w.owner_id,
+    author: byId[w.owner_id]?.display_name ?? 'Someone',
+    tag: byId[w.owner_id]?.gamer_tag ?? '',
+    playable: w.status === 'ready',
+  }))
+}
+
+export async function loadWorldData(worldId) {
+  const { data, error } = await supabase
+    .from('world_data')
+    .select('data, warnings')
+    .eq('world_id', worldId)
+    .single()
+  if (error) throw new Error('That world has no data yet.')
+  return data
+}
+
+export async function createWorld({ userId, title, brief }) {
+  const { data, error } = await supabase
+    .from('worlds')
+    .insert({ owner_id: userId, title, brief, status: 'generating' })
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+/** Fire the generate function. Takes 30–90 seconds. */
+export async function generateWorld(worldId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ worldId }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `Generation failed (${res.status})`)
+  return body    // { status, stats, warnings, title, blurb }
+}
+
+export async function setPublished(worldId, published) {
+  const { error } = await supabase.from('worlds').update({ published }).eq('id', worldId)
+  if (error) throw error
+}
+
+export async function deleteWorld(worldId) {
+  const { error } = await supabase.from('worlds').delete().eq('id', worldId)
+  if (error) throw error
+}
+
+export async function bumpPlays(worldId) {
+  await supabase.rpc('bump_plays', { p_world: worldId }).catch(() => {})
+}
+
+/* ---------- room art rows ---------- */
+
+export async function loadRooms(worldId) {
+  const { data, error } = await supabase
+    .from('world_rooms')
+    .select('id, room_key, name, image_path, locked, sort')
+    .eq('world_id', worldId)
+    .order('sort')
+  if (error) throw error
+  return (data ?? []).map((r) => ({
+    id: r.id, key: r.room_key, name: r.name,
+    art: Boolean(r.image_path), locked: r.locked,
+  }))
+}
+
+export async function setRoomLock(roomId, locked) {
+  const { error } = await supabase.from('world_rooms').update({ locked }).eq('id', roomId)
+  if (error) throw error
+}
