@@ -261,7 +261,61 @@ Effects — use only these, at most two per turn, only for what the list above p
 Conversation, looking and examining need no effects. Use an empty array.`;
 }
 
-return { WORLD, freshState, itemName, mobsInRoom, applyEffects, buildPrompt };
+/* Commands the engine can answer by itself. Movement, looking and
+   checking your pockets are deterministic — sending them to a model is
+   slow, costs tokens, and risks prose that says you moved when you did
+   not. Anything with judgement in it still goes to the narrator. */
+const SHORT = {
+  n: "north", s: "south", e: "east", w: "west",
+  u: "up", d: "down", ne: null, nw: null, se: null, sw: null,
+  north: "north", south: "south", east: "east", west: "west",
+  up: "up", down: "down", in: "in", out: "out",
+};
+
+function directCommand(state, input) {
+  const raw = input.trim().toLowerCase().replace(/[.!?]+$/, "");
+  const words = raw.split(/\s+/);
+  const room = WORLD.rooms[state.player.room];
+
+  // "north", "n", "go north", "walk to the north", "head up"
+  const moveWords = ["go", "walk", "head", "move", "run", "climb", "travel"];
+  let dirWord = null;
+  if (words.length === 1) dirWord = words[0];
+  else if (moveWords.includes(words[0])) dirWord = words[words.length - 1];
+
+  if (dirWord && Object.prototype.hasOwnProperty.call(SHORT, dirWord)) {
+    const dir = SHORT[dirWord];
+    if (!dir) return { handled: true, entries: [{ kind: "system", text: "Only the eight main directions work here." }] };
+    if (!exitOf(room, dir)) {
+      return { handled: true, entries: [{ kind: "system", text: `There is no way ${dir} from here.` }] };
+    }
+    return { handled: true, effects: [{ move: dir }] };
+  }
+
+  if (raw === "look" || raw === "l" || raw === "look around") {
+    const here = state.roomItems[state.player.room] ?? [];
+    const who = mobsInRoom(state, state.player.room);
+    const entries = [
+      { kind: "room", text: room.name },
+      { kind: "narration", text: room.desc },
+    ];
+    if (here.length) entries.push({ kind: "system", text: `Lying here: ${here.map(itemName).join(", ")}.` });
+    if (who.length) entries.push({ kind: "system", text: `Here with you: ${who.map((id) => WORLD.mobs[id].name).join(", ")}.` });
+    return { handled: true, entries };
+  }
+
+  if (["i", "inv", "inventory"].includes(raw)) {
+    const inv = state.player.inventory;
+    return { handled: true, entries: [{
+      kind: "system",
+      text: inv.length ? `You are carrying: ${inv.map(itemName).join(", ")}.` : "You are carrying nothing.",
+    }] };
+  }
+
+  return { handled: false };
+}
+
+return { WORLD, freshState, itemName, mobsInRoom, exitOf, applyEffects, buildPrompt, directCommand };
 }
 
 /* ============================================================
@@ -1161,7 +1215,7 @@ function PlayLoader({ worldId, char, save, onSave, onExit }) {
 function Play({ world, char, save, onSave, onExit }) {
   // One engine per world. Every rule below is the world's, not the app's.
   const E = useMemo(() => makeEngine(world), [world]);
-  const { WORLD, freshState, itemName, applyEffects, buildPrompt } = E;
+  const { WORLD, freshState, itemName, applyEffects, buildPrompt, directCommand } = E;
 
   const [state, setState] = useState(() => save?.state ?? freshState());
   const [log, setLog] = useState(() => save?.log ?? [
@@ -1192,6 +1246,28 @@ function Play({ world, char, save, onSave, onExit }) {
     if (!command || busy || state.over) return;
     setInput("");
     setLog((l) => [...l, { kind: "you", text: command }]);
+
+    // Deterministic commands never reach the narrator.
+    const direct = directCommand(state, command);
+    if (direct.handled) {
+      if (direct.entries) {
+        setLog((l) => [...l, ...direct.entries]);
+        return;
+      }
+      const { state: next, log: engineLog } = applyEffects(state, direct.effects);
+      const entries = [...engineLog];
+      if (next.player.room !== state.player.room) {
+        entries.push({ kind: "room", text: WORLD.rooms[next.player.room].name });
+        entries.push({ kind: "narration", text: WORLD.rooms[next.player.room].desc });
+        const here = next.roomItems[next.player.room] ?? [];
+        if (here.length) entries.push({ kind: "system", text: `Lying here: ${here.map(itemName).join(", ")}.` });
+      }
+      setLog((l) => [...l, ...entries]);
+      setState(next);
+      setTimeout(() => inputRef.current?.focus(), 0);
+      return;
+    }
+
     setBusy(true);
     try {
       // Goes to the narrate edge function, which holds the model key
