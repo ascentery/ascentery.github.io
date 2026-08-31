@@ -300,6 +300,8 @@ function directCommand(state, input) {
       { kind: "room", text: room.name },
       { kind: "narration", text: room.desc },
     ];
+    // `look` re-describes but does not re-show the picture; it is already
+    // above in the log, and repeating it pushes the text off screen.
     if (here.length) entries.push({ kind: "system", text: `Lying here: ${here.map(itemName).join(", ")}.` });
     if (who.length) entries.push({ kind: "system", text: `Here with you: ${who.map((id) => WORLD.mobs[id].name).join(", ")}.` });
     return { handled: true, entries };
@@ -1249,12 +1251,21 @@ function RoomsTab({ rooms, setRooms, me, setMe }) {
     states out of the game itself. */
 function PlayLoader({ worldId, char, save, onSave, onExit }) {
   const [world, setWorld] = useState(null);
+  const [art, setArt] = useState({});
   const [error, setError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
-    loadWorldData(worldId)
-      .then(({ data }) => { if (!cancelled) setWorld(data); })
+    Promise.all([
+      loadWorldData(worldId),
+      // Art is optional — a world with no pictures still plays.
+      loadRooms(worldId).catch(() => []),
+    ])
+      .then(([{ data }, rooms]) => {
+        if (cancelled) return;
+        setArt(Object.fromEntries(rooms.filter((r) => r.url).map((r) => [r.key, r.url])));
+        setWorld(data);
+      })
       .catch((e) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
   }, [worldId]);
@@ -1277,18 +1288,28 @@ function PlayLoader({ worldId, char, save, onSave, onExit }) {
     </div>
   );
 
-  return <Play world={world} char={char} save={save} onSave={onSave} onExit={onExit} />;
+  return <Play world={world} art={art} char={char} save={save} onSave={onSave} onExit={onExit} />;
 }
 
-function Play({ world, char, save, onSave, onExit }) {
+function Play({ world, art = {}, char, save, onSave, onExit }) {
   // One engine per world. Every rule below is the world's, not the app's.
   const E = useMemo(() => makeEngine(world), [world]);
   const { WORLD, freshState, itemName, applyEffects, buildPrompt, directCommand } = E;
 
+  // A room's arrival is a small sequence: its picture, its name, its description.
+  const arrival = (roomKey) => {
+    const room = WORLD.rooms[roomKey];
+    const entries = [];
+    const hasArt = Boolean(art[roomKey]);
+    if (hasArt) entries.push({ kind: "art", url: art[roomKey], text: room?.name ?? "" });
+    entries.push({ kind: hasArt ? "room-under-art" : "room", text: room?.name ?? roomKey });
+    if (room?.desc) entries.push({ kind: "narration", text: room.desc });
+    return entries;
+  };
+
   const [state, setState] = useState(() => save?.state ?? freshState());
   const [log, setLog] = useState(() => save?.log ?? [
-    { kind: "room", text: WORLD.rooms[WORLD.startRoom].name },
-    { kind: "narration", text: WORLD.rooms[WORLD.startRoom].desc },
+    ...arrival(WORLD.startRoom),
   ]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1326,8 +1347,7 @@ function Play({ world, char, save, onSave, onExit }) {
       const { state: next, log: engineLog } = applyEffects(state, direct.effects);
       const entries = [...engineLog];
       if (next.player.room !== state.player.room) {
-        entries.push({ kind: "room", text: WORLD.rooms[next.player.room].name });
-        entries.push({ kind: "narration", text: WORLD.rooms[next.player.room].desc });
+        entries.push(...arrival(next.player.room));
         const here = next.roomItems[next.player.room] ?? [];
         if (here.length) entries.push({ kind: "system", text: `Lying here: ${here.map(itemName).join(", ")}.` });
       }
@@ -1351,8 +1371,7 @@ function Play({ world, char, save, onSave, onExit }) {
       if (parsed.reply) entries.push({ kind: "narration", text: parsed.reply });
       entries.push(...engineLog);
       if (next.player.room !== state.player.room) {
-        entries.push({ kind: "room", text: WORLD.rooms[next.player.room].name });
-        entries.push({ kind: "narration", text: WORLD.rooms[next.player.room].desc });
+        entries.push(...arrival(next.player.room));
       }
       setLog((l) => [...l, ...entries]);
       setState(next);
@@ -1366,8 +1385,7 @@ function Play({ world, char, save, onSave, onExit }) {
 
   const restart = () => {
     setState(freshState());
-    setLog([{ kind: "room", text: WORLD.rooms[WORLD.startRoom].name },
-      { kind: "narration", text: WORLD.rooms[WORLD.startRoom].desc }]);
+    setLog(arrival(WORLD.startRoom));
   };
 
   const room = WORLD.rooms[state.player.room];
@@ -1474,8 +1492,28 @@ function Play({ world, char, save, onSave, onExit }) {
 
 function LogLine({ entry }) {
   const base = { fontFamily: "Newsreader, serif", margin: "0 0 18px" };
+
+  if (entry.kind === "art")
+    return (
+      <div className="hr-fade" style={{ margin: "26px 0 12px" }}>
+        <img
+          src={entry.url}
+          alt={entry.text || ""}
+          loading="lazy"
+          onError={(e) => { e.currentTarget.parentElement.style.display = "none"; }}
+          style={{
+            display: "block", width: "100%", aspectRatio: "16 / 9", objectFit: "cover",
+            imageRendering: "pixelated",
+            border: `1px solid ${P.inkSoft}33`,
+          }}
+        />
+      </div>
+    );
   if (entry.kind === "room")
     return <p className="hr-fade" style={{ ...base, fontSize: 21, margin: "26px 0 10px", paddingBottom: 6, borderBottom: `1px solid ${P.inkSoft}2e` }}>{entry.text}</p>;
+
+  if (entry.kind === "room-under-art")
+    return <p className="hr-fade" style={{ ...base, fontSize: 21, margin: "0 0 10px", paddingBottom: 6, borderBottom: `1px solid ${P.inkSoft}2e` }}>{entry.text}</p>;
   if (entry.kind === "you")
     return <p className="hr-fade" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: P.inkSoft, margin: "22px 0 14px" }}>
       <span style={{ color: P.ochre }}>›</span> {entry.text}</p>;
