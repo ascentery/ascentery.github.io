@@ -6,7 +6,8 @@ import {
   loadSaves, writeSave,
   loadWorlds, loadWorldData, createWorld, generateWorld,
   setPublished, deleteWorld, bumpPlays,
-  loadRooms, setRoomLock,
+  loadRooms, setRoomLock, drawRoom,
+  illustrate, imageUrl,
   signUp, signIn, signOut,
 } from "./lib/db";
 
@@ -326,19 +327,24 @@ function hash(str) {
   for (let i = 0; i < str.length; i++) h = (h ^ str.charCodeAt(i)) * 16777619;
   return Math.abs(h);
 }
-function Splash({ seed, ratio = 0.5625, pending, style }) {
+function Splash({ seed, ratio = 0.5625, pending, src, style }) {
   const h = hash(seed || "x"), a = h % 360, b = (h >> 3) % 60;
   return (
     <div style={{ position: "relative", width: "100%", paddingTop: `${ratio * 100}%`, overflow: "hidden",
       background: `linear-gradient(${h % 180}deg, hsl(${a} 34% 22%), hsl(${(a + 40 + b) % 360} 30% 34%))`, ...style }}>
-      {!pending && (
+      {src && (
+        <img src={src} alt="" loading="lazy"
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%",
+            objectFit: "cover", imageRendering: "pixelated" }} />
+      )}
+      {!pending && !src && (
         <svg viewBox="0 0 100 56" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
           <circle cx={h % 100} cy={(h >> 5) % 56} r={18 + (h % 14)} fill={`hsl(${(a + 90) % 360} 44% 52%)`} opacity=".34" />
           <circle cx={(h >> 7) % 100} cy={(h >> 9) % 56} r={10 + (h % 20)} fill={`hsl(${(a + 200) % 360} 40% 60%)`} opacity=".22" />
           <path d={`M0 ${34 + (h % 12)} Q 25 ${18 + (h % 20)} 50 ${30 + (h % 16)} T 100 ${26 + (h % 14)} V56 H0Z`} fill="rgba(0,0,0,.36)" />
         </svg>
       )}
-      {pending && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center",
+      {pending && !src && <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center",
         fontFamily: T.mono, fontSize: 10, letterSpacing: ".08em", color: T.boneDim }}>drawing</div>}
     </div>
   );
@@ -696,7 +702,7 @@ function Browse({ games, go }) {
 function GameCard({ g, onClick, showStatus }) {
   return (
     <div className="pf-card pf-in" onClick={onClick}>
-      <Splash seed={g.id} pending={g.status === "generating"} />
+      <Splash seed={g.id} pending={g.status === "generating"} src={imageUrl("covers", g.coverPath)} />
       <div style={{ padding: "10px 2px 0" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <div className="pf-title" style={{ fontFamily: T.serif, fontSize: 18, flex: 1, lineHeight: 1.25 }}>{g.title}</div>
@@ -1106,7 +1112,7 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
         rooms === null
           ? <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
           : rooms.length
-            ? <RoomsTab rooms={rooms} setRooms={setRooms} me={me} setMe={setMe} />
+            ? <RoomsTab rooms={rooms} setRooms={setRooms} me={me} setMe={setMe} worldId={game.id} />
             : <Empty title="No rooms yet." line="Rooms appear once the world has been built." />
       )}
 
@@ -1135,30 +1141,85 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
 }
 
 function RoomsTab({ rooms, setRooms, me, setMe }) {
-  const missing = rooms.filter((r) => !r.art).length;
+  const [drawing, setDrawing] = useState(null);   // roomId currently being drawn
+  const [queue, setQueue] = useState([]);         // roomIds waiting their turn
+  const [error, setError] = useState(null);
+
+  const COST = 12;
+  const missing = rooms.filter((r) => !r.art && !r.locked);
+  const affordable = Math.floor(me.credits / COST);
+
+  const draw = async (room) => {
+    if (room.locked || drawing) return;
+    setDrawing(room.id);
+    setError(null);
+    try {
+      const { url, credits } = await drawRoom(room.id);
+      setRooms((rs) => rs.map((r) => r.id === room.id ? { ...r, url, art: true } : r));
+      if (typeof credits === "number") setMe((m) => ({ ...m, credits }));
+    } catch (e) {
+      setError(e.message);
+      setQueue([]);          // stop a bulk run rather than repeat the same failure
+    } finally {
+      setDrawing(null);
+    }
+  };
+
+  // Drain the queue one at a time. Serial on purpose: the provider is slower
+  // under parallel load, and one failure should stop the run rather than burn
+  // credits on five more.
+  useEffect(() => {
+    if (drawing || !queue.length) return;
+    const [next, ...rest] = queue;
+    const room = rooms.find((r) => r.id === next);
+    setQueue(rest);
+    if (room && !room.art && !room.locked) draw(room);
+  }, [queue, drawing]);
+
+  const drawAll = () => {
+    setError(null);
+    setQueue(missing.slice(0, affordable).map((r) => r.id));
+  };
 
   const toggleLock = async (r) => {
     setRooms(rooms.map((x) => x.id === r.id ? { ...x, locked: !x.locked } : x));
     try { await setRoomLock(r.id, !r.locked); } catch (e) { console.error(e); }
   };
 
+  const busy = Boolean(drawing) || queue.length > 0;
+  const batch = Math.min(missing.length, affordable);
+
   return (<>
-    <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10, flexWrap: "wrap" }}>
       <p style={{ fontFamily: T.serif, fontSize: 15.5, color: T.boneDim, lineHeight: 1.55, margin: 0, flex: 1, minWidth: 260 }}>
         Lock a room once you are happy with it. Locked rooms are skipped by redraws, including bulk ones.
       </p>
-      {missing > 0 && (
-        <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
-          {missing} without art
-        </span>
+      {missing.length > 0 && (
+        <Btn onClick={drawAll} disabled={busy || batch < 1}>
+          {busy
+            ? "drawing" + (queue.length ? " \u00b7 " + queue.length + " left" : "")
+            : "Draw " + batch + " missing \u00b7 " + batch * COST}
+        </Btn>
       )}
     </div>
+
+    {affordable < 1 && (
+      <p style={{ fontFamily: T.mono, fontSize: 11, color: T.clay, margin: "0 0 14px" }}>
+        Not enough credits to draw a room.
+      </p>
+    )}
+    {error && (
+      <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, lineHeight: 1.7,
+        border: "1px solid " + T.clay + "44", padding: 12, borderRadius: 2, margin: "0 0 16px" }}>
+        {error}
+      </p>
+    )}
 
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 18 }}>
       {rooms.map((r) => (
         <div key={r.id}>
           <div style={{ position: "relative" }}>
-            <Splash seed={r.key} pending={!r.art} />
+            <Splash seed={r.key} src={r.url} pending={drawing === r.id} />
             <button onClick={() => toggleLock(r)}
               title={r.locked ? "Unlock to allow redraws" : "Lock to protect from redraws"} className="pf-btn"
               style={{ position: "absolute", top: 7, right: 7, width: 27, height: 27, borderRadius: 2, cursor: "pointer",
@@ -1169,7 +1230,14 @@ function RoomsTab({ rooms, setRooms, me, setMe }) {
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
             <span style={{ fontFamily: T.serif, fontSize: 15.5, flex: 1 }}>{r.name}</span>
-            <span style={{ fontFamily: T.mono, fontSize: 11, color: T.edge }}>art soon</span>
+            <button onClick={() => draw(r)}
+              disabled={r.locked || busy || me.credits < COST}
+              className="pf-btn"
+              style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
+                color: r.locked ? T.edge : T.boneDim,
+                cursor: (r.locked || busy) ? "not-allowed" : "pointer" }}>
+              {drawing === r.id ? "drawing" : r.art ? "redraw \u00b7 " + COST : "draw \u00b7 " + COST}
+            </button>
           </div>
         </div>
       ))}
@@ -1252,6 +1320,7 @@ function Play({ world, char, save, onSave, onExit }) {
     if (direct.handled) {
       if (direct.entries) {
         setLog((l) => [...l, ...direct.entries]);
+        setTimeout(() => inputRef.current?.focus(), 0);
         return;
       }
       const { state: next, log: engineLog } = applyEffects(state, direct.effects);
@@ -1270,8 +1339,8 @@ function Play({ world, char, save, onSave, onExit }) {
 
     setBusy(true);
     try {
-      // Goes to the narrate edge function, which holds the model key
-      // and returns { reply, effects } already parsed.
+      // The narrate edge function holds the model key and returns
+      // { reply, effects } already parsed.
       const parsed = await narrate({
         prompt: buildPrompt(state, char?.name ?? "the traveller"),
         command,
@@ -1355,8 +1424,7 @@ function Play({ world, char, save, onSave, onExit }) {
             {room.name.toLowerCase()} · exits{" "}
             {Object.keys(room.exits ?? {}).map((d) => {
               const ex = room.exits[d];
-              const locked = typeof ex === "object" && ex?.locked;
-              return locked ? d + "*" : d;
+              return (typeof ex === "object" && ex?.locked) ? d + "*" : d;
             }).join(" ") || "none"}
           </div>
           <div>carrying {carrying.length ? carrying.join(" · ") : "nothing"}</div>

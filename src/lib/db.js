@@ -150,6 +150,7 @@ export async function loadWorlds(userId) {
     rooms: w.room_count ?? 0,
     mobs: w.mob_count ?? 0,
     failureNote: w.failure_note,
+    coverPath: w.cover_path,
     authorId: w.owner_id,
     author: byId[w.owner_id]?.display_name ?? 'Someone',
     tag: byId[w.owner_id]?.gamer_tag ?? '',
@@ -211,20 +212,76 @@ export async function bumpPlays(worldId) {
 
 /* ---------- room art rows ---------- */
 
+const PUBLIC_ROOMS = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/rooms/`
+
+export const roomImageUrl = (path) => (path ? PUBLIC_ROOMS + path : null)
+
 export async function loadRooms(worldId) {
   const { data, error } = await supabase
     .from('world_rooms')
-    .select('id, room_key, name, image_path, locked, sort')
+    .select('id, room_key, name, image_path, image_prompt, locked, sort')
     .eq('world_id', worldId)
     .order('sort')
   if (error) throw error
   return (data ?? []).map((r) => ({
-    id: r.id, key: r.room_key, name: r.name,
-    art: Boolean(r.image_path), locked: r.locked,
+    id: r.id,
+    key: r.room_key,
+    name: r.name,
+    prompt: r.image_prompt ?? '',
+    url: roomImageUrl(r.image_path),
+    art: Boolean(r.image_path),
+    locked: r.locked,
   }))
+}
+
+/** Draws one room. Takes 20-60 seconds and costs credits.
+    Returns { url, credits } so the caller can update both at once. */
+export async function drawRoom(roomId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/roomart`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ roomId }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `Drawing failed (${res.status})`)
+  return body
 }
 
 export async function setRoomLock(roomId, locked) {
   const { error } = await supabase.from('world_rooms').update({ locked }).eq('id', roomId)
   if (error) throw error
+}
+
+/* ---------- images ---------- */
+
+const SB = import.meta.env.VITE_SUPABASE_URL
+
+/** Storage buckets are public, so a path is enough to build a URL. */
+export function imageUrl(bucket, path) {
+  return path ? `${SB}/storage/v1/object/public/${bucket}/${path}` : null
+}
+
+/** Draw a room (roomKey given) or the world's cover (roomKey omitted).
+    Costs credits; the function refunds them if the draw fails. */
+export async function illustrate({ worldId, roomKey = null }) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${SB}/functions/v1/illustrate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ worldId, roomKey }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `Illustration failed (${res.status})`)
+  return body    // { path, bucket, balance, cost }
 }
