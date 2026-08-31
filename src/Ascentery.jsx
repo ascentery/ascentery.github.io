@@ -346,7 +346,7 @@ function Splash({ seed, ratio = 0.5625, pending, style }) {
    ============================================================ */
 
 const seedGames = [
-  { id: "hollowreach", playable: true, title: "Hollowreach", author: "Wei", authorId: "u1", tag: "WEI-4417", status: "ready", published: true, plays: 214, rooms: 6, mobs: 2, blurb: "A dwarven holding above the treeline. One lemon tree. One dwarf who will not be talked out of it." },
+  { id: "11111111-1111-1111-1111-111111111111", playable: true, title: "Hollowreach", author: "Wei", authorId: "u1", tag: "WEI-4417", status: "ready", published: true, plays: 214, rooms: 6, mobs: 2, blurb: "A dwarven holding above the treeline. One lemon tree. One dwarf who will not be talked out of it." },
   { id: "g2", title: "The Long Ward", author: "Nadia", authorId: "u2", tag: "NAD-9012", status: "ready", published: true, plays: 1877, rooms: 14, mobs: 9, blurb: "Night shift in a hospital that has more corridors than it did yesterday." },
   { id: "g3", title: "Saltpetre", author: "Ilse", authorId: "u3", tag: "ILS-3388", status: "ready", published: true, plays: 640, rooms: 11, mobs: 6, blurb: "A powder mill, a strike, and four hours before the inspector arrives." },
   { id: "g4", title: "Nine Tenths of the Law", author: "Marek", authorId: "u4", tag: "MRK-7761", status: "ready", published: true, plays: 92, rooms: 8, mobs: 5, blurb: "You have inherited a house. So have several other people." },
