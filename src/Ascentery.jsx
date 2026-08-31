@@ -1306,7 +1306,7 @@ function Play({ world, char, save, onSave, onExit }) {
   const hpFrac = state.player.hp / state.player.maxHp;
 
   return (
-    <div style={{ background: P.paper, minHeight: "100vh", color: P.ink }}>
+    <div style={{ background: P.paper, height: "100vh", maxHeight: "100dvh", color: P.ink, overflow: "hidden" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; } body { margin: 0 }
@@ -1320,10 +1320,10 @@ function Play({ world, char, save, onSave, onExit }) {
         @media (prefers-reduced-motion: reduce) { .hr-fade { animation: none } }
       `}</style>
 
-      <div style={{ maxWidth: 720, margin: "0 auto", minHeight: "100vh", display: "flex", flexDirection: "column",
+      <div style={{ maxWidth: 720, margin: "0 auto", height: "100%", display: "flex", flexDirection: "column",
         borderLeft: `1px solid ${P.inkSoft}22`, borderRight: `1px solid ${P.inkSoft}22` }}>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0,
           padding: "12px 20px 10px", borderBottom: `1px solid ${P.inkSoft}33`,
           fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft }}>
           <button onClick={onExit} className="hr-btn"
@@ -1349,7 +1349,7 @@ function Play({ world, char, save, onSave, onExit }) {
           {busy && <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft, margin: "18px 0" }}>…</p>}
         </div>
 
-        <div style={{ borderTop: `1px solid ${P.inkSoft}33`, padding: "10px 20px", background: P.paperDeep,
+        <div style={{ borderTop: `1px solid ${P.inkSoft}33`, padding: "10px 20px", background: P.paperDeep, flexShrink: 0,
           fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, lineHeight: 1.7, color: P.inkSoft }}>
           <div>
             {room.name.toLowerCase()} · exits{" "}
@@ -1363,7 +1363,7 @@ function Play({ world, char, save, onSave, onExit }) {
         </div>
 
         {state.over ? (
-          <div style={{ padding: "16px 20px", borderTop: `1px solid ${P.inkSoft}33`, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ padding: "16px 20px", borderTop: `1px solid ${P.inkSoft}33`, flexShrink: 0, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <p style={{ fontFamily: "Newsreader, serif", fontSize: 16, margin: 0, flex: 1, minWidth: 180 }}>You do not get up.</p>
             <button className="hr-btn" onClick={restart}
               style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, padding: "8px 16px", background: "transparent", border: `1px solid ${P.ink}`, color: P.ink, cursor: "pointer" }}>
@@ -1371,7 +1371,8 @@ function Play({ world, char, save, onSave, onExit }) {
             </button>
           </div>
         ) : (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 20px 14px", borderTop: `1px solid ${P.inkSoft}33` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 20px 14px", flexShrink: 0,
+            borderTop: `1px solid ${P.inkSoft}33`, paddingBottom: "max(14px, env(safe-area-inset-bottom))" }}>
             <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: P.ochre, fontSize: 13 }}>›</span>
             <input ref={inputRef} className="hr-in" value={input} autoFocus disabled={busy}
               onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()}
@@ -1385,7 +1386,7 @@ function Play({ world, char, save, onSave, onExit }) {
           </div>
         )}
 
-        <div style={{ borderTop: `1px solid ${P.inkSoft}22` }}>
+        <div style={{ borderTop: `1px solid ${P.inkSoft}22`, flexShrink: 0, maxHeight: "40%", overflowY: "auto" }}>
           <button className="hr-btn" onClick={() => setShowPrompt((v) => !v)}
             style={{ width: "100%", textAlign: "left", padding: "9px 20px", background: "transparent", border: "none",
               fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, letterSpacing: ".04em", color: P.inkSoft, cursor: "pointer" }}>
