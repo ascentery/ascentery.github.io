@@ -47,6 +47,15 @@ const freshState = () => ({
 
 const roll = ([lo, hi]) => lo + Math.floor(Math.random() * (hi - lo + 1));
 const itemName = (id) => WORLD.items[id]?.short ?? id;
+/** Exits may be "room_key" or { to, locked }. One accessor, used everywhere,
+    so the rest of the engine never has to care which. */
+const exitOf = (room, dir) => {
+  const ex = room?.exits?.[dir];
+  if (!ex) return null;
+  return typeof ex === "string" ? { to: ex, locked: null } : { to: ex.to, locked: ex.locked ?? null };
+};
+const exitsOf = (room) => Object.keys(room?.exits ?? {}).map((d) => ({ dir: d, ...exitOf(room, d) }));
+
 const mobsInRoom = (s, room) => Object.entries(s.mobs).filter(([, m]) => m.alive && m.room === room).map(([id]) => id);
 const playerWeapon = (s) => {
   const armed = s.player.inventory.find((i) => WORLD.items[i]?.damage);
@@ -56,7 +65,14 @@ const playerWeapon = (s) => {
 function affordances(s) {
   const room = WORLD.rooms[s.player.room];
   const L = [];
-  L.push("- move " + Object.keys(room.exits).map((d) => `${d} (to ${WORLD.rooms[room.exits[d]].name})`).join(", "));
+  const held = new Set(s.player.inventory);
+  L.push("- move " + exitsOf(room).map(({ dir, to, locked }) => {
+    const dest = WORLD.rooms[to]?.name ?? to;
+    if (!locked) return `${dir} (to ${dest})`;
+    return held.has(locked)
+      ? `${dir} (to ${dest}, locked but the player is carrying the ${itemName(locked)})`
+      : `${dir} (to ${dest}, LOCKED — the player does not have the ${itemName(locked)} and cannot pass)`;
+  }).join(", "));
   const here = s.roomItems[s.player.room] ?? [];
   if (here.length) L.push("- take " + here.map(itemName).join(", "));
   if (s.player.inventory.length) L.push("- drop " + s.player.inventory.map(itemName).join(", "));
@@ -96,8 +112,14 @@ function applyEffects(prev, effects) {
     const room = WORLD.rooms[s.player.room];
 
     if (e.move) {
-      const dest = room.exits[String(e.move).toLowerCase()];
-      if (!dest) { note(`There is no way ${e.move} from here.`); continue; }
+      const dir = String(e.move).toLowerCase();
+      const ex = exitOf(room, dir);
+      if (!ex?.to || !WORLD.rooms[ex.to]) { note(`There is no way ${e.move} from here.`); continue; }
+      if (ex.locked && !s.player.inventory.includes(ex.locked)) {
+        note(`The way ${dir} is locked. It needs the ${itemName(ex.locked)}.`);
+        continue;
+      }
+      const dest = ex.to;
       s.player.room = dest;
       for (const id of mobsInRoom(s, dest)) {
         if (!s.mobs[id].met) {
@@ -210,7 +232,7 @@ They are called ${charName}. Characters may address them by name.
 
 CURRENT ROOM
 ${room.name} — ${room.desc}
-Exits: ${Object.entries(room.exits).map(([d, r]) => `${d} to ${WORLD.rooms[r].name}`).join("; ")}
+Exits: ${exitsOf(room).map(({ dir, to, locked }) => `${dir} to ${WORLD.rooms[to]?.name ?? to}${locked ? " (locked)" : ""}`).join("; ")}
 Lying here: ${here.length ? here.map(itemName).join(", ") : "nothing"}
 Present: ${present.length ? present.map((id) => WORLD.mobs[id].name).join(", ") : "nobody"}
 
@@ -1253,7 +1275,14 @@ function Play({ world, char, save, onSave, onExit }) {
 
         <div style={{ borderTop: `1px solid ${P.inkSoft}33`, padding: "10px 20px", background: P.paperDeep,
           fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, lineHeight: 1.7, color: P.inkSoft }}>
-          <div>{room.name.toLowerCase()} · exits {Object.keys(room.exits).join(" ")}</div>
+          <div>
+            {room.name.toLowerCase()} · exits{" "}
+            {Object.keys(room.exits ?? {}).map((d) => {
+              const ex = room.exits[d];
+              const locked = typeof ex === "object" && ex?.locked;
+              return locked ? d + "*" : d;
+            }).join(" ") || "none"}
+          </div>
           <div>carrying {carrying.length ? carrying.join(" · ") : "nothing"}</div>
         </div>
 
