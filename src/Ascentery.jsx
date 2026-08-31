@@ -1,4 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { supabase, narrate } from "./lib/supabase";
+import {
+  loadMe, saveDisplayName,
+  loadCharacters, createCharacter, updateCharacterBio, deleteCharacter,
+  loadSaves, writeSave,
+  signUp, signIn, signOut,
+} from "./lib/db";
 
 /* ============================================================
    ASCENTERY — platform shell + playable engine, joined.
@@ -337,7 +344,6 @@ function Splash({ seed, ratio = 0.5625, pending, style }) {
 /* ============================================================
    mock data
    ============================================================ */
-const ME = { id: "u1", name: "Wei", tag: "WEI-4417", credits: 340, creditCap: 500 };
 
 const seedGames = [
   { id: "hollowreach", playable: true, title: "Hollowreach", author: "Wei", authorId: "u1", tag: "WEI-4417", status: "ready", published: true, plays: 214, rooms: 6, mobs: 2, blurb: "A dwarven holding above the treeline. One lemon tree. One dwarf who will not be talked out of it." },
@@ -348,10 +354,6 @@ const seedGames = [
   { id: "g6", title: "Vetch", author: "Tomas", authorId: "u5", tag: "TOM-2245", status: "ready", published: true, plays: 431, rooms: 9, mobs: 7, blurb: "Everything in the fen wants something from you and only one of them will say what." },
 ];
 const seedFriends = [{ id: "u2", name: "Nadia", tag: "NAD-9012" }, { id: "u3", name: "Ilse", tag: "ILS-3388" }];
-const seedChars = [
-  { id: "c1", name: "Alder Finch", bio: "Cartographer. Bad at leaving things alone." },
-  { id: "c2", name: "Sable", bio: "Says very little. Notices everything." },
-];
 const seedRooms = [
   { id: "r1", name: "The Switchback", locked: false, art: true },
   { id: "r2", name: "Ashgate", locked: true, art: true },
@@ -422,18 +424,65 @@ const Avatar = ({ name, tag, size = 32 }) => (
    app
    ============================================================ */
 export default function Ascentery() {
-  const [authed, setAuthed] = useState(false);
+  const [session, setSession] = useState(null);
+  const [booting, setBooting] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [view, setView] = useState({ name: "browse" });
-  const [games, setGames] = useState(seedGames);
-  const [me, setMe] = useState(ME);
+  const [games, setGames] = useState(seedGames);   // still mock until world generation exists
+  const [me, setMe] = useState(null);
   const [friends, setFriends] = useState(seedFriends);
-  const [chars, setChars] = useState(seedChars);
+  const [chars, setChars] = useState([]);
   const [rooms, setRooms] = useState(seedRooms);
-  const [saves, setSaves] = useState({}); // `${gameId}:${charId}` -> { state, log }
+  const [saves, setSaves] = useState({}); // `${worldId}:${charId}` -> { state, log }
 
   const go = (name, params = {}) => setView({ name, ...params });
 
-  if (!authed) return <Shell><Auth onDone={() => setAuthed(true)} /></Shell>;
+  // One listener handles first load, sign-in, sign-out and token refresh.
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      if (!data.session) setBooting(false);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s);
+      if (!s) { setMe(null); setChars([]); setSaves({}); setBooting(false); }
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  // Pull everything that belongs to this user once we have a session.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const uid = session.user.id;
+        const [m, cs, sv] = await Promise.all([loadMe(uid), loadCharacters(uid), loadSaves(uid)]);
+        if (cancelled) return;
+        setMe(m); setChars(cs); setSaves(sv); setLoadError(null);
+      } catch (err) {
+        if (!cancelled) setLoadError(err.message);
+      } finally {
+        if (!cancelled) setBooting(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [session]);
+
+  if (booting) return <Shell><Splash1 /></Shell>;
+  if (!session) return <Shell><Auth /></Shell>;
+  if (loadError) return (
+    <Shell>
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
+        <div style={{ maxWidth: 420 }}>
+          <div style={{ fontFamily: T.serif, fontSize: 22, marginBottom: 8 }}>Couldn't load your account</div>
+          <p style={{ fontFamily: T.mono, fontSize: 12, color: T.clay, lineHeight: 1.7 }}>{loadError}</p>
+          <Btn onClick={() => signOut()} style={{ marginTop: 14 }}>Sign out</Btn>
+        </div>
+      </div>
+    </Shell>
+  );
+  if (!me) return <Shell><Splash1 /></Shell>;
 
   if (view.name === "play") {
     const key = `${view.id}:${view.charId}`;
@@ -441,7 +490,11 @@ export default function Ascentery() {
       <Play
         char={chars.find((c) => c.id === view.charId)}
         save={saves[key]}
-        onSave={(v) => setSaves((s) => ({ ...s, [key]: v }))}
+        onSave={(v) => {
+          setSaves((s) => ({ ...s, [key]: v }));
+          writeSave({ userId: me.id, worldId: view.id, characterId: view.charId, ...v })
+            .catch((e) => console.error("save failed", e));
+        }}
         onExit={() => go("game", { id: view.id })}
       />
     );
@@ -486,8 +539,43 @@ function Shell({ children }) {
   );
 }
 
-function Auth({ onDone }) {
+function Splash1() {
+  return (
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
+      <div style={{ fontFamily: T.serif, fontSize: 26, color: T.boneDim }}>Ascentery</div>
+    </div>
+  );
+}
+
+function Auth() {
   const [mode, setMode] = useState("in");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
+
+  const go = async () => {
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      if (mode === "in") {
+        await signIn({ email, password });
+        // onAuthStateChange in the root takes it from here.
+      } else {
+        const { needsConfirmation } = await signUp({ email, password, displayName });
+        if (needsConfirmation) {
+          setNotice("Check your email for a confirmation link, then sign in.");
+          setMode("in");
+        }
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 22 }}>
       <div style={{ width: "100%", maxWidth: 380 }} className="pf-in">
@@ -495,17 +583,44 @@ function Auth({ onDone }) {
         <p style={{ fontFamily: T.serif, fontSize: 16, color: T.boneDim, lineHeight: 1.55, margin: "0 0 30px" }}>
           Worlds written by people, played a sentence at a time.
         </p>
-        <Field label="Email"><input style={inputStyle} type="email" placeholder="you@example.com" /></Field>
-        <Field label="Password"><input style={inputStyle} type="password" placeholder="••••••••" /></Field>
+
+        <Field label="Email">
+          <input style={inputStyle} type="email" autoComplete="email" value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && go()}
+            placeholder="you@example.com" />
+        </Field>
+        <Field label="Password" hint={mode === "up" ? "At least six characters." : undefined}>
+          <input style={inputStyle} type="password" value={password}
+            autoComplete={mode === "in" ? "current-password" : "new-password"}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && go()}
+            placeholder="••••••••" />
+        </Field>
         {mode === "up" && (
           <Field label="Display name" hint="Your gamer tag is generated for you and can't be changed.">
-            <input style={inputStyle} placeholder="Wei" />
+            <input style={inputStyle} value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && go()}
+              placeholder="Wei" />
           </Field>
         )}
-        <Btn kind="solid" full onClick={onDone} style={{ marginBottom: 14 }}>
-          {mode === "in" ? "Sign in" : "Create account"}
+
+        {error && (
+          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, lineHeight: 1.6, margin: "0 0 14px" }}>
+            {error}
+          </p>
+        )}
+        {notice && (
+          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.moss, lineHeight: 1.6, margin: "0 0 14px" }}>
+            {notice}
+          </p>
+        )}
+
+        <Btn kind="solid" full disabled={busy || !email || !password} onClick={go} style={{ marginBottom: 14 }}>
+          {busy ? "…" : mode === "in" ? "Sign in" : "Create account"}
         </Btn>
-        <button className="pf-btn" onClick={() => setMode(mode === "in" ? "up" : "in")}
+        <button className="pf-btn" onClick={() => { setMode(mode === "in" ? "up" : "in"); setError(null); }}
           style={{ background: "none", border: "none", color: T.boneDim, fontFamily: T.mono, fontSize: 11.5, cursor: "pointer", padding: 0 }}>
           {mode === "in" ? "No account yet? Create one" : "Already have an account? Sign in"}
         </button>
@@ -660,10 +775,13 @@ function Friends({ friends, setFriends, games, go }) {
 function Profile({ me, setMe, chars, setChars }) {
   const [copied, setCopied] = useState(false);
   const [newName, setNewName] = useState("");
-  const addChar = () => {
+  const addChar = async () => {
     const n = newName.trim(); if (!n) return;
-    setChars([...chars, { id: "c" + Math.random().toString(36).slice(2, 8), name: n, bio: "" }]);
     setNewName("");
+    try {
+      const row = await createCharacter(me.id, n);
+      setChars((cs) => [...cs, row]);
+    } catch (e) { console.error("could not create character", e); }
   };
   return (
     <div className="pf-in" style={{ maxWidth: 620 }}>
@@ -682,7 +800,10 @@ function Profile({ me, setMe, chars, setChars }) {
       </div>
 
       <Field label="Display name" hint="What friends see. Your tag never changes.">
-        <input style={inputStyle} value={me.name} onChange={(e) => setMe({ ...me, name: e.target.value || " " })} />
+        <input style={inputStyle} value={me.name}
+          onChange={(e) => setMe({ ...me, name: e.target.value })}
+          onBlur={(e) => saveDisplayName(me.id, e.target.value.trim() || "New player")
+            .catch((err) => console.error("could not save name", err))} />
       </Field>
 
       <div style={{ borderTop: `1px solid ${T.edge}`, paddingTop: 24, marginTop: 10 }}>
@@ -697,11 +818,16 @@ function Profile({ me, setMe, chars, setChars }) {
               background: `linear-gradient(140deg, hsl(${hash(c.name) % 360} 26% 26%), hsl(${(hash(c.name) + 80) % 360} 30% 42%))` }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: T.serif, fontSize: 16 }}>{c.name}</div>
-              <input value={c.bio} placeholder="one line about them"
+              <input value={c.bio ?? ""} placeholder="one line about them"
                 onChange={(e) => setChars(chars.map((x) => x.id === c.id ? { ...x, bio: e.target.value } : x))}
+                onBlur={(e) => updateCharacterBio(c.id, e.target.value)
+                  .catch((err) => console.error("could not save bio", err))}
                 style={{ ...inputStyle, border: "none", padding: 0, fontSize: 13.5, color: T.boneDim, background: "none" }} />
             </div>
-            <Btn kind="ghost" onClick={() => setChars(chars.filter((x) => x.id !== c.id))}>remove</Btn>
+            <Btn kind="ghost" onClick={async () => {
+              setChars(chars.filter((x) => x.id !== c.id));
+              try { await deleteCharacter(c.id); } catch (e) { console.error("could not delete", e); }
+            }}>remove</Btn>
           </div>
         ))}
         <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
@@ -709,6 +835,10 @@ function Profile({ me, setMe, chars, setChars }) {
             placeholder="New character's name" style={inputStyle} />
           <Btn onClick={addChar}>Add</Btn>
         </div>
+      </div>
+
+      <div style={{ borderTop: `1px solid ${T.edge}`, paddingTop: 22, marginTop: 28 }}>
+        <Btn onClick={() => signOut()}>Sign out</Btn>
       </div>
     </div>
   );
@@ -1023,16 +1153,12 @@ function Play({ char, save, onSave, onExit }) {
     setLog((l) => [...l, { kind: "you", text: command }]);
     setBusy(true);
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6", max_tokens: 1000,
-          messages: [{ role: "user", content: buildPrompt(state, char?.name ?? "the traveller") + `\n\nPLAYER COMMAND\n${command}` }],
-        }),
+      // Goes to the narrate edge function, which holds the DeepSeek key
+      // and returns { reply, effects } already parsed.
+      const parsed = await narrate({
+        prompt: buildPrompt(state, char?.name ?? "the traveller"),
+        command,
       });
-      const data = await res.json();
-      const raw = data.content.map((c) => c.text || "").join("").replace(/```json|```/g, "").trim();
-      let parsed; try { parsed = JSON.parse(raw); } catch { parsed = { reply: raw, effects: [] }; }
 
       const { state: next, log: engineLog } = applyEffects(state, parsed.effects ?? []);
       const entries = [];
@@ -1044,8 +1170,8 @@ function Play({ char, save, onSave, onExit }) {
       }
       setLog((l) => [...l, ...entries]);
       setState(next);
-    } catch {
-      setLog((l) => [...l, { kind: "system", text: "The connection dropped mid-sentence. Try the command again." }]);
+    } catch (err) {
+      setLog((l) => [...l, { kind: "system", text: err.message || "The connection dropped mid-sentence. Try the command again." }]);
     } finally {
       setBusy(false);
       setTimeout(() => inputRef.current?.focus(), 0);
