@@ -212,15 +212,18 @@ export async function bumpPlays(worldId) {
 
 /* ---------- room art rows ---------- */
 
-const PUBLIC_ART = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/art/`
+const SB = import.meta.env.VITE_SUPABASE_URL
 
-export const artUrl = (path) => (path ? PUBLIC_ART + path : null)
+/** Art drawn before the buckets were unified still lives in `rooms`, so the
+    bucket is stored per row rather than assumed. */
+export const artUrl = (path, bucket = 'art') =>
+  path ? `${SB}/storage/v1/object/public/${bucket}/${path}` : null
 
 /** Every drawable thing in a world: rooms, characters, items. */
 export async function loadArt(worldId) {
   const { data, error } = await supabase
     .from('world_art')
-    .select('id, kind, entity_key, name, image_prompt, image_path, locked, sort')
+    .select('id, kind, entity_key, name, image_prompt, image_path, bucket, locked, sort')
     .eq('world_id', worldId)
     .order('kind')
     .order('sort')
@@ -231,7 +234,7 @@ export async function loadArt(worldId) {
     key: r.entity_key,
     name: r.name,
     prompt: r.image_prompt ?? '',
-    url: artUrl(r.image_path),
+    url: artUrl(r.image_path, r.bucket ?? 'art'),
     art: Boolean(r.image_path),
     locked: r.locked,
   }))
