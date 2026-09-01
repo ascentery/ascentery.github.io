@@ -1246,8 +1246,9 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
         <div style={{ padding: "0 14px 16px" }}>
           <p style={{ fontFamily: T.serif, fontSize: 14.5, color: T.boneDim, lineHeight: 1.6, margin: "0 0 16px" }}>
             Every picture is drawn from three pieces joined together: the art style, the framing for
-            its kind, and the description of the thing itself. Changes save when you click away and
-            apply to the next draw, not to pictures already made.
+            its kind, and the description of the thing itself. The two boxes at the bottom say what
+            to avoid. Changes save when you click away and apply to the next draw, not to pictures
+            already made.
           </p>
 
           <Field label="Art style" hint="Shared by every picture in this world. The look, not the subject.">
@@ -1269,9 +1270,39 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
               style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
           </Field>
 
+          <div style={{ borderTop: `1px solid ${T.edge}`, paddingTop: 16, marginTop: 4 }}>
+            <Field label="Avoid, everywhere"
+              hint="Sent as the negative prompt on every picture in this world.">
+              <textarea
+                defaultValue={config.neg ?? ""}
+                rows={2}
+                onBlur={(e) => writeConfig({ ...config, neg: e.target.value })}
+                style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
+            </Field>
+
+            <Field
+              label={`Avoid, ${(KIND_LABEL[kind] ?? kind).toLowerCase()} only`}
+              hint={kind === "item"
+                ? "Items go wrong in one particular way: the model draws a sheet of sprites or an inventory screen instead of the object. Most of this list is there to stop that."
+                : "Added to the list above when drawing this kind."}>
+              <textarea
+                defaultValue={config[`neg_${kind}`] ?? ""}
+                rows={3}
+                key={`neg_${kind}`}
+                onBlur={(e) => writeConfig({ ...config, [`neg_${kind}`]: e.target.value })}
+                style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
+            </Field>
+          </div>
+
           <Btn kind="ghost"
-            onClick={() => writeConfig({ ...config, style: DEFAULT_ART.style, [kind]: DEFAULT_ART[kind] })}>
-            reset both to default
+            onClick={() => writeConfig({
+              ...config,
+              style: DEFAULT_ART.style,
+              [kind]: DEFAULT_ART[kind],
+              neg: DEFAULT_ART.neg,
+              [`neg_${kind}`]: DEFAULT_ART[`neg_${kind}`],
+            })}>
+            reset all four to default
           </Btn>
         </div>
       )}

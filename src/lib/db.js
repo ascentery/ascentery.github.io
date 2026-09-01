@@ -275,11 +275,20 @@ export async function setArtLock(artId, locked) {
    the editor so the creator can see what they are changing rather than
    editing an empty box. */
 export const DEFAULT_ART = {
+  // what to draw
   style: 'pixel art, detailed pixel art, muted earthy palette, atmospheric lighting,',
   room: 'wide establishing view of a place, no people, environmental scene,',
   mob: 'character portrait, single figure, head and shoulders, plain dark background,',
   item: 'one single isolated object, studio product shot, centred, filling the frame, ' +
         'flat plain dark background, nothing else in the picture,',
+
+  // what to avoid
+  neg: '3d render, realistic, photo, blurry, sketch, text, watermark, signature, lettering',
+  neg_room: 'people, faces, figures, portrait, character',
+  neg_mob: 'landscape, wide shot, crowd, multiple people, full body',
+  neg_item: 'spritesheet, sprite sheet, tileset, grid, multiple objects, collection, set of items, ' +
+            'inventory screen, user interface, HUD, menu, panel, frame, border, shelf, rack, ' +
+            'chest of drawers, room, scenery, background detail, duplicate',
 }
 
 export async function loadArtConfig(worldId) {
