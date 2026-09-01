@@ -1399,25 +1399,36 @@ function readable(entries) {
     .join(" ");
 }
 
-function useNarrator(enabled) {
+function useNarrator(enabled, voiceURI, rate) {
   const supported = typeof window !== "undefined" && "speechSynthesis" in window;
-  const voiceRef = useRef(null);
+  const [voices, setVoices] = useState([]);
+  const chosenRef = useRef(null);
+  const rateRef = useRef(rate);
+  rateRef.current = rate;
 
+  // Chrome populates the voice list asynchronously, so the first read is
+  // often empty and the event is the only reliable signal.
   useEffect(() => {
     if (!supported) return;
-    const pick = () => {
-      const voices = speechSynthesis.getVoices();
-      if (!voices.length) return;
-      // Prefer a local English voice; remote ones stutter on slow connections.
-      voiceRef.current =
-        voices.find((v) => v.lang.startsWith("en") && v.localService) ||
-        voices.find((v) => v.lang.startsWith("en")) ||
-        voices[0];
+    const read = () => {
+      const all = speechSynthesis.getVoices();
+      if (all.length) setVoices(all);
     };
-    pick();
-    speechSynthesis.addEventListener("voiceschanged", pick);
-    return () => speechSynthesis.removeEventListener("voiceschanged", pick);
+    read();
+    speechSynthesis.addEventListener("voiceschanged", read);
+    return () => speechSynthesis.removeEventListener("voiceschanged", read);
   }, [supported]);
+
+  useEffect(() => {
+    if (!voices.length) return;
+    chosenRef.current =
+      voices.find((v) => v.voiceURI === voiceURI) ||
+      // Local voices don't stutter on a slow connection, which matters in a
+      // game where the pauses are doing work.
+      voices.find((v) => v.lang.startsWith("en") && v.localService) ||
+      voices.find((v) => v.lang.startsWith("en")) ||
+      voices[0];
+  }, [voices, voiceURI]);
 
   useEffect(() => {
     if (!supported) return;
@@ -1431,16 +1442,17 @@ function useNarrator(enabled) {
   const speak = useCallback((text) => {
     if (!supported || !enabled || !text) return;
     const clean = String(text)
-      .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")   // emoji read as their names
+      .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")   // emoji are read as their names
       .replace(/\s+/g, " ")
       .trim();
     if (!clean) return;
 
+    // Cancel first, or a fast typist builds a backlog three turns deep.
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(clean);
-    if (voiceRef.current) u.voice = voiceRef.current;
-    u.lang = voiceRef.current?.lang ?? "en-US";
-    u.rate = 0.98;
+    if (chosenRef.current) u.voice = chosenRef.current;
+    u.lang = chosenRef.current?.lang ?? "en-US";
+    u.rate = rateRef.current ?? 1;
     u.pitch = 1;
     u.volume = 1;
     speechSynthesis.speak(u);
@@ -1448,7 +1460,15 @@ function useNarrator(enabled) {
 
   const stop = useCallback(() => { if (supported) speechSynthesis.cancel(); }, [supported]);
 
-  return { supported, speak, stop };
+  /* `pending` matters as much as `speaking`: an utterance queued but not yet
+     started still counts as busy, and on Chrome there is a real gap between
+     the two. */
+  const isSpeaking = useCallback(
+    () => supported && enabled && (speechSynthesis.speaking || speechSynthesis.pending),
+    [supported, enabled],
+  );
+
+  return { supported, speak, stop, isSpeaking, voices, current: chosenRef.current };
 }
 
 /** Fetches world_data, then hands it to Play. Keeps loading and error
@@ -1548,7 +1568,10 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
   const [busy, setBusy] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
   const [voice, setVoice] = useState(false);
-  const narrator = useNarrator(voice);
+  const [voiceURI, setVoiceURI] = useState(null);
+  const [rate, setRate] = useState(0.95);
+  const [voicePanel, setVoicePanel] = useState(false);
+  const narrator = useNarrator(voice, voiceURI, rate);
   const logRef = useRef(null), inputRef = useRef(null), stateRef = useRef(state), busyRef = useRef(busy);
   const narratorRef = useRef(narrator);
   stateRef.current = state; busyRef.current = busy; narratorRef.current = narrator;
@@ -1556,15 +1579,29 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log, busy]);
   useEffect(() => { onSave({ state, log }); }, [state, log]);
 
+  /* The ambient timer fires often and then declines most of the time: it
+     skips while a turn is resolving, while the narrator is speaking, and at
+     random otherwise. Checking often and refusing is better than a long
+     fixed interval, because a skipped slot would otherwise cost a full
+     cycle of silence. */
+  const lastAmbient = useRef(0);
   useEffect(() => {
     const t = setInterval(() => {
       if (busyRef.current || stateRef.current.over) return;
+      if (Date.now() - lastAmbient.current < 20000) return;
       const pool = WORLD.rooms[stateRef.current.player.room]?.ambient ?? [];
       if (!pool.length) return;
+
+      /* Ambient lines are filler. If the narrator is mid-sentence they are
+         not worth cutting in on, and printing one silently would leave text
+         nobody heard. Skip the tick and try again next time. */
+      if (narratorRef.current?.isSpeaking()) return;
+
+      lastAmbient.current = Date.now();
       const line = pool[Math.floor(Math.random() * pool.length)];
       setLog((l) => [...l, { kind: "ambient", text: line }]);
       narratorRef.current?.speak(line);
-    }, 24000);
+    }, 8000);
     return () => clearInterval(t);
   }, []);
 
@@ -1669,14 +1706,22 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
               <button
                 className="hr-btn"
                 onClick={() => {
-                  if (voice) { narrator.stop(); setVoice(false); return; }
+                  if (voice) { narrator.stop(); setVoice(false); setVoicePanel(false); return; }
                   setVoice(true);
+                  setVoicePanel(true);      // first thing anyone wants is to change the voice
                 }}
                 title={voice ? "Stop reading aloud" : "Read the story aloud"}
                 aria-pressed={voice}
                 style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
                   fontFamily: "inherit", fontSize: 11, color: voice ? P.ochre : P.inkSoft }}>
                 {voice ? "voice on" : "voice off"}
+              </button>
+            )}
+            {voice && narrator.supported && !voicePanel && (
+              <button className="hr-btn" onClick={() => setVoicePanel(true)} title="Choose a voice"
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
+                  fontFamily: "inherit", fontSize: 11, color: P.inkSoft }}>
+                ⚙
               </button>
             )}
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -1693,6 +1738,51 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
           {log.map((e, i) => <LogLine key={i} entry={e} />)}
           {busy && <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft, margin: "18px 0" }}>…</p>}
         </div>
+
+        {voice && voicePanel && narrator.supported && (
+          <div style={{ borderTop: `1px solid ${P.inkSoft}33`, padding: "12px 20px", background: P.paperDeep,
+            flexShrink: 0, fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <span style={{ flex: 1 }}>reading voice</span>
+              <button className="hr-btn" onClick={() => setVoicePanel(false)}
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
+                  fontFamily: "inherit", fontSize: 11, color: P.inkSoft }}>
+                done
+              </button>
+            </div>
+
+            <select
+              value={narrator.current?.voiceURI ?? ""}
+              onChange={(e) => {
+                setVoiceURI(e.target.value);
+                narrator.stop();
+              }}
+              style={{ width: "100%", background: P.paper, color: P.ink, borderRadius: 2,
+                border: `1px solid ${P.inkSoft}44`, fontFamily: "inherit", fontSize: 12,
+                padding: "6px 8px", marginBottom: 10 }}>
+              {narrator.voices.map((v) => (
+                <option key={v.voiceURI} value={v.voiceURI}>
+                  {v.name} — {v.lang}{v.localService ? "" : " (online)"}
+                </option>
+              ))}
+            </select>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 34 }}>speed</span>
+              <input
+                type="range" min="0.6" max="1.4" step="0.05" value={rate}
+                onChange={(e) => setRate(Number(e.target.value))}
+                style={{ flex: 1, accentColor: P.ochre }} />
+              <span style={{ width: 30, textAlign: "right" }}>{rate.toFixed(2)}</span>
+              <button className="hr-btn"
+                onClick={() => narrator.speak("The wind comes up the switchback and dies against the rock.")}
+                style={{ background: "transparent", border: `1px solid ${P.inkSoft}55`, color: P.inkSoft,
+                  fontFamily: "inherit", fontSize: 11, padding: "4px 9px", cursor: "pointer" }}>
+                test
+              </button>
+            </div>
+          </div>
+        )}
 
         <div style={{ borderTop: `1px solid ${P.inkSoft}33`, padding: "10px 20px", background: P.paperDeep, flexShrink: 0,
           fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, lineHeight: 1.7, color: P.inkSoft }}>
