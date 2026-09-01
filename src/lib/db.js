@@ -207,7 +207,13 @@ export async function deleteWorld(worldId) {
 }
 
 export async function bumpPlays(worldId) {
-  await supabase.rpc('bump_plays', { p_world: worldId }).catch(() => {})
+  // supabase.rpc() returns a query builder, not a Promise — it is thenable
+  // but has no .catch, so the failure has to be caught around the await.
+  try {
+    await supabase.rpc('bump_plays', { p_world: worldId })
+  } catch (e) {
+    console.error('play count not recorded', e)
+  }
 }
 
 /* ---------- room art rows ---------- */

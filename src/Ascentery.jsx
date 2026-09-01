@@ -1330,7 +1330,7 @@ function PlayLoader({ worldId, char, save, onSave, onExit }) {
 function Play({ world, art = {}, char, save, onSave, onExit }) {
   // One engine per world. Every rule below is the world's, not the app's.
   const E = useMemo(() => makeEngine(world), [world]);
-  const { WORLD, freshState, itemName, applyEffects, buildPrompt, directCommand } = E;
+  const { WORLD, freshState, itemName, mobsInRoom, applyEffects, buildPrompt, directCommand } = E;
 
   /* Walking into a room is a sequence: the place, then who is in it, then
      what is lying about. Each part is skipped if there is nothing to show. */
