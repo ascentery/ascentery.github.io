@@ -1378,6 +1378,79 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
 }
 
 
+/* Narration read aloud, using the browser's own speech synthesis. No key,
+   no cost, no network. Quality is whatever voices the operating system
+   ships, which on desktop is decent and on mobile varies.
+
+   Two details borrowed from any terminal that does this well: cancel before
+   every utterance so a fast typist does not build a backlog three turns
+   deep, and stop everything on unmount so leaving a game does not leave a
+   voice talking over the catalog. */
+/* What gets read aloud. Narration, character presence and ambient lines are
+   prose. The ruled engine lines — "Taken: brass key", "−3 health" — are
+   already visually separate precisely because they are not part of the
+   story, and hearing them read out is grating. */
+const SPOKEN = new Set(["narration", "room", "room-under-art", "presence", "ambient"]);
+
+function readable(entries) {
+  return entries
+    .filter((e) => SPOKEN.has(e.kind) && e.text)
+    .map((e) => (e.kind === "presence" && e.name ? `${e.name}. ${e.text}` : e.text))
+    .join(" ");
+}
+
+function useNarrator(enabled) {
+  const supported = typeof window !== "undefined" && "speechSynthesis" in window;
+  const voiceRef = useRef(null);
+
+  useEffect(() => {
+    if (!supported) return;
+    const pick = () => {
+      const voices = speechSynthesis.getVoices();
+      if (!voices.length) return;
+      // Prefer a local English voice; remote ones stutter on slow connections.
+      voiceRef.current =
+        voices.find((v) => v.lang.startsWith("en") && v.localService) ||
+        voices.find((v) => v.lang.startsWith("en")) ||
+        voices[0];
+    };
+    pick();
+    speechSynthesis.addEventListener("voiceschanged", pick);
+    return () => speechSynthesis.removeEventListener("voiceschanged", pick);
+  }, [supported]);
+
+  useEffect(() => {
+    if (!supported) return;
+    return () => speechSynthesis.cancel();
+  }, [supported]);
+
+  useEffect(() => {
+    if (supported && !enabled) speechSynthesis.cancel();
+  }, [enabled, supported]);
+
+  const speak = useCallback((text) => {
+    if (!supported || !enabled || !text) return;
+    const clean = String(text)
+      .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")   // emoji read as their names
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!clean) return;
+
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(clean);
+    if (voiceRef.current) u.voice = voiceRef.current;
+    u.lang = voiceRef.current?.lang ?? "en-US";
+    u.rate = 0.98;
+    u.pitch = 1;
+    u.volume = 1;
+    speechSynthesis.speak(u);
+  }, [supported, enabled]);
+
+  const stop = useCallback(() => { if (supported) speechSynthesis.cancel(); }, [supported]);
+
+  return { supported, speak, stop };
+}
+
 /** Fetches world_data, then hands it to Play. Keeps loading and error
     states out of the game itself. */
 function PlayLoader({ worldId, char, save, onSave, onExit }) {
@@ -1474,8 +1547,11 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
+  const [voice, setVoice] = useState(false);
+  const narrator = useNarrator(voice);
   const logRef = useRef(null), inputRef = useRef(null), stateRef = useRef(state), busyRef = useRef(busy);
-  stateRef.current = state; busyRef.current = busy;
+  const narratorRef = useRef(narrator);
+  stateRef.current = state; busyRef.current = busy; narratorRef.current = narrator;
 
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log, busy]);
   useEffect(() => { onSave({ state, log }); }, [state, log]);
@@ -1485,7 +1561,9 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
       if (busyRef.current || stateRef.current.over) return;
       const pool = WORLD.rooms[stateRef.current.player.room]?.ambient ?? [];
       if (!pool.length) return;
-      setLog((l) => [...l, { kind: "ambient", text: pool[Math.floor(Math.random() * pool.length)] }]);
+      const line = pool[Math.floor(Math.random() * pool.length)];
+      setLog((l) => [...l, { kind: "ambient", text: line }]);
+      narratorRef.current?.speak(line);
     }, 24000);
     return () => clearInterval(t);
   }, []);
@@ -1500,7 +1578,9 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
     const direct = directCommand(state, command);
     if (direct.handled) {
       if (direct.look) {
-        setLog((l) => [...l, ...arrival(state.player.room)]);
+        const entries = arrival(state.player.room);
+        setLog((l) => [...l, ...entries]);
+        narrator.speak(readable(entries));
         return;
       }
       if (direct.entries) {
@@ -1515,6 +1595,7 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
       }
       setLog((l) => [...l, ...entries]);
       setState(next);
+      narrator.speak(readable(entries));
       setTimeout(() => inputRef.current?.focus(), 0);
       return;
     }
@@ -1537,6 +1618,7 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
       }
       setLog((l) => [...l, ...entries]);
       setState(next);
+      narrator.speak(readable(entries));
     } catch (err) {
       setLog((l) => [...l, { kind: "system", text: err.message || "The connection dropped mid-sentence. Try the command again." }]);
     } finally {
@@ -1575,7 +1657,7 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0,
           padding: "12px 20px 10px", borderBottom: `1px solid ${P.inkSoft}33`,
           fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft }}>
-          <button onClick={onExit} className="hr-btn"
+          <button onClick={() => { narrator.stop(); onExit(); }} className="hr-btn"
             style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: 11, color: P.inkSoft }}>
             ‹ leave
           </button>
@@ -1583,6 +1665,20 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
             {WORLD.title}<span style={{ color: P.inkSoft }}> · {char?.name}</span>
           </span>
           <span style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            {narrator.supported && (
+              <button
+                className="hr-btn"
+                onClick={() => {
+                  if (voice) { narrator.stop(); setVoice(false); return; }
+                  setVoice(true);
+                }}
+                title={voice ? "Stop reading aloud" : "Read the story aloud"}
+                aria-pressed={voice}
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
+                  fontFamily: "inherit", fontSize: 11, color: voice ? P.ochre : P.inkSoft }}>
+                {voice ? "voice on" : "voice off"}
+              </button>
+            )}
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <span aria-hidden style={{ width: 30, height: 3, background: `${P.inkSoft}33`, display: "inline-block", position: "relative" }}>
                 <span style={{ position: "absolute", inset: 0, width: `${hpFrac * 100}%`, background: hpFrac > 0.4 ? P.moss : P.rust }} />
