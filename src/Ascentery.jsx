@@ -293,17 +293,9 @@ function directCommand(state, input) {
   }
 
   if (raw === "look" || raw === "l" || raw === "look around") {
-    const here = state.roomItems[state.player.room] ?? [];
-    const who = mobsInRoom(state, state.player.room);
-    const entries = [
-      { kind: "room", text: room.name },
-      { kind: "narration", text: room.desc },
-    ];
-    // `look` re-describes but does not re-show the picture; it is already
-    // above in the log, and repeating it pushes the text off screen.
-    if (here.length) entries.push({ kind: "system", text: `Lying here: ${here.map(itemName).join(", ")}.` });
-    if (who.length) entries.push({ kind: "system", text: `Here with you: ${who.map((id) => WORLD.mobs[id].name).join(", ")}.` });
-    return { handled: true, entries };
+    // Handled by the caller, which has the art maps. The engine only says
+    // that this is a look, not what a look renders.
+    return { handled: true, look: true };
   }
 
   if (["i", "inv", "inventory"].includes(raw)) {
@@ -1291,7 +1283,7 @@ function ArtTab({ entries, setEntries, me, setMe }) {
     states out of the game itself. */
 function PlayLoader({ worldId, char, save, onSave, onExit }) {
   const [world, setWorld] = useState(null);
-  const [art, setArt] = useState({});
+  const [art, setArt] = useState({ room: {}, mob: {}, item: {} });
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -1303,10 +1295,11 @@ function PlayLoader({ worldId, char, save, onSave, onExit }) {
     ])
       .then(([{ data }, entries]) => {
         if (cancelled) return;
-        // Only room pictures are shown while playing, for now.
-        setArt(Object.fromEntries(
-          entries.filter((e) => e.kind === "room" && e.url).map((e) => [e.key, e.url]),
-        ));
+        const byKind = { room: {}, mob: {}, item: {} };
+        for (const e of entries) {
+          if (e.url && byKind[e.kind]) byKind[e.kind][e.key] = e.url;
+        }
+        setArt(byKind);
         setWorld(data);
       })
       .catch((e) => { if (!cancelled) setError(e.message); });
@@ -1339,14 +1332,39 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
   const E = useMemo(() => makeEngine(world), [world]);
   const { WORLD, freshState, itemName, applyEffects, buildPrompt, directCommand } = E;
 
-  // A room's arrival is a small sequence: its picture, its name, its description.
-  const arrival = (roomKey) => {
+  /* Walking into a room is a sequence: the place, then who is in it, then
+     what is lying about. Each part is skipped if there is nothing to show. */
+  const arrival = (roomKey, st = state) => {
     const room = WORLD.rooms[roomKey];
     const entries = [];
-    const hasArt = Boolean(art[roomKey]);
-    if (hasArt) entries.push({ kind: "art", url: art[roomKey], text: room?.name ?? "" });
-    entries.push({ kind: hasArt ? "room-under-art" : "room", text: room?.name ?? roomKey });
+
+    const roomArt = art.room?.[roomKey];
+    if (roomArt) entries.push({ kind: "art", url: roomArt, text: room?.name ?? "" });
+    entries.push({ kind: roomArt ? "room-under-art" : "room", text: room?.name ?? roomKey });
     if (room?.desc) entries.push({ kind: "narration", text: room.desc });
+
+    for (const id of mobsInRoom(st, roomKey)) {
+      const mob = WORLD.mobs[id];
+      entries.push({
+        kind: "presence",
+        url: art.mob?.[id] ?? null,
+        name: mob.name,
+        text: mob.card?.presence || `${mob.name} is here.`,
+      });
+    }
+
+    const here = st.roomItems?.[roomKey] ?? [];
+    if (here.length) {
+      entries.push({
+        kind: "items",
+        items: here.map((id) => ({
+          key: id,
+          name: itemName(id),
+          url: art.item?.[id] ?? null,
+        })),
+      });
+    }
+
     return entries;
   };
 
@@ -1382,6 +1400,10 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
     // Deterministic commands never reach the narrator.
     const direct = directCommand(state, command);
     if (direct.handled) {
+      if (direct.look) {
+        setLog((l) => [...l, ...arrival(state.player.room)]);
+        return;
+      }
       if (direct.entries) {
         setLog((l) => [...l, ...direct.entries]);
         setTimeout(() => inputRef.current?.focus(), 0);
@@ -1390,9 +1412,7 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
       const { state: next, log: engineLog } = applyEffects(state, direct.effects);
       const entries = [...engineLog];
       if (next.player.room !== state.player.room) {
-        entries.push(...arrival(next.player.room));
-        const here = next.roomItems[next.player.room] ?? [];
-        if (here.length) entries.push({ kind: "system", text: `Lying here: ${here.map(itemName).join(", ")}.` });
+        entries.push(...arrival(next.player.room, next));
       }
       setLog((l) => [...l, ...entries]);
       setState(next);
@@ -1414,7 +1434,7 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
       if (parsed.reply) entries.push({ kind: "narration", text: parsed.reply });
       entries.push(...engineLog);
       if (next.player.room !== state.player.room) {
-        entries.push(...arrival(next.player.room));
+        entries.push(...arrival(next.player.room, next));
       }
       setLog((l) => [...l, ...entries]);
       setState(next);
@@ -1535,6 +1555,63 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
 
 function LogLine({ entry }) {
   const base = { fontFamily: "Newsreader, serif", margin: "0 0 18px" };
+
+  if (entry.kind === "presence")
+    return (
+      <div className="hr-fade" style={{ display: "flex", gap: 14, alignItems: "flex-start", margin: "0 0 20px" }}>
+        {entry.url && (
+          <img
+            src={entry.url}
+            alt={entry.name || ""}
+            loading="lazy"
+            onError={(e) => { e.currentTarget.style.display = "none"; }}
+            style={{
+              width: 88, flexShrink: 0, aspectRatio: "3 / 4", objectFit: "cover",
+              imageRendering: "pixelated", border: `1px solid ${P.inkSoft}33`,
+            }}
+          />
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: "Newsreader, serif", fontSize: 16, marginBottom: 3 }}>{entry.name}</div>
+          <p style={{ fontFamily: "Newsreader, serif", fontSize: 16, lineHeight: 1.55, margin: 0, color: P.inkSoft }}>
+            {entry.text}
+          </p>
+        </div>
+      </div>
+    );
+
+  if (entry.kind === "items")
+    return (
+      <div className="hr-fade" style={{ margin: "0 0 20px" }}>
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft, marginBottom: 8 }}>
+          lying here
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+          {entry.items.map((it) => (
+            <div key={it.key} style={{ width: 74 }}>
+              {it.url ? (
+                <img
+                  src={it.url}
+                  alt={it.name}
+                  loading="lazy"
+                  onError={(e) => { e.currentTarget.style.display = "none"; }}
+                  style={{
+                    width: 74, height: 74, objectFit: "cover", display: "block",
+                    imageRendering: "pixelated", border: `1px solid ${P.inkSoft}33`,
+                  }}
+                />
+              ) : (
+                <div style={{ width: 74, height: 74, border: `1px dashed ${P.inkSoft}44` }} />
+              )}
+              <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5,
+                lineHeight: 1.35, color: P.inkSoft, marginTop: 5 }}>
+                {it.name}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
 
   if (entry.kind === "art")
     return (
