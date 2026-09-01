@@ -270,6 +270,40 @@ export async function setArtLock(artId, locked) {
   if (error) throw error
 }
 
+/* Art direction lives on the world so each creator can set their own.
+   These mirror the defaults inside the art edge function; they are shown in
+   the editor so the creator can see what they are changing rather than
+   editing an empty box. */
+export const DEFAULT_ART = {
+  style: 'pixel art, detailed pixel art, muted earthy palette, atmospheric lighting,',
+  room: 'wide establishing view of a place, no people, environmental scene,',
+  mob: 'character portrait, single figure, head and shoulders, plain dark background,',
+  item: 'one single isolated object, studio product shot, centred, filling the frame, ' +
+        'flat plain dark background, nothing else in the picture,',
+}
+
+export async function loadArtConfig(worldId) {
+  const { data, error } = await supabase
+    .from('worlds')
+    .select('art_config')
+    .eq('id', worldId)
+    .single()
+  if (error) throw error
+  return { ...DEFAULT_ART, ...(data?.art_config ?? {}) }
+}
+
+export async function saveArtConfig(worldId, config) {
+  // Store only what differs from the defaults, so a later change to the
+  // defaults reaches worlds that never customised anything.
+  const trimmed = {}
+  for (const [k, v] of Object.entries(config)) {
+    const value = (v ?? '').trim()
+    if (value && value !== DEFAULT_ART[k]) trimmed[k] = value
+  }
+  const { error } = await supabase.from('worlds').update({ art_config: trimmed }).eq('id', worldId)
+  if (error) throw error
+}
+
 export async function setArtPrompt(artId, image_prompt) {
   const { error } = await supabase.from('world_art').update({ image_prompt }).eq('id', artId)
   if (error) throw error

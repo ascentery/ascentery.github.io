@@ -7,6 +7,7 @@ import {
   loadWorlds, loadWorldData, createWorld, generateWorld,
   setPublished, deleteWorld, bumpPlays,
   loadArt, drawArt, setArtLock, setArtPrompt,
+  loadArtConfig, saveArtConfig, DEFAULT_ART,
   signUp, signIn, signOut,
 } from "./lib/db";
 
@@ -1105,7 +1106,7 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
         art === null
           ? <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
           : art.length
-            ? <ArtTab entries={art} setEntries={setArt} me={me} setMe={setMe} />
+            ? <ArtTab entries={art} setEntries={setArt} me={me} setMe={setMe} worldId={game.id} />
             : <Empty title="Nothing to draw yet." line="Pictures appear once the world has been built." />
       )}
 
@@ -1139,12 +1140,35 @@ const KINDS = [
   { key: "item", label: "Items", ratio: 1 },
 ];
 
-function ArtTab({ entries, setEntries, me, setMe }) {
+const KIND_LABEL = { room: "Rooms", mob: "Characters", item: "Items" };
+
+function ArtTab({ entries, setEntries, me, setMe, worldId }) {
   const [kind, setKind] = useState("room");
+  const [config, setConfig] = useState(null);
+  const [showStyle, setShowStyle] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [drawing, setDrawing] = useState(null);
   const [queue, setQueue] = useState([]);
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(null);   // artId whose prompt is open
+
+  useEffect(() => {
+    if (!worldId) return;
+    let cancelled = false;
+    loadArtConfig(worldId)
+      .then((c) => { if (!cancelled) setConfig(c); })
+      .catch(() => { if (!cancelled) setConfig({ ...DEFAULT_ART }); });
+    return () => { cancelled = true; };
+  }, [worldId]);
+
+  const writeConfig = async (next) => {
+    setConfig(next);
+    try {
+      await saveArtConfig(worldId, next);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1600);
+    } catch (e) { console.error(e); }
+  };
 
   const COST = 12;
   const shown = entries.filter((e) => e.kind === kind);
@@ -1207,6 +1231,50 @@ function ArtTab({ entries, setEntries, me, setMe }) {
           </button>
         );
       })}
+    </div>
+
+    <div style={{ border: `1px solid ${T.edge}`, borderRadius: 2, marginBottom: 18 }}>
+      <button className="pf-btn" onClick={() => setShowStyle((v) => !v)}
+        style={{ width: "100%", textAlign: "left", background: "transparent", border: "none", cursor: "pointer",
+          padding: "11px 14px", fontFamily: T.mono, fontSize: 11.5, color: T.boneDim,
+          display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ flex: 1 }}>{showStyle ? "hide" : "show"} art direction</span>
+        {saved && <span style={{ color: T.moss }}>saved</span>}
+      </button>
+
+      {showStyle && config && (
+        <div style={{ padding: "0 14px 16px" }}>
+          <p style={{ fontFamily: T.serif, fontSize: 14.5, color: T.boneDim, lineHeight: 1.6, margin: "0 0 16px" }}>
+            Every picture is drawn from three pieces joined together: the art style, the framing for
+            its kind, and the description of the thing itself. Changes save when you click away and
+            apply to the next draw, not to pictures already made.
+          </p>
+
+          <Field label="Art style" hint="Shared by every picture in this world. The look, not the subject.">
+            <textarea
+              defaultValue={config.style}
+              rows={3}
+              onBlur={(e) => writeConfig({ ...config, style: e.target.value })}
+              style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
+          </Field>
+
+          <Field
+            label={`Framing for ${(KIND_LABEL[kind] ?? kind).toLowerCase()}`}
+            hint="How this kind is composed. Rooms are wide views, characters are portraits, items are single objects.">
+            <textarea
+              defaultValue={config[kind] ?? ""}
+              rows={3}
+              key={kind}
+              onBlur={(e) => writeConfig({ ...config, [kind]: e.target.value })}
+              style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
+          </Field>
+
+          <Btn kind="ghost"
+            onClick={() => writeConfig({ ...config, style: DEFAULT_ART.style, [kind]: DEFAULT_ART[kind] })}>
+            reset both to default
+          </Btn>
+        </div>
+      )}
     </div>
 
     <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10, flexWrap: "wrap" }}>
