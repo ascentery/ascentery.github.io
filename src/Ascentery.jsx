@@ -6,8 +6,7 @@ import {
   loadSaves, writeSave,
   loadWorlds, loadWorldData, createWorld, generateWorld,
   setPublished, deleteWorld, bumpPlays,
-  loadRooms, setRoomLock, drawRoom,
-  illustrate, imageUrl,
+  loadArt, drawArt, setArtLock, setArtPrompt,
   signUp, signIn, signOut,
 } from "./lib/db";
 
@@ -704,7 +703,7 @@ function Browse({ games, go }) {
 function GameCard({ g, onClick, showStatus }) {
   return (
     <div className="pf-card pf-in" onClick={onClick}>
-      <Splash seed={g.id} pending={g.status === "generating"} src={imageUrl("covers", g.coverPath)} />
+      <Splash seed={g.id} pending={g.status === "generating"} src={g.coverUrl} />
       <div style={{ padding: "10px 2px 0" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <div className="pf-title" style={{ fontFamily: T.serif, fontSize: 18, flex: 1, lineHeight: 1.25 }}>{g.title}</div>
@@ -1068,15 +1067,15 @@ function GameDetail({ game, chars, saves, go, isMine }) {
 
 /* ---------- edit ---------- */
 function EditGame({ game, refreshWorlds, me, setMe, go }) {
-  const [tab, setTab] = useState("rooms");
-  const [rooms, setRooms] = useState(null);
+  const [tab, setTab] = useState("art");
+  const [art, setArt] = useState(null);
 
   useEffect(() => {
     if (!game) return;
     let cancelled = false;
-    loadRooms(game.id)
-      .then((rs) => { if (!cancelled) setRooms(rs); })
-      .catch(() => { if (!cancelled) setRooms([]); });
+    loadArt(game.id)
+      .then((rs) => { if (!cancelled) setArt(rs); })
+      .catch(() => { if (!cancelled) setArt([]); });
     return () => { cancelled = true; };
   }, [game?.id]);
 
@@ -1101,7 +1100,7 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
       )}
 
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24 }}>
-        {[["rooms", "Rooms"], ["settings", "Settings"]].map(([k, label]) => (
+        {[["art", "Pictures"], ["settings", "Settings"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className="pf-btn"
             style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px", fontFamily: T.mono, fontSize: 12,
               color: tab === k ? T.bone : T.boneDim, boxShadow: tab === k ? "inset 0 -2px 0 " + T.ochre : "none" }}>
@@ -1110,12 +1109,12 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
         ))}
       </div>
 
-      {tab === "rooms" && (
-        rooms === null
+      {tab === "art" && (
+        art === null
           ? <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
-          : rooms.length
-            ? <RoomsTab rooms={rooms} setRooms={setRooms} me={me} setMe={setMe} worldId={game.id} />
-            : <Empty title="No rooms yet." line="Rooms appear once the world has been built." />
+          : art.length
+            ? <ArtTab entries={art} setEntries={setArt} me={me} setMe={setMe} />
+            : <Empty title="Nothing to draw yet." line="Pictures appear once the world has been built." />
       )}
 
       {tab === "settings" && (
@@ -1142,62 +1141,89 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
   );
 }
 
-function RoomsTab({ rooms, setRooms, me, setMe }) {
-  const [drawing, setDrawing] = useState(null);   // roomId currently being drawn
-  const [queue, setQueue] = useState([]);         // roomIds waiting their turn
+const KINDS = [
+  { key: "room", label: "Rooms", ratio: 0.5625 },
+  { key: "mob",  label: "Characters", ratio: 1.33 },
+  { key: "item", label: "Items", ratio: 1 },
+];
+
+function ArtTab({ entries, setEntries, me, setMe }) {
+  const [kind, setKind] = useState("room");
+  const [drawing, setDrawing] = useState(null);
+  const [queue, setQueue] = useState([]);
   const [error, setError] = useState(null);
+  const [editing, setEditing] = useState(null);   // artId whose prompt is open
 
   const COST = 12;
-  const missing = rooms.filter((r) => !r.art && !r.locked);
+  const shown = entries.filter((e) => e.kind === kind);
+  const ratio = KINDS.find((k) => k.key === kind)?.ratio ?? 1;
+  const missing = shown.filter((e) => !e.art && !e.locked);
   const affordable = Math.floor(me.credits / COST);
 
-  const draw = async (room) => {
-    if (room.locked || drawing) return;
-    setDrawing(room.id);
+  const draw = async (entry) => {
+    if (entry.locked || drawing) return;
+    setDrawing(entry.id);
     setError(null);
     try {
-      const { url, credits } = await drawRoom(room.id);
-      setRooms((rs) => rs.map((r) => r.id === room.id ? { ...r, url, art: true } : r));
+      const { url, credits } = await drawArt(entry.id);
+      setEntries((es) => es.map((e) => e.id === entry.id ? { ...e, url, art: true } : e));
       if (typeof credits === "number") setMe((m) => ({ ...m, credits }));
     } catch (e) {
       setError(e.message);
-      setQueue([]);          // stop a bulk run rather than repeat the same failure
+      setQueue([]);          // stop the run rather than repeat the same failure
     } finally {
       setDrawing(null);
     }
   };
 
-  // Drain the queue one at a time. Serial on purpose: the provider is slower
-  // under parallel load, and one failure should stop the run rather than burn
-  // credits on five more.
+  // Serial on purpose: the provider is slower under parallel load, and one
+  // failure should stop the run rather than burn credits on five more.
   useEffect(() => {
     if (drawing || !queue.length) return;
     const [next, ...rest] = queue;
-    const room = rooms.find((r) => r.id === next);
+    const entry = entries.find((e) => e.id === next);
     setQueue(rest);
-    if (room && !room.art && !room.locked) draw(room);
+    if (entry && !entry.art && !entry.locked) draw(entry);
   }, [queue, drawing]);
 
-  const drawAll = () => {
-    setError(null);
-    setQueue(missing.slice(0, affordable).map((r) => r.id));
+  const savePrompt = async (entry, prompt) => {
+    setEntries((es) => es.map((e) => e.id === entry.id ? { ...e, prompt } : e));
+    try { await setArtPrompt(entry.id, prompt); } catch (e) { console.error(e); }
   };
 
-  const toggleLock = async (r) => {
-    setRooms(rooms.map((x) => x.id === r.id ? { ...x, locked: !x.locked } : x));
-    try { await setRoomLock(r.id, !r.locked); } catch (e) { console.error(e); }
+  const toggleLock = async (entry) => {
+    setEntries((es) => es.map((e) => e.id === entry.id ? { ...e, locked: !e.locked } : e));
+    try { await setArtLock(entry.id, !entry.locked); } catch (e) { console.error(e); }
   };
 
   const busy = Boolean(drawing) || queue.length > 0;
   const batch = Math.min(missing.length, affordable);
 
   return (<>
+    <div style={{ display: "flex", gap: 4, marginBottom: 16, flexWrap: "wrap" }}>
+      {KINDS.map((k) => {
+        const n = entries.filter((e) => e.kind === k.key).length;
+        const done = entries.filter((e) => e.kind === k.key && e.art).length;
+        if (!n) return null;
+        return (
+          <button key={k.key} onClick={() => setKind(k.key)} className="pf-btn"
+            style={{ background: "transparent", cursor: "pointer", padding: "7px 12px", borderRadius: 2,
+              fontFamily: T.mono, fontSize: 12,
+              color: kind === k.key ? T.bone : T.boneDim,
+              border: "1px solid " + (kind === k.key ? T.ochre : T.edge) }}>
+            {k.label} {done}/{n}
+          </button>
+        );
+      })}
+    </div>
+
     <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10, flexWrap: "wrap" }}>
-      <p style={{ fontFamily: T.serif, fontSize: 15.5, color: T.boneDim, lineHeight: 1.55, margin: 0, flex: 1, minWidth: 260 }}>
-        Lock a room once you are happy with it. Locked rooms are skipped by redraws, including bulk ones.
+      <p style={{ fontFamily: T.serif, fontSize: 15.5, color: T.boneDim, lineHeight: 1.55, margin: 0, flex: 1, minWidth: 240 }}>
+        Lock one once you are happy with it. Locked pictures are skipped by redraws, including bulk ones.
       </p>
       {missing.length > 0 && (
-        <Btn onClick={drawAll} disabled={busy || batch < 1}>
+        <Btn onClick={() => { setError(null); setQueue(missing.slice(0, affordable).map((e) => e.id)); }}
+          disabled={busy || batch < 1}>
           {busy
             ? "drawing" + (queue.length ? " \u00b7 " + queue.length + " left" : "")
             : "Draw " + batch + " missing \u00b7 " + batch * COST}
@@ -1207,7 +1233,7 @@ function RoomsTab({ rooms, setRooms, me, setMe }) {
 
     {affordable < 1 && (
       <p style={{ fontFamily: T.mono, fontSize: 11, color: T.clay, margin: "0 0 14px" }}>
-        Not enough credits to draw a room.
+        Not enough credits to draw anything.
       </p>
     )}
     {error && (
@@ -1217,35 +1243,49 @@ function RoomsTab({ rooms, setRooms, me, setMe }) {
       </p>
     )}
 
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 18 }}>
-      {rooms.map((r) => (
-        <div key={r.id}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 18 }}>
+      {shown.map((e) => (
+        <div key={e.id}>
           <div style={{ position: "relative" }}>
-            <Splash seed={r.key} src={r.url} pending={drawing === r.id} />
-            <button onClick={() => toggleLock(r)}
-              title={r.locked ? "Unlock to allow redraws" : "Lock to protect from redraws"} className="pf-btn"
+            <Splash seed={e.key} src={e.url} pending={drawing === e.id} ratio={ratio} />
+            <button onClick={() => toggleLock(e)}
+              title={e.locked ? "Unlock to allow redraws" : "Lock to protect from redraws"} className="pf-btn"
               style={{ position: "absolute", top: 7, right: 7, width: 27, height: 27, borderRadius: 2, cursor: "pointer",
-                background: r.locked ? T.ochre : "rgba(20,22,17,.72)", border: "1px solid " + (r.locked ? T.ochre : T.edge),
-                color: r.locked ? "#221D0C" : T.bone, fontSize: 12, lineHeight: 1 }}>
-              {r.locked ? "\ud83d\udd12" : "\ud83d\udd13"}
+                background: e.locked ? T.ochre : "rgba(20,22,17,.72)", border: "1px solid " + (e.locked ? T.ochre : T.edge),
+                color: e.locked ? "#221D0C" : T.bone, fontSize: 12, lineHeight: 1 }}>
+              {e.locked ? "\ud83d\udd12" : "\ud83d\udd13"}
             </button>
           </div>
+
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
-            <span style={{ fontFamily: T.serif, fontSize: 15.5, flex: 1 }}>{r.name}</span>
-            <button onClick={() => draw(r)}
-              disabled={r.locked || busy || me.credits < COST}
-              className="pf-btn"
+            <span style={{ fontFamily: T.serif, fontSize: 15.5, flex: 1, minWidth: 0 }}>{e.name}</span>
+            <button onClick={() => draw(e)} disabled={e.locked || busy || me.credits < COST} className="pf-btn"
               style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
-                color: r.locked ? T.edge : T.boneDim,
-                cursor: (r.locked || busy) ? "not-allowed" : "pointer" }}>
-              {drawing === r.id ? "drawing" : r.art ? "redraw \u00b7 " + COST : "draw \u00b7 " + COST}
+                color: e.locked ? T.edge : T.boneDim, cursor: (e.locked || busy) ? "not-allowed" : "pointer" }}>
+              {drawing === e.id ? "drawing" : e.art ? "redraw \u00b7 " + COST : "draw \u00b7 " + COST}
             </button>
           </div>
+
+          <button onClick={() => setEditing(editing === e.id ? null : e.id)} className="pf-btn"
+            style={{ background: "none", border: "none", padding: "2px 0 0", fontFamily: T.mono, fontSize: 10.5,
+              color: T.edge, cursor: "pointer" }}>
+            {editing === e.id ? "hide prompt" : "edit prompt"}
+          </button>
+
+          {editing === e.id && (
+            <textarea
+              defaultValue={e.prompt}
+              rows={4}
+              onBlur={(ev) => savePrompt(e, ev.target.value)}
+              placeholder="What the picture should show"
+              style={{ ...inputStyle, fontSize: 12.5, lineHeight: 1.5, marginTop: 6, resize: "vertical" }} />
+          )}
         </div>
       ))}
     </div>
   </>);
 }
+
 
 /** Fetches world_data, then hands it to Play. Keeps loading and error
     states out of the game itself. */
@@ -1259,11 +1299,14 @@ function PlayLoader({ worldId, char, save, onSave, onExit }) {
     Promise.all([
       loadWorldData(worldId),
       // Art is optional — a world with no pictures still plays.
-      loadRooms(worldId).catch(() => []),
+      loadArt(worldId).catch(() => []),
     ])
-      .then(([{ data }, rooms]) => {
+      .then(([{ data }, entries]) => {
         if (cancelled) return;
-        setArt(Object.fromEntries(rooms.filter((r) => r.url).map((r) => [r.key, r.url])));
+        // Only room pictures are shown while playing, for now.
+        setArt(Object.fromEntries(
+          entries.filter((e) => e.kind === "room" && e.url).map((e) => [e.key, e.url]),
+        ));
         setWorld(data);
       })
       .catch((e) => { if (!cancelled) setError(e.message); });
