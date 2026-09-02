@@ -133,10 +133,31 @@ export async function signOut() {
 
 /** Catalog rows only. Never pulls world_data — that would drag every
     blob across the wire just to render a grid of cards. */
+export const SORTS = [
+  { key: 'played', label: 'Most played' },
+  { key: 'week', label: 'Most played this week' },
+  { key: 'new', label: 'Newest' },
+  { key: 'updated', label: 'Recently updated' },
+]
+
+export function sortWorlds(worlds, key) {
+  const list = [...worlds]
+  switch (key) {
+    case 'week':
+      return list.sort((a, b) => (b.weekPlays - a.weekPlays) || (b.plays - a.plays))
+    case 'new':
+      return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    case 'updated':
+      return list.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+    default:
+      return list.sort((a, b) => b.plays - a.plays)
+  }
+}
+
 export async function loadWorlds(userId) {
   const { data, error } = await supabase
     .from('worlds')
-    .select('id, owner_id, title, blurb, status, published, plays, room_count, mob_count, cover_path, failure_note, created_at')
+    .select('id, owner_id, title, blurb, status, published, plays, room_count, mob_count, cover_path, failure_note, created_at, updated_at')
     .or(`published.eq.true,owner_id.eq.${userId}`)
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -149,6 +170,16 @@ export async function loadWorlds(userId) {
 
   const byId = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
 
+  // Aggregate play counts for the last week. A failure here is not worth
+  // failing the whole catalog over; the sort just falls back to lifetime.
+  let weekly = {}
+  try {
+    const { data: recent } = await supabase.rpc('plays_since', { p_days: 7 })
+    weekly = Object.fromEntries((recent ?? []).map((r) => [r.world_id, Number(r.plays)]))
+  } catch (e) {
+    console.error('weekly plays unavailable', e)
+  }
+
   return (data ?? []).map((w) => ({
     id: w.id,
     title: w.title,
@@ -156,6 +187,9 @@ export async function loadWorlds(userId) {
     status: w.status,
     published: w.published,
     plays: w.plays ?? 0,
+    weekPlays: weekly[w.id] ?? 0,
+    createdAt: w.created_at,
+    updatedAt: w.updated_at ?? w.created_at,
     rooms: w.room_count ?? 0,
     mobs: w.mob_count ?? 0,
     failureNote: w.failure_note,

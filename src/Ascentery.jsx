@@ -8,6 +8,7 @@ import {
   setPublished, deleteWorld, bumpPlays,
   loadArt, drawArt, setArtLock, setArtPrompt,
   loadArtConfig, saveArtConfig, DEFAULT_ART, ENGINES, money, PRICE_CENTS,
+  SORTS, sortWorlds,
   signUp, signIn, signOut,
 } from "./lib/db";
 
@@ -398,6 +399,22 @@ const Empty = ({ title, line, action }) => (
   </div>
 );
 
+/* One breakpoint, used for the handful of places where a phone needs a
+   different layout rather than a narrower one. */
+function useNarrow(px = 700) {
+  const [narrow, setNarrow] = useState(
+    typeof window !== "undefined" ? window.innerWidth < px : false,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${px - 1}px)`);
+    const update = () => setNarrow(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, [px]);
+  return narrow;
+}
+
 const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(238px, 1fr))", gap: 20 };
 const Avatar = ({ name, tag, size = 32 }) => (
   <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, display: "grid", placeItems: "center",
@@ -663,38 +680,72 @@ function TopBar({ me, view, go }) {
 /* ---------- browse ---------- */
 function Browse({ games, go }) {
   const [q, setQ] = useState("");
-  const shown = games.filter((g) => (g.title + g.author + g.blurb).toLowerCase().includes(q.toLowerCase()));
-  const featured = games.find((g) => g.playable) ?? games[0];
-  const rest = shown.filter((g) => g.id !== featured.id);
+  const [sort, setSort] = useState("played");
+  const narrow = useNarrow();
+
+  const ranked = sortWorlds(games, sort);
+  const shown = ranked.filter((g) => (g.title + g.author + g.blurb).toLowerCase().includes(q.toLowerCase()));
+
+  // The showcase is the most played world overall, whatever the list below
+  // is sorted by. On a phone it costs a whole screen before anyone sees a
+  // second title, so it is left out entirely.
+  const featured = narrow ? null : sortWorlds(games, "played")[0];
+  const rest = featured ? shown.filter((g) => g.id !== featured.id) : shown;
 
   return (
     <div className="pf-in">
-      <div className="pf-card" onClick={() => go("game", { id: featured.id, from: "browse" })}
-        style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)", gap: 24, marginBottom: 34, alignItems: "center" }}>
-        <Splash seed={featured.id} src={featured.coverUrl} ratio={0.5} />
-        <div>
-          <div style={{ fontFamily: T.mono, fontSize: 11, color: T.ochre, marginBottom: 8 }}>most played this week</div>
-          <div className="pf-title" style={{ fontFamily: T.serif, fontSize: 30, lineHeight: 1.15, marginBottom: 8 }}>{featured.title}</div>
-          <p style={{ fontFamily: T.serif, fontSize: 16, lineHeight: 1.55, color: T.boneDim, margin: "0 0 12px" }}>{featured.blurb}</p>
-          <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
-            {featured.author} · {featured.rooms} rooms · {featured.plays.toLocaleString()} plays
+      {featured && (
+        <div className="pf-card" onClick={() => go("game", { id: featured.id, from: "browse" })}
+          style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)",
+            gap: 24, marginBottom: 34, alignItems: "center" }}>
+          <Splash seed={featured.id} src={featured.coverUrl} ratio={0.5625} />
+          <div>
+            <div style={{ fontFamily: T.mono, fontSize: 11, color: T.ochre, marginBottom: 8 }}>most played</div>
+            <div className="pf-title" style={{ fontFamily: T.serif, fontSize: 30, lineHeight: 1.15, marginBottom: 8 }}>
+              {featured.title}
+            </div>
+            <p style={{ fontFamily: T.serif, fontSize: 16, lineHeight: 1.55, color: T.boneDim, margin: "0 0 12px" }}>
+              {featured.blurb}
+            </p>
+            <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
+              {featured.author} &middot; {featured.rooms} rooms &middot; {featured.plays.toLocaleString()} plays
+            </div>
           </div>
         </div>
+      )}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+          aria-label="Sort worlds"
+          style={{ background: T.ground, color: T.bone, border: `1px solid ${T.edge}`, borderRadius: 2,
+            fontFamily: T.serif, fontSize: 17, padding: "6px 8px", cursor: "pointer" }}>
+          {SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+        </select>
+
+        <span style={{ flex: 1 }} />
+
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="search worlds"
+          style={{ ...inputStyle, width: narrow ? "100%" : 200, fontFamily: T.mono, fontSize: 12, padding: "7px 10px" }} />
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
-        <h2 style={{ fontFamily: T.serif, fontSize: 20, fontWeight: 400, margin: 0, flex: 1 }}>Everything else</h2>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="search worlds"
-          style={{ ...inputStyle, width: 200, fontFamily: T.mono, fontSize: 12, padding: "7px 10px" }} />
+      <div style={grid}>
+        {rest.map((g) => (
+          <GameCard key={g.id} g={g} onClick={() => go("game", { id: g.id, from: "browse" })}
+            meta={sort === "week" && g.weekPlays ? `${g.weekPlays.toLocaleString()} plays this week` : null} />
+        ))}
       </div>
-
-      <div style={grid}>{rest.map((g) => <GameCard key={g.id} g={g} onClick={() => go("game", { id: g.id, from: "browse" })} />)}</div>
-      {!shown.length && <Empty title="Nothing matches that." line="Try a shorter word, or open the featured world above." />}
+      {!shown.length && <Empty title="Nothing matches that." line="Try a shorter word, or clear the search." />}
     </div>
   );
 }
 
-function GameCard({ g, onClick, showStatus }) {
+
+function GameCard({ g, onClick, showStatus, meta }) {
   return (
     <div className="pf-card pf-in" onClick={onClick}>
       <Splash seed={g.id} pending={g.status === "generating"} src={g.coverUrl} />
@@ -704,7 +755,7 @@ function GameCard({ g, onClick, showStatus }) {
           {showStatus && <Chip status={g.status} />}
         </div>
         <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginTop: 5 }}>
-          {g.author} · {g.plays.toLocaleString()} plays
+          {g.author} · {meta ?? `${g.plays.toLocaleString()} plays`}
         </div>
       </div>
     </div>
@@ -1008,6 +1059,7 @@ function Building() {
 /* ---------- game detail ---------- */
 function GameDetail({ game, chars, saves, go, from = "browse", isMine }) {
   const [picked, setPicked] = useState(chars[0]?.id ?? null);
+  const narrow = useNarrow();
   if (!game) return <Empty title="That world is gone." line="It may have been unpublished by its author." />;
   const save = saves[`${game.id}:${picked}`];
 
@@ -1016,10 +1068,10 @@ function GameDetail({ game, chars, saves, go, from = "browse", isMine }) {
       <Btn kind="ghost" onClick={() => go(from)} style={{ marginBottom: 14 }}>back</Btn>
 
       {/* the splash screen leads, full width, before anything is said about it */}
-      <Splash seed={game.id} src={game.coverUrl} ratio={0.5} style={{ marginBottom: 26 }} />
+      <Splash seed={game.id} src={game.coverUrl} ratio={0.5625} style={{ marginBottom: 26 }} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.5fr) minmax(240px, 1fr)",
-        gap: 34, alignItems: "start" }}>
+      <div style={{ display: "grid", gap: narrow ? 26 : 34, alignItems: "start",
+        gridTemplateColumns: narrow ? "1fr" : "minmax(0, 1.5fr) minmax(240px, 1fr)" }}>
 
         <div>
           <h1 style={{ fontFamily: T.serif, fontSize: 32, fontWeight: 400, margin: "0 0 8px", lineHeight: 1.15 }}>
