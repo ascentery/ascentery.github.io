@@ -17,7 +17,7 @@ export const PRICE_CENTS = { flux: 11, pixel: 5 }
 
 export async function loadMe(userId) {
   const [{ data: profile, error: pe }, { data: credits }] = await Promise.all([
-    supabase.from('profiles').select('id, display_name, gamer_tag').eq('id', userId).single(),
+    supabase.from('profiles').select('id, display_name, gamer_tag, username, is_creator').eq('id', userId).single(),
     supabase.from('credits').select('balance_cents, cap_cents').eq('user_id', userId).single(),
   ])
 
@@ -28,6 +28,8 @@ export async function loadMe(userId) {
     id: profile.id,
     name: profile.display_name,
     tag: profile.gamer_tag,
+    username: profile.username ?? null,
+    isCreator: Boolean(profile.is_creator),
     balance: credits?.balance_cents ?? 0,
     balanceCap: credits?.cap_cents ?? 500,
   }
@@ -165,7 +167,7 @@ export async function loadWorlds(userId) {
   const ownerIds = [...new Set((data ?? []).map((w) => w.owner_id))]
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, display_name, gamer_tag')
+    .select('id, display_name, gamer_tag, username')
     .in('id', ownerIds.length ? ownerIds : ['00000000-0000-0000-0000-000000000000'])
 
   const byId = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
@@ -195,7 +197,11 @@ export async function loadWorlds(userId) {
     failureNote: w.failure_note,
     coverUrl: artUrl(w.cover_path),
     authorId: w.owner_id,
-    author: byId[w.owner_id]?.display_name ?? 'Someone',
+    // Published worlds are credited to a username; a draft may not have one
+    // yet, so the display name stands in until it does.
+    author: byId[w.owner_id]?.username
+      ? `@${byId[w.owner_id].username}`
+      : (byId[w.owner_id]?.display_name ?? 'Someone'),
     tag: byId[w.owner_id]?.gamer_tag ?? '',
     playable: w.status === 'ready',
   }))
@@ -241,7 +247,54 @@ export async function generateWorld(worldId) {
 
 export async function setPublished(worldId, published) {
   const { error } = await supabase.from('worlds').update({ published }).eq('id', worldId)
+  if (error) {
+    // The database refuses to publish a world whose owner has no username.
+    // Surface that as something the caller can route on rather than a
+    // Postgres string.
+    if (/username/i.test(error.message ?? '')) {
+      const e = new Error('You need a username before publishing.')
+      e.needsUsername = true
+      throw e
+    }
+    throw error
+  }
+}
+
+/* ---------- usernames ---------- */
+
+export async function checkUsername(name) {
+  const { data, error } = await supabase.rpc('username_available', { p_username: name })
   if (error) throw error
+  return Boolean(data)
+}
+
+export async function claimUsername(name) {
+  const { data, error } = await supabase.rpc('claim_username', { p_username: name })
+  if (error) throw new Error(error.message.replace(/^.*?:\s*/, ''))
+  return data
+}
+
+/* ---------- money in ---------- */
+
+export const TOPUPS = ['5', '10', '15', '20']
+
+/** Opens Stripe Checkout. Returns the URL to send the browser to; the
+    balance is only ever changed by the webhook, never by the redirect. */
+export async function startCheckout(amount) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/checkout`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ amount }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `Checkout failed (${res.status})`)
+  return body.url
 }
 
 export async function deleteWorld(worldId) {

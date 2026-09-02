@@ -9,6 +9,7 @@ import {
   loadArt, drawArt, setArtLock, setArtPrompt,
   loadArtConfig, saveArtConfig, DEFAULT_ART, ENGINES, money, PRICE_CENTS,
   SORTS, sortWorlds,
+  checkUsername, claimUsername, startCheckout, TOPUPS,
   signUp, signIn, signOut,
 } from "./lib/db";
 
@@ -458,6 +459,28 @@ export default function Ascentery() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  /* Stripe sends the customer back with ?paid=1. The balance is changed by
+     the webhook, not by this redirect, so all we do here is re-read it and
+     tidy the URL. There can be a second or two of lag. */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("paid")) return;
+    const paid = params.get("paid") === "1";
+    window.history.replaceState({}, "", window.location.pathname);
+    if (!paid || !session) return;
+    const t = setTimeout(() => {
+      loadMe(session.user.id)
+        .then((m) => {
+          setMe(m);
+          // A first purchase with no username yet: the next thing they need.
+          if (!m.username) setView({ name: "username", next: "mine" });
+        })
+        .catch(() => {});
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [session]);
+
   // Pull everything that belongs to this user once we have a session.
   useEffect(() => {
     if (!session) return;
@@ -518,7 +541,9 @@ export default function Ascentery() {
         {view.name === "browse" && <Browse games={games.filter((g) => g.published)} go={go} />}
         {view.name === "mine" && <Mine games={games.filter((g) => g.authorId === me.id)} go={go} />}
         {view.name === "friends" && <Friends friends={friends} setFriends={setFriends} games={games} go={go} />}
-        {view.name === "profile" && <Profile me={me} setMe={setMe} chars={chars} setChars={setChars} />}
+        {view.name === "profile" && <Profile me={me} setMe={setMe} chars={chars} setChars={setChars} go={go} />}
+        {view.name === "creator" && <CreatorPage me={me} go={go} />}
+        {view.name === "username" && <UsernamePage me={me} setMe={setMe} go={go} reason={view.reason} next={view.next} />}
         {view.name === "create" && <Create me={me} refreshWorlds={refreshWorlds} go={go} />}
         {view.name === "game" && <GameDetail game={games.find((g) => g.id === view.id)} chars={chars} saves={saves} go={go} from={view.from ?? "browse"} isMine={games.find((g) => g.id === view.id)?.authorId === me.id} />}
         {view.name === "edit" && <EditGame game={games.find((g) => g.id === view.id)} refreshWorlds={refreshWorlds} me={me} setMe={setMe} go={go} />}
@@ -660,13 +685,17 @@ function TopBar({ me, view, go }) {
             </button>
           ))}
         </nav>
-        <div title={`${money(me.balance)} left of ${money(me.balanceCap)}`}
-          style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        <button
+          onClick={() => go("creator")}
+          title={me.isCreator ? `${money(me.balance)} left \u2014 add more` : "Become a creator"}
+          className="pf-btn"
+          style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
+            background: "none", border: "none", padding: "4px 2px", cursor: "pointer" }}>
           <span aria-hidden style={{ width: 46, height: 3, background: T.edge, position: "relative", display: "inline-block" }}>
             <span style={{ position: "absolute", inset: 0, width: `${frac * 100}%`, background: frac > 0.2 ? T.ochre : T.clay }} />
           </span>
           <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>{money(me.balance)}</span>
-        </div>
+        </button>
         <button onClick={() => go("profile")} title={me.tag}
           style={{ padding: 0, borderRadius: "50%", cursor: "pointer", background: "none",
             border: `1px solid ${view.name === "profile" ? T.ochre : T.edge}` }}>
@@ -818,7 +847,7 @@ function Friends({ friends, setFriends, games, go }) {
   );
 }
 
-function Profile({ me, setMe, chars, setChars }) {
+function Profile({ me, setMe, chars, setChars, go }) {
   const [copied, setCopied] = useState(false);
   const [newName, setNewName] = useState("");
   const addChar = async () => {
@@ -844,6 +873,16 @@ function Profile({ me, setMe, chars, setChars }) {
           <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, height: 14, marginTop: 3 }}>{copied ? "copied" : "tap to copy"}</div>
         </div>
       </div>
+
+      <Field label="Username" hint="How your published worlds are credited. It cannot be changed once claimed.">
+        {me.username ? (
+          <div style={{ fontFamily: T.mono, fontSize: 16, color: T.ochre, letterSpacing: ".02em" }}>
+            @{me.username}
+          </div>
+        ) : (
+          <Btn onClick={() => go("username", { next: "profile" })}>Choose a username</Btn>
+        )}
+      </Field>
 
       <Field label="Display name" hint="What friends see. Your tag never changes.">
         <input style={inputStyle} value={me.name}
@@ -883,7 +922,11 @@ function Profile({ me, setMe, chars, setChars }) {
         </div>
       </div>
 
-      <div style={{ borderTop: `1px solid ${T.edge}`, paddingTop: 22, marginTop: 28 }}>
+      <div style={{ borderTop: `1px solid ${T.edge}`, paddingTop: 22, marginTop: 28,
+        display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <Btn onClick={() => go("creator")}>
+          {me.isCreator ? `Add funds \u00b7 ${money(me.balance)} left` : "Become a creator"}
+        </Btn>
         <Btn onClick={() => signOut()}>Sign out</Btn>
       </div>
     </div>
@@ -896,6 +939,169 @@ const EXAMPLE =
   "month and I've been sent to take over. There's a locked lamp room, a cellar full of somebody else's " +
   "belongings, and a woman from the village who rows out every day and will not say why. She knows what's " +
   "in the cellar. She'll only tell me if I bring her the keeper's logbook, and nothing else will make her talk.";
+
+/* ---------- becoming a creator ---------- */
+
+function CreatorPage({ me, go }) {
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState(null);
+  const first = !me.isCreator;
+
+  const buy = async (amount) => {
+    setBusy(amount); setError(null);
+    try {
+      const url = await startCheckout(amount);
+      window.location.href = url;
+    } catch (e) {
+      setError(e.message);
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="pf-in" style={{ maxWidth: 620 }}>
+      <Btn kind="ghost" onClick={() => go("browse")} style={{ marginBottom: 16 }}>back</Btn>
+
+      <H1 sub={first
+        ? "Playing is free and always will be. Making a world costs money because every picture in it costs money to draw, so creators pay for what they use and nothing else."
+        : "Add more whenever you run out. It never expires, and there is no subscription."}>
+        {first ? "Become a creator" : "Add funds"}
+      </H1>
+
+      {first && (
+        <div style={{ border: "1px solid " + T.edge, borderRadius: 2, padding: 18, marginBottom: 26 }}>
+          <div style={{ fontFamily: T.serif, fontSize: 17, marginBottom: 10 }}>What $5 gets you</div>
+          <div style={{ fontFamily: T.mono, fontSize: 12.5, lineHeight: 2, color: T.boneDim }}>
+            <div>Unlimited worlds. Building one is free; only pictures cost.</div>
+            <div>A room, character or item on the pixel engine &mdash; {money(PRICE_CENTS.pixel)}</div>
+            <div>The same on Flux, and every splash screen &mdash; {money(PRICE_CENTS.flux)}</div>
+            <div>Roughly four or five fully illustrated worlds</div>
+          </div>
+        </div>
+      )}
+
+      {!first && (
+        <p style={{ fontFamily: T.mono, fontSize: 12, color: T.boneDim, margin: "0 0 22px" }}>
+          You have {money(me.balance)} left.
+        </p>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+        gap: 10, marginBottom: 20 }}>
+        {TOPUPS.map((amount) => (
+          <button key={amount} className="pf-btn" onClick={() => buy(amount)} disabled={Boolean(busy)}
+            style={{ padding: "18px 12px", borderRadius: 2, cursor: busy ? "default" : "pointer",
+              background: amount === "5" ? T.ochre : "transparent",
+              color: amount === "5" ? "#221D0C" : T.bone,
+              border: "1px solid " + (amount === "5" ? T.ochre : T.edge),
+              fontFamily: T.serif, fontSize: 22 }}>
+            {busy === amount ? "\u2026" : "$" + amount}
+          </button>
+        ))}
+      </div>
+
+      <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, lineHeight: 1.7, margin: "0 0 20px" }}>
+        Every amount buys the same thing. The larger ones are only there to save you coming back.
+        Payment is handled by Stripe; we never see your card.
+      </p>
+
+      {error && (
+        <p style={{ fontFamily: T.mono, fontSize: 12, color: T.clay, lineHeight: 1.7,
+          border: "1px solid " + T.clay + "44", padding: 12, borderRadius: 2 }}>
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* ---------- claiming a name ---------- */
+
+function UsernamePage({ me, setMe, go, reason, next }) {
+  const [name, setName] = useState(me.username ?? "");
+  const [state, setState] = useState("idle");   // idle | checking | free | taken
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  // Debounced, because every keystroke would otherwise be a round trip.
+  useEffect(() => {
+    const value = name.trim().toLowerCase();
+    if (!value || value === me.username) { setState("idle"); return; }
+    setState("checking");
+    const t = setTimeout(async () => {
+      try {
+        setState((await checkUsername(value)) ? "free" : "taken");
+      } catch {
+        setState("idle");
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [name, me.username]);
+
+  const save = async () => {
+    setBusy(true); setError(null);
+    try {
+      const claimed = await claimUsername(name.trim().toLowerCase());
+      setMe((m) => ({ ...m, username: claimed }));
+      go(next ?? "mine");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="pf-in" style={{ maxWidth: 520 }}>
+      <H1 sub="Your worlds are published under this name, and it is how people find you. Pick carefully: it cannot be changed later.">
+        {me.username ? "Your username" : "Choose a username"}
+      </H1>
+
+      {reason === "publish" && (
+        <p style={{ fontFamily: T.mono, fontSize: 12, color: T.ochre, lineHeight: 1.7,
+          border: "1px solid " + T.ochre + "44", padding: 12, borderRadius: 2, margin: "0 0 22px" }}>
+          A world needs a name to be published under. Choose one and we will carry on.
+        </p>
+      )}
+
+      <Field label="Username" hint="Three to twenty characters. Letters, numbers and hyphens.">
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontFamily: T.mono, fontSize: 16, color: T.boneDim }}>@</span>
+          <input
+            value={name}
+            autoFocus
+            spellCheck={false}
+            autoCapitalize="none"
+            onChange={(e) => setName(e.target.value.replace(/[^a-zA-Z0-9-]/g, "").toLowerCase())}
+            onKeyDown={(e) => e.key === "Enter" && state === "free" && save()}
+            placeholder="wei"
+            style={{ ...inputStyle, fontFamily: T.mono, fontSize: 16, letterSpacing: ".02em" }} />
+        </div>
+      </Field>
+
+      <div style={{ fontFamily: T.mono, fontSize: 11.5, minHeight: 18, marginBottom: 18,
+        color: state === "taken" ? T.clay : state === "free" ? T.moss : T.boneDim }}>
+        {state === "checking" ? "checking"
+          : state === "free" ? "@" + name.trim().toLowerCase() + " is available"
+          : state === "taken" ? "That one is taken or reserved"
+          : ""}
+      </div>
+
+      {error && (
+        <p style={{ fontFamily: T.mono, fontSize: 12, color: T.clay, lineHeight: 1.7, margin: "0 0 16px" }}>
+          {error}
+        </p>
+      )}
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <Btn kind="solid" disabled={state !== "free" || busy} onClick={save}>
+          {busy ? "\u2026" : "Claim it"}
+        </Btn>
+        {me.username && <Btn onClick={() => go("profile")}>Back</Btn>}
+      </div>
+    </div>
+  );
+}
 
 function Create({ me, refreshWorlds, go }) {
   const [step, setStep] = useState(1);
@@ -928,7 +1134,16 @@ function Create({ me, refreshWorlds, go }) {
 
   const finish = async (published) => {
     if (published && worldId) {
-      try { await setPublished(worldId, true); } catch (e) { console.error(e); }
+      try {
+        await setPublished(worldId, true);
+      } catch (e) {
+        if (e.needsUsername) {
+          await refreshWorlds();
+          go("username", { reason: "publish", next: "mine" });
+          return;
+        }
+        console.error(e);
+      }
     }
     await refreshWorlds();
     go("mine");
@@ -1186,8 +1401,15 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
         <div style={{ maxWidth: 480 }}>
           <Field label="Published" hint="Unpublishing hides it from Browse. People mid-playthrough keep their saves.">
             <Btn disabled={game.status !== "ready"} onClick={async () => {
-              try { await setPublished(game.id, !game.published); await refreshWorlds(); }
-              catch (e) { console.error(e); }
+              try {
+                await setPublished(game.id, !game.published);
+                await refreshWorlds();
+              } catch (e) {
+                // The database refuses to publish anonymously. Send them to
+                // claim a name and come straight back here.
+                if (e.needsUsername) go("username", { reason: "publish", next: "mine" });
+                else console.error(e);
+              }
             }}>
               {game.published ? "Unpublish" : "Publish"}
             </Btn>
