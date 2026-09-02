@@ -274,18 +274,33 @@ export async function setArtLock(artId, locked) {
    These mirror the defaults inside the art edge function; they are shown in
    the editor so the creator can see what they are changing rather than
    editing an empty box. */
+export const ENGINES = [
+  { key: 'pixel', label: 'Pixel LoRA', note: 'SDXL with the pixel-art-xl LoRA, then a downscale pass. The look comes mostly from that last step.' },
+  { key: 'flux', label: 'Flux 2 flex', note: 'No LoRA and no post-processing. Follows a written art direction closely and renders legible text.' },
+]
+
 export const DEFAULT_ART = {
+  // which engine draws rooms and characters; items and splash screens are
+  // always flux
+  engine_room: 'pixel',
+  engine_mob: 'pixel',
+
   // what to draw
-  style: 'pixel art, detailed pixel art, muted earthy palette, atmospheric lighting,',
+  style_pixel: 'pixel art, detailed pixel art, muted earthy palette, atmospheric lighting,',
+  style_flux:
+    'Pixel art. Strictly limit to 4 colors. Strictly use patterns and dither to create shades. ' +
+    'Strictly use 4 colors. No wide angle view and tiny objects. Closeup view.',
   room: 'wide establishing view of a place, no people, environmental scene,',
   mob: 'character portrait, single figure, head and shoulders, plain dark background,',
   item: 'one single isolated object, studio product shot, centred, filling the frame, ' +
         'flat plain dark background, nothing else in the picture,',
+  cover: '',
 
   // what to avoid
   neg: '3d render, realistic, photo, blurry, sketch, text, watermark, signature, lettering',
   neg_room: 'people, faces, figures, portrait, character',
   neg_mob: 'landscape, wide shot, crowd, multiple people, full body',
+  neg_cover: '',
   neg_item: 'spritesheet, sprite sheet, tileset, grid, multiple objects, collection, set of items, ' +
             'inventory screen, user interface, HUD, menu, panel, frame, border, shelf, rack, ' +
             'chest of drawers, room, scenery, background detail, duplicate',
@@ -298,7 +313,11 @@ export async function loadArtConfig(worldId) {
     .eq('id', worldId)
     .single()
   if (error) throw error
-  return { ...DEFAULT_ART, ...(data?.art_config ?? {}) }
+  const saved = { ...(data?.art_config ?? {}) }
+  // Worlds configured before the two-engine split stored one `style`.
+  if (saved.style && !saved.style_pixel) saved.style_pixel = saved.style
+  delete saved.style
+  return { ...DEFAULT_ART, ...saved }
 }
 
 export async function saveArtConfig(worldId, config) {

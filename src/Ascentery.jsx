@@ -7,7 +7,7 @@ import {
   loadWorlds, loadWorldData, createWorld, generateWorld,
   setPublished, deleteWorld, bumpPlays,
   loadArt, drawArt, setArtLock, setArtPrompt,
-  loadArtConfig, saveArtConfig, DEFAULT_ART,
+  loadArtConfig, saveArtConfig, DEFAULT_ART, ENGINES,
   signUp, signIn, signOut,
 } from "./lib/db";
 
@@ -1135,12 +1135,18 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
 }
 
 const KINDS = [
-  { key: "room", label: "Rooms", ratio: 0.5625 },
-  { key: "mob",  label: "Characters", ratio: 1.33 },
-  { key: "item", label: "Items", ratio: 1 },
+  { key: "cover", label: "Splash", ratio: 0.5625 },
+  { key: "room",  label: "Rooms", ratio: 0.5625 },
+  { key: "mob",   label: "Characters", ratio: 1.33 },
+  { key: "item",  label: "Items", ratio: 1 },
 ];
 
-const KIND_LABEL = { room: "Rooms", mob: "Characters", item: "Items" };
+// Items and splash screens are always flux: the LoRA is trained heavily on
+// sprite sheets and fights a single object, and a titled splash needs type
+// the model can actually render.
+const ENGINE_LOCKED = { item: "flux", cover: "flux" };
+
+const KIND_LABEL = { cover: "the splash screen", room: "rooms", mob: "characters", item: "items" };
 
 function ArtTab({ entries, setEntries, me, setMe, worldId }) {
   const [kind, setKind] = useState("room");
@@ -1171,6 +1177,8 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
   };
 
   const COST = 12;
+  const engine = ENGINE_LOCKED[kind] ?? (config?.[`engine_${kind}`] ?? "pixel");
+  const styleKey = engine === "flux" ? "style_flux" : "style_pixel";
   const shown = entries.filter((e) => e.kind === kind);
   const ratio = KINDS.find((k) => k.key === kind)?.ratio ?? 1;
   const missing = shown.filter((e) => !e.art && !e.locked);
@@ -1227,7 +1235,7 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
               fontFamily: T.mono, fontSize: 12,
               color: kind === k.key ? T.bone : T.boneDim,
               border: "1px solid " + (kind === k.key ? T.ochre : T.edge) }}>
-            {k.label} {done}/{n}
+            {k.label}{k.key === "cover" ? (done ? " ✓" : "") : ` ${done}/${n}`}
           </button>
         );
       })}
@@ -1251,16 +1259,56 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
             already made.
           </p>
 
-          <Field label="Art style" hint="Shared by every picture in this world. The look, not the subject.">
-            <textarea
-              defaultValue={config.style}
-              rows={3}
-              onBlur={(e) => writeConfig({ ...config, style: e.target.value })}
-              style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
+          <Field
+            label={`Engine for ${KIND_LABEL[kind] ?? kind}`}
+            hint={ENGINE_LOCKED[kind]
+              ? (kind === "item"
+                  ? "Items always use Flux. The pixel LoRA is trained heavily on sprite sheets and fights a single object."
+                  : "Splash screens always use Flux, because the title has to be readable.")
+              : ENGINES.find((x) => x.key === engine)?.note}>
+            <div style={{ display: "flex", gap: 6 }}>
+              {ENGINES.map((x) => {
+                const locked = Boolean(ENGINE_LOCKED[kind]);
+                const on = engine === x.key;
+                return (
+                  <button key={x.key} className="pf-btn"
+                    disabled={locked}
+                    onClick={() => writeConfig({ ...config, [`engine_${kind}`]: x.key })}
+                    style={{ flex: 1, padding: "8px 10px", borderRadius: 2, fontFamily: T.mono, fontSize: 12,
+                      cursor: locked ? "not-allowed" : "pointer",
+                      opacity: locked && !on ? 0.35 : 1,
+                      background: "transparent",
+                      color: on ? T.bone : T.boneDim,
+                      border: `1px solid ${on ? T.ochre : T.edge}` }}>
+                    {x.label}
+                  </button>
+                );
+              })}
+            </div>
           </Field>
 
           <Field
-            label={`Framing for ${(KIND_LABEL[kind] ?? kind).toLowerCase()}`}
+            label="Art style"
+            hint={engine === "flux"
+              ? "Flux follows written direction closely, so be specific and imperative. Colour limits and dithering instructions work well here."
+              : "Shared by every picture drawn with the pixel LoRA. The look, not the subject."}>
+            <textarea
+              defaultValue={config[styleKey] ?? ""}
+              rows={4}
+              key={styleKey}
+              onBlur={(e) => writeConfig({ ...config, [styleKey]: e.target.value })}
+              style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
+          </Field>
+
+          {kind === "cover" ? (
+            <p style={{ fontFamily: T.serif, fontSize: 14.5, color: T.boneDim, lineHeight: 1.6, margin: "0 0 18px" }}>
+              The splash screen is framed for you as <em>splash screen of a game with the title
+              '{"{title}"}' by '{"{your name}"}'</em>, followed by the description below. Rename the
+              world and the next draw follows.
+            </p>
+          ) : (
+          <Field
+            label={`Framing for ${KIND_LABEL[kind] ?? kind}`}
             hint="How this kind is composed. Rooms are wide views, characters are portraits, items are single objects.">
             <textarea
               defaultValue={config[kind] ?? ""}
@@ -1269,7 +1317,9 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
               onBlur={(e) => writeConfig({ ...config, [kind]: e.target.value })}
               style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
           </Field>
+          )}
 
+          {engine === "pixel" && (
           <div style={{ borderTop: `1px solid ${T.edge}`, paddingTop: 16, marginTop: 4 }}>
             <Field label="Avoid, everywhere"
               hint="Sent as the negative prompt on every picture in this world.">
@@ -1293,16 +1343,18 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
                 style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
             </Field>
           </div>
+          )}
 
           <Btn kind="ghost"
             onClick={() => writeConfig({
               ...config,
-              style: DEFAULT_ART.style,
+              [styleKey]: DEFAULT_ART[styleKey],
               [kind]: DEFAULT_ART[kind],
-              neg: DEFAULT_ART.neg,
-              [`neg_${kind}`]: DEFAULT_ART[`neg_${kind}`],
+              ...(engine === "pixel"
+                ? { neg: DEFAULT_ART.neg, [`neg_${kind}`]: DEFAULT_ART[`neg_${kind}`] }
+                : {}),
             })}>
-            reset all four to default
+            reset to defaults
           </Btn>
         </div>
       )}
