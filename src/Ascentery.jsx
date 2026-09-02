@@ -1378,6 +1378,17 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
 }
 
 
+/* Item and room names arrive lowercase from the world data ("waxy lemon"),
+   because that is how they read inside a sentence. In the chrome they are
+   labels, so they get capitals. */
+const titleCase = (str) =>
+  String(str ?? "").replace(/\b([a-z])/g, (m) => m.toUpperCase());
+
+const DIR_LETTER = {
+  north: "N", south: "S", east: "E", west: "W",
+  up: "U", down: "D", in: "I", out: "O",
+};
+
 /* The play surface is pinned to the *visual* viewport rather than to 100vh.
    When a phone keyboard opens, the layout viewport stays full height while
    the visible area shrinks, so a 100vh element hangs below the fold and the
@@ -1603,8 +1614,9 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
   ]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [showPrompt, setShowPrompt] = useState(false);
-  const [voice, setVoice] = useState(false);
+  // On by default. Browsers will not speak until the page has been
+  // interacted with, so nothing is heard until the first command anyway.
+  const [voice, setVoice] = useState(true);
   const [voiceURI, setVoiceURI] = useState(null);
   const [rate, setRate] = useState(0.95);
   const [voicePanel, setVoicePanel] = useState(false);
@@ -1643,10 +1655,10 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
     return () => clearInterval(t);
   }, []);
 
-  const submit = useCallback(async () => {
-    const command = input.trim();
+  const submit = useCallback(async (override) => {
+    const command = String(typeof override === "string" ? override : input).trim();
     if (!command || busy || state.over) return;
-    setInput("");
+    if (typeof override !== "string") setInput("");
     setLog((l) => [...l, { kind: "you", text: command }]);
 
     // Deterministic commands never reach the narrator.
@@ -1738,46 +1750,47 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
         display: "flex", flexDirection: "column", overflowX: "hidden",
         borderLeft: `1px solid ${P.inkSoft}22`, borderRight: `1px solid ${P.inkSoft}22` }}>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0,
-          padding: "12px 20px 10px", borderBottom: `1px solid ${P.inkSoft}33`,
+        {/* name · title · controls */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0,
+          padding: "12px 16px 10px", borderBottom: `1px solid ${P.inkSoft}33`,
           fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft }}>
-          <button onClick={() => { narrator.stop(); onExit(); }} className="hr-btn"
-            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: 11, color: P.inkSoft }}>
-            ‹ leave
-          </button>
-          <span style={{ fontFamily: "Newsreader, serif", fontSize: 16, color: P.ink }}>
-            {WORLD.title}<span style={{ color: P.inkSoft }}> · {char?.name}</span>
+
+          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis",
+            whiteSpace: "nowrap" }}>
+            {char?.name}
           </span>
-          <span style={{ display: "flex", gap: 12, alignItems: "center" }}>
+
+          <span style={{ fontFamily: "Newsreader, serif", fontSize: 16, color: P.ink,
+            whiteSpace: "nowrap" }}>
+            {WORLD.title}
+          </span>
+
+          <span style={{ flex: 1, minWidth: 0, display: "flex", gap: 12,
+            alignItems: "center", justifyContent: "flex-end" }}>
             {narrator.supported && (
               <button
                 className="hr-btn"
                 onClick={() => {
-                  if (voice) { narrator.stop(); setVoice(false); setVoicePanel(false); return; }
-                  setVoice(true);
-                  setVoicePanel(true);      // first thing anyone wants is to change the voice
+                  if (voice) narrator.stop();
+                  setVoice((v) => !v);
                 }}
                 title={voice ? "Stop reading aloud" : "Read the story aloud"}
                 aria-pressed={voice}
                 style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
                   fontFamily: "inherit", fontSize: 11, color: voice ? P.ochre : P.inkSoft }}>
-                {voice ? "voice on" : "voice off"}
+                {voice ? "voice" : "muted"}
               </button>
             )}
-            {voice && narrator.supported && !voicePanel && (
-              <button className="hr-btn" onClick={() => setVoicePanel(true)} title="Choose a voice"
-                style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
-                  fontFamily: "inherit", fontSize: 11, color: P.inkSoft }}>
-                ⚙
-              </button>
-            )}
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span aria-hidden style={{ width: 30, height: 3, background: `${P.inkSoft}33`, display: "inline-block", position: "relative" }}>
-                <span style={{ position: "absolute", inset: 0, width: `${hpFrac * 100}%`, background: hpFrac > 0.4 ? P.moss : P.rust }} />
-              </span>
-              {state.player.hp}
-            </span>
-            <span>t{state.turn}</span>
+            <button className="hr-btn" onClick={() => setVoicePanel((v) => !v)} title="Settings"
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
+                fontFamily: "inherit", fontSize: 12, color: voicePanel ? P.ochre : P.inkSoft }}>
+              ⚙
+            </button>
+            <button onClick={() => { narrator.stop(); onExit(); }} className="hr-btn"
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
+                fontFamily: "inherit", fontSize: 11, color: P.inkSoft }}>
+              leave ›
+            </button>
           </span>
         </div>
 
@@ -1788,7 +1801,7 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
           {busy && <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft, margin: "18px 0" }}>…</p>}
         </div>
 
-        {voice && voicePanel && narrator.supported && (
+        {voicePanel && (
           <div style={{ borderTop: `1px solid ${P.inkSoft}33`, padding: "12px 20px", background: P.paperDeep,
             flexShrink: 0, fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
@@ -1831,19 +1844,44 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
                 test
               </button>
             </div>
+
+            <details style={{ marginTop: 12, borderTop: `1px solid ${P.inkSoft}22`, paddingTop: 10 }}>
+              <summary style={{ cursor: "pointer", fontSize: 11, color: P.inkSoft, letterSpacing: ".04em" }}>
+                what gets prepended to your next command
+              </summary>
+              <pre style={{ margin: "10px 0 0", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10,
+                lineHeight: 1.65, color: P.inkSoft, whiteSpace: "pre-wrap", overflowWrap: "anywhere",
+                maxHeight: 260, overflowY: "auto" }}>
+                {buildPrompt(state, char?.name ?? "the traveller")}
+              </pre>
+            </details>
           </div>
         )}
 
-        <div style={{ borderTop: `1px solid ${P.inkSoft}33`, padding: "10px 20px", background: P.paperDeep, flexShrink: 0,
-          fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, lineHeight: 1.7, color: P.inkSoft }}>
-          <div>
-            {room.name.toLowerCase()} · exits{" "}
-            {Object.keys(room.exits ?? {}).map((d) => {
-              const ex = room.exits[d];
-              return (typeof ex === "object" && ex?.locked) ? d + "*" : d;
-            }).join(" ") || "none"}
-          </div>
-          <div>carrying {carrying.length ? carrying.join(" · ") : "nothing"}</div>
+        {/* where you are, and the ways out */}
+        <div style={{ borderTop: `1px solid ${P.inkSoft}33`, padding: "9px 20px",
+          background: P.paperDeep, flexShrink: 0, display: "flex", alignItems: "baseline", gap: 12,
+          fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: P.inkSoft }}>
+
+          <span style={{ flex: 1, minWidth: 0, color: P.ink, overflow: "hidden",
+            textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {titleCase(room.name)}
+          </span>
+
+          <span style={{ whiteSpace: "nowrap", letterSpacing: ".08em" }}>
+            EXITS:{" "}
+            {Object.keys(room.exits ?? {}).length
+              ? Object.keys(room.exits).map((d) => {
+                  const ex = room.exits[d];
+                  const locked = typeof ex === "object" && ex?.locked;
+                  return (
+                    <span key={d} style={{ color: locked ? P.rust : P.ink }}>
+                      {DIR_LETTER[d] ?? d[0].toUpperCase()}{" "}
+                    </span>
+                  );
+                })
+              : <span style={{ color: P.inkSoft }}>NONE</span>}
+          </span>
         </div>
 
         {state.over ? (
@@ -1868,7 +1906,7 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
                 color: P.ink, padding: "4px 0",
                 touchAction: "manipulation",
               }} />
-            <button className="hr-btn" onClick={submit} disabled={busy}
+            <button className="hr-btn" onClick={() => submit()} disabled={busy}
               style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, background: "transparent",
                 border: `1px solid ${P.inkSoft}55`, color: P.inkSoft, padding: "5px 10px", cursor: busy ? "default" : "pointer" }}>
               send
@@ -1876,20 +1914,35 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
           </div>
         )}
 
-        <div style={{ borderTop: `1px solid ${P.inkSoft}22`, flexShrink: 0, maxHeight: "40%", overflowY: "auto" }}>
-          <button className="hr-btn" onClick={() => setShowPrompt((v) => !v)}
-            style={{ width: "100%", textAlign: "left", padding: "9px 20px", background: "transparent", border: "none",
-              fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, letterSpacing: ".04em", color: P.inkSoft, cursor: "pointer" }}>
-            {showPrompt ? "hide" : "show"} what gets prepended to your next command
-          </button>
-          {showPrompt && (
-            <pre style={{ margin: 0, padding: "0 20px 20px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10,
-              lineHeight: 1.65, color: P.inkSoft, whiteSpace: "pre-wrap", overflowWrap: "anywhere",
-              maxHeight: 340, overflowY: "auto" }}>
-              {buildPrompt(state, char?.name ?? "the traveller")}
-            </pre>
-          )}
-        </div>
+        {/* what you are carrying, and how you are doing. Tap to check inventory. */}
+        <button
+          className="hr-btn"
+          onClick={() => submit("i")}
+          disabled={busy || state.over}
+          title="Check your inventory"
+          style={{
+            width: "100%", textAlign: "left", flexShrink: 0, cursor: busy ? "default" : "pointer",
+            borderTop: `1px solid ${P.inkSoft}22`, border: "none", borderTopWidth: 1,
+            borderTopStyle: "solid", borderTopColor: `${P.inkSoft}22`,
+            background: "transparent", padding: "10px 20px",
+            display: "flex", alignItems: "center", gap: 12,
+            fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft,
+          }}>
+          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis",
+            whiteSpace: "nowrap" }}>
+            Carrying: {carrying.length ? carrying.map(titleCase).join(", ") : "Nothing"}
+          </span>
+
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
+            <span aria-hidden style={{ width: 34, height: 3, background: `${P.inkSoft}33`,
+              display: "inline-block", position: "relative" }}>
+              <span style={{ position: "absolute", inset: 0, width: `${hpFrac * 100}%`,
+                background: hpFrac > 0.4 ? P.moss : P.rust }} />
+            </span>
+            {state.player.hp}/{state.player.maxHp}
+          </span>
+        </button>
+
       </div>
     </div>
   );
