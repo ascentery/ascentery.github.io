@@ -503,7 +503,7 @@ export default function Ascentery() {
         {view.name === "friends" && <Friends friends={friends} setFriends={setFriends} games={games} go={go} />}
         {view.name === "profile" && <Profile me={me} setMe={setMe} chars={chars} setChars={setChars} />}
         {view.name === "create" && <Create me={me} refreshWorlds={refreshWorlds} go={go} />}
-        {view.name === "game" && <GameDetail game={games.find((g) => g.id === view.id)} chars={chars} saves={saves} go={go} isMine={games.find((g) => g.id === view.id)?.authorId === me.id} />}
+        {view.name === "game" && <GameDetail game={games.find((g) => g.id === view.id)} chars={chars} saves={saves} go={go} from={view.from ?? "browse"} isMine={games.find((g) => g.id === view.id)?.authorId === me.id} />}
         {view.name === "edit" && <EditGame game={games.find((g) => g.id === view.id)} refreshWorlds={refreshWorlds} me={me} setMe={setMe} go={go} />}
       </main>
     </Shell>
@@ -669,9 +669,9 @@ function Browse({ games, go }) {
 
   return (
     <div className="pf-in">
-      <div className="pf-card" onClick={() => go("game", { id: featured.id })}
+      <div className="pf-card" onClick={() => go("game", { id: featured.id, from: "browse" })}
         style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)", gap: 24, marginBottom: 34, alignItems: "center" }}>
-        <Splash seed={featured.id} ratio={0.5} />
+        <Splash seed={featured.id} src={featured.coverUrl} ratio={0.5} />
         <div>
           <div style={{ fontFamily: T.mono, fontSize: 11, color: T.ochre, marginBottom: 8 }}>most played this week</div>
           <div className="pf-title" style={{ fontFamily: T.serif, fontSize: 30, lineHeight: 1.15, marginBottom: 8 }}>{featured.title}</div>
@@ -688,7 +688,7 @@ function Browse({ games, go }) {
           style={{ ...inputStyle, width: 200, fontFamily: T.mono, fontSize: 12, padding: "7px 10px" }} />
       </div>
 
-      <div style={grid}>{rest.map((g) => <GameCard key={g.id} g={g} onClick={() => go("game", { id: g.id })} />)}</div>
+      <div style={grid}>{rest.map((g) => <GameCard key={g.id} g={g} onClick={() => go("game", { id: g.id, from: "browse" })} />)}</div>
       {!shown.length && <Empty title="Nothing matches that." line="Try a shorter word, or open the featured world above." />}
     </div>
   );
@@ -719,7 +719,7 @@ function Mine({ games, go }) {
         <Btn kind="solid" onClick={() => go("create")}>Create a game</Btn>
       </div>
       {games.length ? (
-        <div style={grid}>{games.map((g) => <GameCard key={g.id} g={g} showStatus onClick={() => go("edit", { id: g.id })} />)}</div>
+        <div style={grid}>{games.map((g) => <GameCard key={g.id} g={g} showStatus onClick={() => go("game", { id: g.id, from: "mine" })} />)}</div>
       ) : (
         <Empty title="You haven't built anything yet."
           line="A world takes one paragraph to describe and about a minute to generate."
@@ -761,7 +761,7 @@ function Friends({ friends, setFriends, games, go }) {
         ))}
       </div>
       <h2 style={{ fontFamily: T.serif, fontSize: 18, fontWeight: 400, margin: "0 0 14px" }}>What they've built</h2>
-      {theirs.length ? <div style={grid}>{theirs.map((g) => <GameCard key={g.id} g={g} onClick={() => go("game", { id: g.id })} />)}</div>
+      {theirs.length ? <div style={grid}>{theirs.map((g) => <GameCard key={g.id} g={g} onClick={() => go("game", { id: g.id, from: "friends" })} />)}</div>
         : <Empty title="Nothing yet." line="When a friend publishes a world it turns up here." />}
     </div>
   );
@@ -1006,36 +1006,48 @@ function Building() {
 }
 
 /* ---------- game detail ---------- */
-function GameDetail({ game, chars, saves, go, isMine }) {
+function GameDetail({ game, chars, saves, go, from = "browse", isMine }) {
   const [picked, setPicked] = useState(chars[0]?.id ?? null);
   if (!game) return <Empty title="That world is gone." line="It may have been unpublished by its author." />;
   const save = saves[`${game.id}:${picked}`];
 
   return (
     <div className="pf-in">
-      <Btn kind="ghost" onClick={() => go("browse")} style={{ marginBottom: 16 }}>back</Btn>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(0,1fr)", gap: 26, alignItems: "start" }}>
-        <Splash seed={game.id} ratio={0.56} />
-        <div>
-          <h1 style={{ fontFamily: T.serif, fontSize: 30, fontWeight: 400, margin: "0 0 8px", lineHeight: 1.15 }}>{game.title}</h1>
-          <div style={{ fontFamily: T.mono, fontSize: 11.5, color: T.boneDim, marginBottom: 14 }}>
-            {game.author} · {game.tag} · {game.rooms} rooms · {game.plays.toLocaleString()} plays
-          </div>
-          <p style={{ fontFamily: T.serif, fontSize: 16.5, lineHeight: 1.6, margin: "0 0 22px" }}>{game.blurb}</p>
+      <Btn kind="ghost" onClick={() => go(from)} style={{ marginBottom: 14 }}>back</Btn>
 
+      {/* the splash screen leads, full width, before anything is said about it */}
+      <Splash seed={game.id} src={game.coverUrl} ratio={0.5} style={{ marginBottom: 26 }} />
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.5fr) minmax(240px, 1fr)",
+        gap: 34, alignItems: "start" }}>
+
+        <div>
+          <h1 style={{ fontFamily: T.serif, fontSize: 32, fontWeight: 400, margin: "0 0 8px", lineHeight: 1.15 }}>
+            {game.title}
+          </h1>
+          <div style={{ fontFamily: T.mono, fontSize: 11.5, color: T.boneDim, marginBottom: 16 }}>
+            {game.author} &middot; {game.tag} &middot; {game.rooms} rooms &middot; {game.mobs} characters
+            &middot; {game.plays.toLocaleString()} plays
+          </div>
+          <p style={{ fontFamily: T.serif, fontSize: 17, lineHeight: 1.62, margin: 0 }}>{game.blurb}</p>
+        </div>
+
+        <div>
           <div style={{ fontFamily: T.serif, fontSize: 15, marginBottom: 8 }}>Play as</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
             {chars.map((c) => (
               <button key={c.id} onClick={() => setPicked(c.id)} className="pf-btn"
                 style={{ fontFamily: T.mono, fontSize: 12, padding: "8px 13px", cursor: "pointer", borderRadius: 2,
                   background: "transparent", color: picked === c.id ? T.bone : T.boneDim,
-                  border: `1px solid ${picked === c.id ? T.ochre : T.edge}` }}>
+                  border: "1px solid " + (picked === c.id ? T.ochre : T.edge) }}>
                 {c.name}
               </button>
             ))}
           </div>
-          <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginBottom: 20, height: 16 }}>
-            {save ? `turn ${save.state.turn} — picks up where they left off` : picked ? "new game" : "make a character on your profile first"}
+          <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginBottom: 20, minHeight: 16 }}>
+            {save ? `turn ${save.state.turn} \u2014 picks up where they left off`
+              : picked ? "new game"
+              : "make a character on your profile first"}
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -1044,13 +1056,19 @@ function GameDetail({ game, chars, saves, go, isMine }) {
               {save ? "Continue" : "Start"}
             </Btn>
             {isMine && <Btn onClick={() => go("edit", { id: game.id })}>Edit</Btn>}
-            <Btn kind="ghost">report</Btn>
+            {!isMine && <Btn kind="ghost">report</Btn>}
           </div>
+
           {!game.playable && (
             <div style={{ fontFamily: T.mono, fontSize: 11, color: T.clay, marginTop: 12, lineHeight: 1.6 }}>
               {game.status === "generating" ? "Still being built. Check back in a minute."
                 : game.status === "failed" ? (game.failureNote || "This world failed to build.")
                 : "This world isn't finished yet."}
+            </div>
+          )}
+          {isMine && !game.published && game.playable && (
+            <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginTop: 12, lineHeight: 1.6 }}>
+              A draft. Only you can see this until you publish it from Edit.
             </div>
           )}
         </div>
@@ -1077,7 +1095,8 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
 
   return (
     <div className="pf-in">
-      <Btn kind="ghost" onClick={() => go("mine")} style={{ marginBottom: 14 }}>back</Btn>
+      <Btn kind="ghost" onClick={() => go("game", { id: game.id, from: "mine" })}
+        style={{ marginBottom: 14 }}>back</Btn>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
         <h1 style={{ fontFamily: T.serif, fontSize: 28, fontWeight: 400, margin: 0 }}>{game.title}</h1>
         <Chip status={game.status} />
