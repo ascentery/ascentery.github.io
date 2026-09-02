@@ -88,7 +88,9 @@ function affordances(s) {
     for (const t of def.trades ?? []) {
       if (!s.mobs[id].inventory.includes(t.gives)) continue;
       L.push(s.player.inventory.includes(t.wants)
-        ? `- give the ${itemName(t.wants)} to ${def.name}; he will hand over the ${itemName(t.gives)} in exchange`
+        ? `- give the ${itemName(t.wants)} to ${def.name}; they hand over the ${itemName(t.gives)} in exchange. ` +
+          `This REQUIRES the effect {"give":{"item":"${t.wants}","to":"${id}"}}. Describing the exchange ` +
+          `without that effect leaves the player empty-handed.`
         : `- ${def.name} holds the ${itemName(t.gives)}. He will part with it for a ${itemName(t.wants)} and NOTHING ELSE. The player does not have one. No amount of talking, bargaining, bribing, threatening, pleading or cleverness will move him. Do not let him give it up.`);
     }
   }
@@ -155,7 +157,13 @@ function applyEffects(prev, effects) {
     }
 
     if (e.give) {
-      const { item, to } = e.give;
+      /* The prompt asks for {"give":{"item","to"}}, but models drift toward
+         {"give":"logbook","to":"mara"} and {"give":{"what","target"}}.
+         All three mean the same thing, so accept all three rather than
+         drop a turn the player thought worked. */
+      const g = e.give;
+      const item = typeof g === "string" ? g : (g.item ?? g.what ?? g.object);
+      const to = (typeof g === "string" ? e.to : (g.to ?? g.target ?? g.who)) ?? e.to;
       const mobId = resolveMob(to, mobsInRoom(s, s.player.room));
       if (!mobId) { note(`There is nobody here called ${to}.`); continue; }
       const itemId = resolveItem(item, s.player.inventory);
@@ -173,9 +181,10 @@ function applyEffects(prev, effects) {
       continue;
     }
 
-    if (e.attack) {
-      const mobId = resolveMob(e.attack, mobsInRoom(s, s.player.room));
-      if (!mobId) { note(`There is nothing here called ${e.attack} to fight.`); continue; }
+    if (e.attack || e.kill || e.fight) {
+      const target = e.attack ?? e.kill ?? e.fight;
+      const mobId = resolveMob(target, mobsInRoom(s, s.player.room));
+      if (!mobId) { note(`There is nothing here called ${target} to fight.`); continue; }
       const def = WORLD.mobs[mobId];
       if (def.essential) { note(`${def.name} cannot be harmed. Nothing about the world changes.`); continue; }
       const w = playerWeapon(s);
@@ -197,6 +206,12 @@ function applyEffects(prev, effects) {
       }
       continue;
     }
+
+    /* Nothing matched. Silence here is how a player comes to believe a trade
+       happened: the prose says it did and the state disagrees. Say so, and
+       log the shape so it can be handled above. */
+    console.warn("unrecognised effect", JSON.stringify(e));
+    note("Nothing about the world actually changed.");
   }
 
   for (const [qid, q] of Object.entries(WORLD.quests)) {
