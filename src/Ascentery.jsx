@@ -7,7 +7,7 @@ import {
   loadWorlds, loadWorldData, createWorld, generateWorld,
   setPublished, deleteWorld, bumpPlays,
   loadArt, drawArt, setArtLock, setArtPrompt,
-  loadArtConfig, saveArtConfig, DEFAULT_ART, ENGINES,
+  loadArtConfig, saveArtConfig, DEFAULT_ART, ENGINES, money, PRICE_CENTS,
   signUp, signIn, signOut,
 } from "./lib/db";
 
@@ -625,7 +625,7 @@ function Auth() {
 
 function TopBar({ me, view, go }) {
   const tabs = [["browse", "Browse"], ["mine", "Your games"], ["friends", "Friends"]];
-  const frac = me.credits / me.creditCap;
+  const frac = me.balanceCap ? me.balance / me.balanceCap : 0;
   return (
     <header style={{ borderBottom: `1px solid ${T.edge}`, position: "sticky", top: 0, background: T.ground, zIndex: 10 }}>
       <div style={{ maxWidth: 1080, margin: "0 auto", padding: "0 22px", display: "flex", alignItems: "center", gap: 18, height: 58 }}>
@@ -643,11 +643,12 @@ function TopBar({ me, view, go }) {
             </button>
           ))}
         </nav>
-        <div title={`${me.credits} of ${me.creditCap} image credits`} style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        <div title={`${money(me.balance)} left of ${money(me.balanceCap)}`}
+          style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <span aria-hidden style={{ width: 46, height: 3, background: T.edge, position: "relative", display: "inline-block" }}>
             <span style={{ position: "absolute", inset: 0, width: `${frac * 100}%`, background: frac > 0.2 ? T.ochre : T.clay }} />
           </span>
-          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>{me.credits}</span>
+          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>{money(me.balance)}</span>
         </div>
         <button onClick={() => go("profile")} title={me.tag}
           style={{ padding: 0, borderRadius: "50%", cursor: "pointer", background: "none",
@@ -1176,24 +1177,25 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
     } catch (e) { console.error(e); }
   };
 
-  const COST = 12;
   const engine = ENGINE_LOCKED[kind] ?? (config?.[`engine_${kind}`] ?? "pixel");
+  const COST = PRICE_CENTS[engine] ?? 5;      // cents
   const styleKey = engine === "flux" ? "style_flux" : "style_pixel";
   const shown = entries.filter((e) => e.kind === kind);
   const ratio = KINDS.find((k) => k.key === kind)?.ratio ?? 1;
   const missing = shown.filter((e) => !e.art && !e.locked);
-  const affordable = Math.floor(me.credits / COST);
+  const affordable = Math.floor(me.balance / COST);
 
   const draw = async (entry) => {
     if (entry.locked || drawing) return;
     setDrawing(entry.id);
     setError(null);
     try {
-      const { url, credits } = await drawArt(entry.id);
+      const { url, balance_cents } = await drawArt(entry.id);
       setEntries((es) => es.map((e) => e.id === entry.id ? { ...e, url, art: true } : e));
-      if (typeof credits === "number") setMe((m) => ({ ...m, credits }));
+      if (typeof balance_cents === "number") setMe((m) => ({ ...m, balance: balance_cents }));
     } catch (e) {
       setError(e.message);
+      if (typeof e.balanceCents === "number") setMe((m) => ({ ...m, balance: e.balanceCents }));
       setQueue([]);          // stop the run rather than repeat the same failure
     } finally {
       setDrawing(null);
@@ -1201,7 +1203,7 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
   };
 
   // Serial on purpose: the provider is slower under parallel load, and one
-  // failure should stop the run rather than burn credits on five more.
+  // failure should stop the run rather than spend money on five more.
   useEffect(() => {
     if (drawing || !queue.length) return;
     const [next, ...rest] = queue;
@@ -1369,14 +1371,14 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
           disabled={busy || batch < 1}>
           {busy
             ? "drawing" + (queue.length ? " \u00b7 " + queue.length + " left" : "")
-            : "Draw " + batch + " missing \u00b7 " + batch * COST}
+            : "Draw " + batch + " missing \u00b7 " + money(batch * COST)}
         </Btn>
       )}
     </div>
 
     {affordable < 1 && (
       <p style={{ fontFamily: T.mono, fontSize: 11, color: T.clay, margin: "0 0 14px" }}>
-        Not enough credits to draw anything.
+        Not enough left to draw anything. One picture here costs {money(COST)}.
       </p>
     )}
     {error && (
@@ -1402,10 +1404,10 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
 
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
             <span style={{ fontFamily: T.serif, fontSize: 15.5, flex: 1, minWidth: 0 }}>{e.name}</span>
-            <button onClick={() => draw(e)} disabled={e.locked || busy || me.credits < COST} className="pf-btn"
+            <button onClick={() => draw(e)} disabled={e.locked || busy || me.balance < COST} className="pf-btn"
               style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
                 color: e.locked ? T.edge : T.boneDim, cursor: (e.locked || busy) ? "not-allowed" : "pointer" }}>
-              {drawing === e.id ? "drawing" : e.art ? "redraw \u00b7 " + COST : "draw \u00b7 " + COST}
+              {drawing === e.id ? "drawing" : (e.art ? "redraw \u00b7 " : "draw \u00b7 ") + money(COST)}
             </button>
           </div>
 

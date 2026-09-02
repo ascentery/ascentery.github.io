@@ -4,12 +4,21 @@ import { supabase } from './supabase'
    build queries inline. If a table shape changes, this is the only
    file that has to know. */
 
-/* ---------- profile, credits ---------- */
+/* ---------- profile, balance ---------- */
+
+/** Whole cents to "$0.05". Balances are integers everywhere; this is the
+    only place they become something to read. */
+export const money = (cents) => `$${((cents ?? 0) / 100).toFixed(2)}`
+
+/** What a draw costs, in cents. Mirrors PRICE_CENTS in the art function,
+    which carries the workings. Roughly twice generation plus storage plus
+    expected egress. */
+export const PRICE_CENTS = { flux: 11, pixel: 5 }
 
 export async function loadMe(userId) {
   const [{ data: profile, error: pe }, { data: credits }] = await Promise.all([
     supabase.from('profiles').select('id, display_name, gamer_tag').eq('id', userId).single(),
-    supabase.from('credits').select('balance, cap').eq('user_id', userId).single(),
+    supabase.from('credits').select('balance_cents, cap_cents').eq('user_id', userId).single(),
   ])
 
   // A missing profile means the handle_new_user trigger didn't fire.
@@ -19,8 +28,8 @@ export async function loadMe(userId) {
     id: profile.id,
     name: profile.display_name,
     tag: profile.gamer_tag,
-    credits: credits?.balance ?? 0,
-    creditCap: credits?.cap ?? 500,
+    balance: credits?.balance_cents ?? 0,
+    balanceCap: credits?.cap_cents ?? 500,
   }
 }
 
@@ -246,8 +255,8 @@ export async function loadArt(worldId) {
   }))
 }
 
-/** Draws one entry. 20-60 seconds, costs credits.
-    Returns { url, credits } so the caller can update both at once. */
+/** Draws one entry. 20-60 seconds, and costs real money.
+    Returns { url, balance_cents, cost_cents, engine }. */
 export async function drawArt(artId) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Not signed in')
@@ -261,8 +270,12 @@ export async function drawArt(artId) {
     body: JSON.stringify({ artId }),
   })
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(body.error || `Drawing failed (${res.status})`)
-  return body
+  if (!res.ok) {
+    const err = new Error(body.error || `Drawing failed (${res.status})`)
+    err.balanceCents = body.balance_cents
+    throw err
+  }
+  return body   // { url, balance_cents, cost_cents, engine }
 }
 
 export async function setArtLock(artId, locked) {
