@@ -1898,7 +1898,6 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
             <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: P.ochre, fontSize: 13 }}>›</span>
             <input ref={inputRef} className="hr-in" value={input} autoFocus disabled={busy}
               onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()}
-              placeholder="go north · talk to borin · take the apple"
               style={{
                 flex: 1, minWidth: 0, background: "transparent", border: "none",
                 fontFamily: "'IBM Plex Mono', monospace",
