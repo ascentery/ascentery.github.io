@@ -1378,6 +1378,31 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
 }
 
 
+/* The play surface is pinned to the *visual* viewport rather than to 100vh.
+   When a phone keyboard opens, the layout viewport stays full height while
+   the visible area shrinks, so a 100vh element hangs below the fold and the
+   page pans around to follow the caret — which reads as the whole interface
+   sliding and zooming. Measuring visualViewport instead keeps the input
+   sitting directly above the keyboard. */
+function useVisualViewport() {
+  const [box, setBox] = useState(null);
+
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!vv) return;
+    const update = () => setBox({ height: vv.height, top: vv.offsetTop });
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
+  return box;
+}
+
 /* Narration read aloud, using the browser's own speech synthesis. No key,
    no cost, no network. Quality is whatever voices the operating system
    ships, which on desktop is decent and on mobile varies.
@@ -1584,6 +1609,7 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
   const [rate, setRate] = useState(0.95);
   const [voicePanel, setVoicePanel] = useState(false);
   const narrator = useNarrator(voice, voiceURI, rate);
+  const vv = useVisualViewport();
   const logRef = useRef(null), inputRef = useRef(null), stateRef = useRef(state), busyRef = useRef(busy);
   const narratorRef = useRef(narrator);
   stateRef.current = state; busyRef.current = busy; narratorRef.current = narrator;
@@ -1686,9 +1712,16 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
   const hpFrac = state.player.hp / state.player.maxHp;
 
   return (
-    <div style={{ background: P.paper, height: "100vh", maxHeight: "100dvh", color: P.ink,
-      overflow: "hidden", width: "100%", maxWidth: "100vw" }}>
+    <div style={{
+      background: P.paper, color: P.ink, overflow: "hidden",
+      width: "100%", maxWidth: "100vw",
+      // Fixed to the visible area, so the keyboard cannot push it out of view.
+      position: "fixed", left: 0,
+      top: vv ? vv.top : 0,
+      height: vv ? vv.height : "100dvh",
+    }}>
       <style>{`
+        html, body { overflow: hidden; overscroll-behavior: none; }
         @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; } body { margin: 0 }
         .hr-log { scrollbar-width: none; -ms-overflow-style: none; }
