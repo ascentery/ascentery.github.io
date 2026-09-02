@@ -1686,12 +1686,13 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
   const hpFrac = state.player.hp / state.player.maxHp;
 
   return (
-    <div style={{ background: P.paper, height: "100vh", maxHeight: "100dvh", color: P.ink, overflow: "hidden" }}>
+    <div style={{ background: P.paper, height: "100vh", maxHeight: "100dvh", color: P.ink,
+      overflow: "hidden", width: "100%", maxWidth: "100vw" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; } body { margin: 0 }
-        .hr-log::-webkit-scrollbar { width: 3px }
-        .hr-log::-webkit-scrollbar-thumb { background: ${P.inkSoft}44 }
+        .hr-log { scrollbar-width: none; -ms-overflow-style: none; }
+        .hr-log::-webkit-scrollbar { width: 0; height: 0; display: none; }
         .hr-in::placeholder { color: ${P.inkSoft}88 }
         .hr-in:focus { outline: none }
         .hr-btn:focus-visible { outline: 2px solid ${P.ochre}; outline-offset: 2px }
@@ -1700,7 +1701,8 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
         @media (prefers-reduced-motion: reduce) { .hr-fade { animation: none } }
       `}</style>
 
-      <div style={{ maxWidth: 720, margin: "0 auto", height: "100%", display: "flex", flexDirection: "column",
+      <div style={{ maxWidth: 720, margin: "0 auto", height: "100%", width: "100%",
+        display: "flex", flexDirection: "column", overflowX: "hidden",
         borderLeft: `1px solid ${P.inkSoft}22`, borderRight: `1px solid ${P.inkSoft}22` }}>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0,
@@ -1746,7 +1748,9 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
           </span>
         </div>
 
-        <div ref={logRef} className="hr-log" style={{ flex: 1, overflowY: "auto", padding: "22px 20px 8px", minHeight: 0 }}>
+        <div ref={logRef} className="hr-log"
+          style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "22px 20px 8px",
+            minHeight: 0, overscrollBehavior: "contain", overflowWrap: "anywhere" }}>
           {log.map((e, i) => <LogLine key={i} entry={e} />)}
           {busy && <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft, margin: "18px 0" }}>…</p>}
         </div>
@@ -1824,7 +1828,13 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
             <input ref={inputRef} className="hr-in" value={input} autoFocus disabled={busy}
               onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()}
               placeholder="go north · talk to borin · take the apple"
-              style={{ flex: 1, background: "transparent", border: "none", fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: P.ink, padding: "4px 0" }} />
+              style={{
+                flex: 1, minWidth: 0, background: "transparent", border: "none",
+                fontFamily: "'IBM Plex Mono', monospace",
+                fontSize: 16,              // anything smaller and iOS zooms on focus
+                color: P.ink, padding: "4px 0",
+                touchAction: "manipulation",
+              }} />
             <button className="hr-btn" onClick={submit} disabled={busy}
               style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, background: "transparent",
                 border: `1px solid ${P.inkSoft}55`, color: P.inkSoft, padding: "5px 10px", cursor: busy ? "default" : "pointer" }}>
@@ -1841,7 +1851,8 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
           </button>
           {showPrompt && (
             <pre style={{ margin: 0, padding: "0 20px 20px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10,
-              lineHeight: 1.65, color: P.inkSoft, whiteSpace: "pre-wrap", maxHeight: 340, overflowY: "auto" }}>
+              lineHeight: 1.65, color: P.inkSoft, whiteSpace: "pre-wrap", overflowWrap: "anywhere",
+              maxHeight: 340, overflowY: "auto" }}>
               {buildPrompt(state, char?.name ?? "the traveller")}
             </pre>
           )}
