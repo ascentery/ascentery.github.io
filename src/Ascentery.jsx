@@ -1508,7 +1508,9 @@ function Create({ me, refreshWorlds, go }) {
         <div style={{ border: "1px solid " + T.edge, borderRadius: 2, marginBottom: 24 }}>
           <div style={{ padding: "14px 18px", borderBottom: "1px solid " + T.edge, display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontFamily: T.serif, fontSize: 17, flex: 1 }}>{result.title}</span>
-            {result.built_by && (
+            {/* Which model built it is an operational detail, not something
+                a creator needs. Admins see it because they chose it. */}
+            {me.isAdmin && result.built_by && (
               <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.boneDim }}>{result.built_by}</span>
             )}
             <Chip status="ready" />
@@ -1536,29 +1538,32 @@ function Create({ me, refreshWorlds, go }) {
 }
 
 function Building() {
-  const lines = [
-    "Reading the brief",
-    "Laying out rooms and exits",
-    "Placing characters and what they carry",
-    "Checking every door leads somewhere",
-    "Checking everything you need can be reached",
-  ];
-  const [i, setI] = useState(0);
+  /* This used to tick through a list of named steps, which read as progress
+     and was not: the model is working the whole time and nothing reports
+     back until it finishes. A world that failed at the end looked like it
+     had failed at whichever line the timer had reached, which sent us
+     looking in the wrong place. An elapsed clock is honest. */
+  const [secs, setSecs] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setI((x) => Math.min(x + 1, lines.length - 1)), 9000);
+    const t = setInterval(() => setSecs((n) => n + 1), 1000);
     return () => clearInterval(t);
   }, []);
+
+  const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+
   return (
-    <div style={{ border: "1px solid " + T.edge, padding: "36px 22px", borderRadius: 2 }}>
-      {lines.map((l, n) => (
-        <div key={l} style={{ fontFamily: T.mono, fontSize: 12.5, lineHeight: 2.1,
-          color: n < i ? T.boneDim : n === i ? T.ochre : T.edge }}>
-          {n < i ? "\u2713 " : n === i ? "\u00b7 " : "  "}{l}
-        </div>
-      ))}
-      <p style={{ fontFamily: T.serif, fontSize: 14, color: T.boneDim, marginTop: 18, marginBottom: 0 }}>
-        If something does not hold together, it gets sent back to be fixed before you see it.
+    <div style={{ border: "1px solid " + T.edge, padding: "34px 22px", borderRadius: 2 }}>
+      <div style={{ fontFamily: T.serif, fontSize: 19, marginBottom: 8 }}>
+        Building the world
+      </div>
+      <p style={{ fontFamily: T.serif, fontSize: 15.5, color: T.boneDim, lineHeight: 1.6, margin: "0 0 16px" }}>
+        Rooms and exits, characters and what they carry, then a check that every door leads
+        somewhere and everything you need can be reached. If it does not hold together it goes
+        back to be fixed, which is why this sometimes takes two passes.
       </p>
+      <div style={{ fontFamily: T.mono, fontSize: 12, color: secs > 120 ? T.clay : T.ochre }}>
+        {clock}{secs > 120 ? " — longer than usual" : ""}
+      </div>
     </div>
   );
 }
