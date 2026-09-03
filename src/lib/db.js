@@ -245,8 +245,57 @@ export async function createWorld({ userId, title, brief, roomMin = null, roomMa
   return data.id
 }
 
+/** Rename a character, item or room in place. No model, no charge: a name
+    is a string, and paying to change one would be absurd. Also updates the
+    art row so the studio shows the new name against the old picture. */
+export async function renameEntity(worldId, kind, key, name) {
+  const clean = String(name ?? '').trim()
+  if (!clean) throw new Error('A name is needed.')
+
+  const { data, error } = await supabase
+    .from('world_data').select('data').eq('world_id', worldId).single()
+  if (error) throw error
+
+  const world = data.data
+  const bucket = kind === 'room' ? world.rooms : kind === 'mob' ? world.mobs : world.items
+  if (!bucket?.[key]) throw new Error('That is no longer in this world.')
+
+  if (kind === 'item') bucket[key].short = clean
+  bucket[key].name = kind === 'item' ? bucket[key].name : clean
+
+  const { error: we } = await supabase
+    .from('world_data').update({ data: world }).eq('world_id', worldId)
+  if (we) throw we
+
+  await supabase.from('world_art')
+    .update({ name: clean })
+    .eq('world_id', worldId).eq('kind', kind).eq('entity_key', key)
+
+  return clean
+}
+
+/** Everything in a world that can be renamed, flattened for a form. */
+export async function loadNameables(worldId) {
+  const { data, error } = await supabase
+    .from('world_data').select('data').eq('world_id', worldId).single()
+  if (error) throw error
+  const w = data.data ?? {}
+  return [
+    ...Object.entries(w.rooms ?? {}).map(([key, r]) => ({ kind: 'room', key, name: r.name })),
+    ...Object.entries(w.mobs ?? {}).map(([key, m]) => ({ kind: 'mob', key, name: m.name })),
+    ...Object.entries(w.items ?? {}).map(([key, i]) => ({ kind: 'item', key, name: i.short ?? i.name })),
+  ]
+}
+
+/** Rebuild part of an existing world from a written instruction.
+    'plot' keeps the map and rewrites characters, items and quests.
+    'prose' keeps everything and rewrites the words. */
+export async function amendWorld(worldId, mode, note) {
+  return generateWorld(worldId, { mode, note })
+}
+
 /** Fire the generate function. Takes 30–90 seconds. */
-export async function generateWorld(worldId) {
+export async function generateWorld(worldId, opts = {}) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Not signed in')
 
@@ -256,7 +305,7 @@ export async function generateWorld(worldId) {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${session.access_token}`,
     },
-    body: JSON.stringify({ worldId }),
+    body: JSON.stringify({ worldId, ...opts }),
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {

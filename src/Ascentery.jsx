@@ -10,6 +10,7 @@ import {
   loadArtConfig, saveArtConfig, DEFAULT_ART, ENGINES, money, PRICE_CENTS,
   SORTS, sortWorlds,
   ROOM_CHOICES, genCost, GEN_BASE_CENTS, GEN_PER_ROOM_CENTS,
+  renameEntity, loadNameables, amendWorld,
   checkUsername, claimUsername, startCheckout, TOPUPS,
   loadSetting, saveSetting, PROVIDERS,
   signUp, signIn, signOut,
@@ -1721,7 +1722,7 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
       )}
 
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24 }}>
-        {[["art", "Pictures"], ["settings", "Settings"]].map(([k, label]) => (
+        {[["art", "Pictures"], ["world", "World"], ["settings", "Settings"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className="pf-btn"
             style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px", fontFamily: T.mono, fontSize: 12,
               color: tab === k ? T.bone : T.boneDim, boxShadow: tab === k ? "inset 0 -2px 0 " + T.ochre : "none" }}>
@@ -1736,6 +1737,12 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
           : art.length
             ? <ArtTab entries={art} setEntries={setArt} me={me} setMe={setMe} worldId={game.id} />
             : <Empty title="Nothing to draw yet." line="Pictures appear once the world has been built." />
+      )}
+
+      {tab === "world" && (
+        game.status === "ready"
+          ? <WorldTab game={game} refreshWorlds={refreshWorlds} me={me} setMe={setMe} go={go} />
+          : <Empty title="Nothing to change yet." line="This world has not finished building." />
       )}
 
       {tab === "settings" && (
@@ -1782,6 +1789,178 @@ const KINDS = [
 const ENGINE_LOCKED = { item: "flux", cover: "flux" };
 
 const KIND_LABEL = { cover: "the splash screen", room: "rooms", mob: "characters", item: "items" };
+
+const AMEND_KINDS = [
+  {
+    key: "plot",
+    label: "Change what happens",
+    note: "Keeps the map and every room picture. Rewrites characters, items, trades and the quest chain around your instruction. Character and item pictures may be orphaned if something gets replaced, and playthroughs in progress are cleared.",
+  },
+  {
+    key: "prose",
+    label: "Change the words",
+    note: "Keeps everything as it is and rewrites descriptions and character voices. Nothing structural moves, so pictures and saves are untouched.",
+  },
+];
+
+function WorldTab({ game, refreshWorlds, me, setMe, go }) {
+  const [names, setNames] = useState(null);
+  const [kind, setKind] = useState("plot");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [needsFunds, setNeedsFunds] = useState(false);
+
+  useEffect(() => {
+    loadNameables(game.id).then(setNames).catch(() => setNames([]));
+  }, [game.id]);
+
+  const cost = kind === "prose" ? GEN_BASE_CENTS : genCost(game.rooms || 8);
+
+  const rename = async (entry, value) => {
+    if (value.trim() === entry.name) return;
+    try {
+      const clean = await renameEntity(game.id, entry.kind, entry.key, value);
+      setNames((ns) => ns.map((n) =>
+        n.kind === entry.kind && n.key === entry.key ? { ...n, name: clean } : n));
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const amend = async () => {
+    setBusy(true); setError(null); setResult(null); setNeedsFunds(false);
+    try {
+      const res = await amendWorld(game.id, kind, note.trim());
+      setResult(res);
+      setNote("");
+      if (typeof res.balance_cents === "number") setMe((m) => ({ ...m, balance: res.balance_cents }));
+      await refreshWorlds();
+      loadNameables(game.id).then(setNames).catch(() => {});
+    } catch (e) {
+      setError(e.message);
+      setNeedsFunds(Boolean(e.needsFunds));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const group = (k) => (names ?? []).filter((n) => n.kind === k);
+
+  return (
+    <div style={{ maxWidth: 620 }}>
+      {/* ---- ask for a change ---- */}
+      <h2 style={{ fontFamily: T.serif, fontSize: 20, fontWeight: 400, margin: "0 0 4px" }}>
+        Ask for a change
+      </h2>
+      <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 18px" }}>
+        Say what you want different in plain words. Put a magician in the tower, give the innkeeper
+        something she is hiding, make the ending harder to reach.
+      </p>
+
+      <div style={{ display: "grid", gap: 8, marginBottom: 18 }}>
+        {AMEND_KINDS.map((k) => {
+          const on = kind === k.key;
+          return (
+            <button key={k.key} className="pf-btn" onClick={() => setKind(k.key)}
+              style={{ textAlign: "left", padding: "12px 14px", borderRadius: 2, cursor: "pointer",
+                background: "transparent", border: "1px solid " + (on ? T.ochre : T.edge) }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span style={{ fontFamily: T.serif, fontSize: 16, flex: 1, color: on ? T.bone : T.boneDim }}>
+                  {k.label}
+                </span>
+                <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
+                  {money(k.key === "prose" ? GEN_BASE_CENTS : genCost(game.rooms || 8))}
+                </span>
+              </div>
+              <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginTop: 4, lineHeight: 1.6 }}>
+                {k.note}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={5}
+        placeholder="Put a magician in the tower. He carries a sealed letter the innkeeper wants, and will not part with it until someone brings him water from the well."
+        style={{ ...inputStyle, lineHeight: 1.6, resize: "vertical", marginBottom: 14 }} />
+
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 22 }}>
+        <Btn kind="solid" disabled={busy || note.trim().length < 8 || me.balance < cost} onClick={amend}>
+          {busy ? "working\u2026" : `Rebuild \u00b7 ${money(cost)}`}
+        </Btn>
+        <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
+          {me.balance < cost ? "Not enough left." : `${money(me.balance)} left`}
+        </span>
+      </div>
+
+      {busy && (
+        <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 20px" }}>
+          Rewriting and checking it holds together. A minute or so. If the result does not validate
+          nothing is changed and nothing is charged.
+        </p>
+      )}
+
+      {result && (
+        <div style={{ border: "1px solid " + T.edge, borderRadius: 2, padding: "12px 16px", marginBottom: 22,
+          fontFamily: T.mono, fontSize: 12, lineHeight: 1.9, color: T.boneDim }}>
+          <div style={{ color: T.moss }}>Rebuilt. {result.stats.rooms} rooms, {result.stats.mobs} characters,
+            {" "}{result.stats.items} items, {result.stats.quests} quests.</div>
+          {result.saves_cleared && <div>Playthroughs in progress were cleared.</div>}
+          {(result.warnings ?? []).map((w, i) => (
+            <div key={i} style={{ color: T.clay }}>{w.message ?? String(w)}</div>
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <div style={{ border: "1px solid " + T.clay + "44", borderRadius: 2, padding: 12, marginBottom: 22 }}>
+          <p style={{ fontFamily: T.mono, fontSize: 12, color: T.clay, lineHeight: 1.7, margin: 0 }}>{error}</p>
+          {needsFunds && (
+            <Btn kind="solid" onClick={() => go("creator")} style={{ marginTop: 12 }}>Add funds</Btn>
+          )}
+        </div>
+      )}
+
+      {/* ---- renames ---- */}
+      <div style={{ borderTop: "1px solid " + T.edge, paddingTop: 22 }}>
+        <h2 style={{ fontFamily: T.serif, fontSize: 20, fontWeight: 400, margin: "0 0 4px" }}>Names</h2>
+        <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 18px" }}>
+          Renaming is free and immediate. It changes nothing else, so pictures and playthroughs are
+          unaffected.
+        </p>
+
+        {names === null ? (
+          <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
+        ) : (
+          [["mob", "Characters"], ["room", "Rooms"], ["item", "Items"]].map(([k, label]) =>
+            group(k).length ? (
+              <div key={k} style={{ marginBottom: 20 }}>
+                <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginBottom: 8 }}>{label}</div>
+                {group(k).map((entry) => (
+                  <div key={entry.kind + entry.key}
+                    style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                    <input
+                      defaultValue={entry.name}
+                      onBlur={(e) => rename(entry, e.target.value)}
+                      style={{ ...inputStyle, fontSize: 14, padding: "7px 10px" }} />
+                    <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.edge, width: 110,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {entry.key}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null)
+        )}
+      </div>
+    </div>
+  );
+}
 
 function ArtTab({ entries, setEntries, me, setMe, worldId }) {
   const [kind, setKind] = useState("room");
