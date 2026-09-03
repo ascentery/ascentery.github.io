@@ -792,6 +792,7 @@ export default function Ascentery() {
             .catch((e) => console.error("save failed", e));
         }}
         onExit={() => go("game", { id: view.id })}
+        onHome={() => go("mine")}
       />
     );
   }
@@ -2638,7 +2639,7 @@ function useNarrator(enabled, voiceURI, rate) {
 
 /** Fetches world_data, then hands it to Play. Keeps loading and error
     states out of the game itself. */
-function PlayLoader({ worldId, char, save, onSave, onExit }) {
+function PlayLoader({ worldId, char, save, onSave, onExit, onHome }) {
   const [world, setWorld] = useState(null);
   const [art, setArt] = useState({ room: {}, mob: {}, item: {} });
   const [error, setError] = useState(null);
@@ -2681,10 +2682,11 @@ function PlayLoader({ worldId, char, save, onSave, onExit }) {
     </div>
   );
 
-  return <Play world={world} art={art} char={char} save={save} onSave={onSave} onExit={onExit} />;
+  return <Play world={world} art={art} char={char} save={save} onSave={onSave}
+    onExit={onExit} onHome={onHome} />;
 }
 
-function Play({ world, art = {}, char, save, onSave, onExit }) {
+function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
   // One engine per world. Every rule below is the world's, not the app's.
   const E = useMemo(() => makeEngine(world), [world]);
   const { WORLD, freshState, reconcile, itemName, mobsInRoom, applyEffects, buildPrompt, directCommand } = E;
@@ -2919,15 +2921,24 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
           padding: "12px 16px 10px", borderBottom: `1px solid ${P.inkSoft}33`,
           fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft }}>
 
-          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis",
-            whiteSpace: "nowrap" }}>
+          <button
+            className="hr-btn"
+            onClick={() => { narrator.stop(); onHome?.(); }}
+            title="Back to your games"
+            style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none",
+              padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: 11, color: P.inkSoft,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {char?.name}
-          </span>
+          </button>
 
-          <span style={{ fontFamily: "Newsreader, serif", fontSize: 16, color: P.ink,
-            whiteSpace: "nowrap" }}>
+          <button
+            className="hr-btn"
+            onClick={() => { narrator.stop(); onExit(); }}
+            title="Back to this world"
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
+              fontFamily: "Newsreader, serif", fontSize: 16, color: P.ink, whiteSpace: "nowrap" }}>
             {WORLD.title}
-          </span>
+          </button>
 
           <span style={{ flex: 1, minWidth: 0, display: "flex", gap: 12,
             alignItems: "center", justifyContent: "flex-end" }}>
@@ -2969,11 +2980,6 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
               style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
                 fontFamily: "inherit", fontSize: 12, color: voicePanel ? P.ochre : P.inkSoft }}>
               ⚙
-            </button>
-            <button onClick={() => { narrator.stop(); onExit(); }} className="hr-btn"
-              style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
-                fontFamily: "inherit", fontSize: 11, color: P.inkSoft }}>
-              leave ›
             </button>
           </span>
         </div>
