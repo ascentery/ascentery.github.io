@@ -2496,6 +2496,16 @@ const titleCase = (str) =>
 
 const DIR_LETTER = { north: "N", south: "S", east: "E", west: "W", up: "U", down: "D" };
 
+function PinIcon({ pinned }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden
+      style={{ transform: pinned ? "none" : "rotate(-90deg)", transition: "transform .18s" }}>
+      <path d="M9 3h6l-1 6 4 3v2H6v-2l4-3-1-6z" fill="currentColor" />
+      <path d="M12 14v7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /* The play surface is pinned to the *visual* viewport rather than to 100vh.
    When a phone keyboard opens, the layout viewport stays full height while
    the visible area shrinks, so a 100vh element hangs below the fold and the
@@ -2681,13 +2691,17 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
 
   /* Walking into a room is a sequence: the place, then who is in it, then
      what is lying about. Each part is skipped if there is nothing to show. */
-  const arrival = (roomKey, st = state) => {
+  const arrival = (roomKey, st = state, withHeading = !pinned) => {
     const room = WORLD.rooms[roomKey];
     const entries = [];
 
-    const roomArt = art.room?.[roomKey];
-    if (roomArt) entries.push({ kind: "art", url: roomArt, text: room?.name ?? "" });
-    entries.push({ kind: roomArt ? "room-under-art" : "room", text: room?.name ?? roomKey });
+    // When pinned, the panel above already carries the picture and the name,
+    // so repeating them here would say everything twice.
+    if (withHeading) {
+      const roomArt = art.room?.[roomKey];
+      if (roomArt) entries.push({ kind: "art", url: roomArt, text: room?.name ?? "" });
+      entries.push({ kind: roomArt ? "room-under-art" : "room", text: room?.name ?? roomKey });
+    }
     if (room?.desc) entries.push({ kind: "narration", text: room.desc });
 
     for (const id of mobsInRoom(st, roomKey)) {
@@ -2726,13 +2740,13 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
   const [state, setState] = useState(opened.state);
   const [log, setLog] = useState(() => {
     const base = save?.log ?? [];
-    if (!base.length) return arrival(WORLD.startRoom, opened.state);
+    if (!base.length) return arrival(WORLD.startRoom, opened.state, !pinned);
     if (!opened.notes.length) return base;
     return [
       ...base,
       { kind: "system", text: "This world has been changed since you were last here." },
       ...opened.notes.map((text) => ({ kind: "system", text })),
-      ...arrival(opened.state.player.room, opened.state),
+      ...arrival(opened.state.player.room, opened.state, !pinned),
     ];
   });
   const [input, setInput] = useState("");
@@ -2743,13 +2757,25 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
   const [voiceURI, setVoiceURI] = useState(null);
   const [rate, setRate] = useState(0.95);
   const [voicePanel, setVoicePanel] = useState(false);
+  /* Pinned by default: the picture stays put and the text below it starts
+     fresh in each room, which reads like being somewhere rather than like
+     scrolling back through a transcript. */
+  const [pinned, setPinned] = useState(true);
   const narrator = useNarrator(voice, voiceURI, rate);
   const vv = useVisualViewport();
   const logRef = useRef(null), inputRef = useRef(null), stateRef = useRef(state), busyRef = useRef(busy);
   const narratorRef = useRef(narrator);
   stateRef.current = state; busyRef.current = busy; narratorRef.current = narrator;
 
-  useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log, busy]);
+  /* Follow the newest line when the page is full, but leave a short page
+     alone at the top. Scrolling a two-line description to the bottom of the
+     panel is how a cleared room ends up looking empty. */
+  useEffect(() => {
+    const el = logRef.current;
+    if (!el) return;
+    if (el.scrollHeight > el.clientHeight) el.scrollTop = el.scrollHeight;
+    else el.scrollTop = 0;
+  }, [log, busy]);
   useEffect(() => { onSave({ state, log }); }, [state, log]);
 
   /* The ambient timer fires often and then declines most of the time: it
@@ -2789,7 +2815,9 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
     if (direct.handled) {
       if (direct.look) {
         const entries = arrival(state.player.room);
-        setLog((l) => [...l, ...entries]);
+        // Looking is asking to see the room again, so pinned it replaces the
+        // page rather than adding a second copy below the first.
+        setLog((l) => (pinned ? entries : [...l, ...entries]));
         narrator.speak(readable(entries));
         return;
       }
@@ -2799,7 +2827,9 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
         return;
       }
       const { state: next, log: engineLog } = applyEffects(state, direct.effects);
+      const moved = next.player.room !== state.player.room;
       const entries = [...engineLog];
+
       // Picking something up changes what is on the floor; say what is left.
       if (direct.effects.some((x) => x.take || x.drop)) {
         const here = next.roomItems[next.player.room] ?? [];
@@ -2807,10 +2837,12 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
           entries.push({ kind: "system", text: `Still here: ${here.map(itemName).join(", ")}.` });
         }
       }
-      if (next.player.room !== state.player.room) {
-        entries.push(...arrival(next.player.room, next));
-      }
-      setLog((l) => [...l, ...entries]);
+      if (moved) entries.push(...arrival(next.player.room, next));
+
+      /* Pinned, a new room starts a clean page: the picture above changes
+         and the text below begins at the top rather than continuing a
+         transcript the player has already read. */
+      setLog((l) => (pinned && moved ? entries : [...l, ...entries]));
       setState(next);
       narrator.speak(readable(entries));
       setTimeout(() => inputRef.current?.focus(), 0);
@@ -2827,13 +2859,15 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
       });
 
       const { state: next, log: engineLog } = applyEffects(state, parsed.effects ?? []);
+      const moved = next.player.room !== state.player.room;
       const entries = [];
+      // The sentence describing the move survives the clear: it is the last
+      // thing that happened in the old room and the first in the new one.
       if (parsed.reply) entries.push({ kind: "narration", text: parsed.reply });
       entries.push(...engineLog);
-      if (next.player.room !== state.player.room) {
-        entries.push(...arrival(next.player.room, next));
-      }
-      setLog((l) => [...l, ...entries]);
+      if (moved) entries.push(...arrival(next.player.room, next));
+
+      setLog((l) => (pinned && moved ? entries : [...l, ...entries]));
       setState(next);
       narrator.speak(readable(entries));
     } catch (err) {
@@ -2846,7 +2880,7 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
 
   const restart = () => {
     setState(freshState());
-    setLog(arrival(WORLD.startRoom));
+    setLog(arrival(WORLD.startRoom, undefined, !pinned));
   };
 
   const room = WORLD.rooms[state.player.room];
@@ -2897,6 +2931,26 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
 
           <span style={{ flex: 1, minWidth: 0, display: "flex", gap: 12,
             alignItems: "center", justifyContent: "flex-end" }}>
+            <button
+              className="hr-btn"
+              onClick={() => {
+                const next = !pinned;
+                setPinned(next);
+                /* Unpinning removes the panel, so the room needs its picture
+                   and name back in the log or the player loses track of
+                   where they are. Pinning does the reverse: the panel takes
+                   over, and the page starts clean. */
+                setLog(next
+                  ? arrival(state.player.room, state, false)
+                  : (l) => [...l, ...arrival(state.player.room, state, true)]);
+              }}
+              title={pinned ? "Unpin the room" : "Pin the room to the top"}
+              aria-pressed={pinned}
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
+                display: "inline-flex", alignItems: "center",
+                color: pinned ? P.ochre : P.inkSoft }}>
+              <PinIcon pinned={pinned} />
+            </button>
             {narrator.supported && (
               <button
                 className="hr-btn"
@@ -2923,6 +2977,23 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
             </button>
           </span>
         </div>
+
+        {pinned && (
+          <div style={{ flexShrink: 0, borderBottom: `1px solid ${P.inkSoft}33`, background: P.paperDeep }}>
+            {art.room?.[state.player.room] && (
+              <img
+                src={art.room[state.player.room]}
+                alt=""
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
+                style={{ display: "block", width: "100%", aspectRatio: "16 / 9",
+                  maxHeight: "34vh", objectFit: "cover", imageRendering: "pixelated" }} />
+            )}
+            <div style={{ padding: "9px 20px", fontFamily: "Newsreader, serif", fontSize: 19,
+              color: P.ink }}>
+              {titleCase(room.name)}
+            </div>
+          </div>
+        )}
 
         <div ref={logRef} className="hr-log"
           style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "22px 20px 8px",
