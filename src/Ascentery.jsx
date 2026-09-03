@@ -2519,7 +2519,15 @@ function useVisualViewport() {
   useEffect(() => {
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
     if (!vv) return;
-    const update = () => setBox({ height: vv.height, top: vv.offsetTop });
+    const update = () => setBox({
+      height: vv.height,
+      top: vv.offsetTop,
+      /* The layout viewport does not move when a keyboard opens; the visual
+         one shrinks. The gap between them is the keyboard, plus a little
+         browser chrome. 120px separates the two cleanly: no keyboard is
+         shorter than that and no address bar is taller. */
+      keyboard: window.innerHeight - vv.height > 120,
+    });
     update();
     vv.addEventListener("resize", update);
     vv.addEventListener("scroll", update);
@@ -2765,6 +2773,11 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
   const [pinned, setPinned] = useState(true);
   const narrator = useNarrator(voice, voiceURI, rate);
   const vv = useVisualViewport();
+  /* With a keyboard up on a phone there is barely three hundred pixels of
+     visible height. Rather than shrink everything, the transcript steps out
+     of the way: the picture and the input are what you need while typing,
+     and the text comes back the moment the keyboard closes. */
+  const typing = Boolean(vv?.keyboard) && pinned;
   const logRef = useRef(null), inputRef = useRef(null), stateRef = useRef(state), busyRef = useRef(busy);
   const narratorRef = useRef(narrator);
   stateRef.current = state; busyRef.current = busy; narratorRef.current = narrator;
@@ -2774,10 +2787,12 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
      panel is how a cleared room ends up looking empty. */
   useEffect(() => {
     const el = logRef.current;
-    if (!el) return;
+    // Hidden elements measure zero, so scrolling one leaves it at the top
+    // when it reappears. Wait until it is on screen again.
+    if (!el || el.offsetParent === null) return;
     if (el.scrollHeight > el.clientHeight) el.scrollTop = el.scrollHeight;
     else el.scrollTop = 0;
-  }, [log, busy]);
+  }, [log, busy, typing]);
   useEffect(() => { onSave({ state, log }); }, [state, log]);
 
   /* The ambient timer fires often and then declines most of the time: it
@@ -2985,14 +3000,25 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
         </div>
 
         {pinned && (
-          <div style={{ flexShrink: 0, borderBottom: `1px solid ${P.inkSoft}33`, background: P.paperDeep }}>
+          <div style={{
+            borderBottom: `1px solid ${P.inkSoft}33`, background: P.paperDeep,
+            display: "flex", flexDirection: "column", minHeight: 0,
+            // While typing this is the only thing above the input, so it
+            // takes whatever room the hidden transcript left behind.
+            flex: typing ? "1 1 auto" : "0 0 auto",
+          }}>
             {art.room?.[state.player.room] && (
               <img
                 src={art.room[state.player.room]}
                 alt=""
                 onError={(e) => { e.currentTarget.style.display = "none"; }}
-                style={{ display: "block", width: "100%", aspectRatio: "16 / 9",
-                  maxHeight: "34vh", objectFit: "cover", imageRendering: "pixelated" }} />
+                style={{
+                  display: "block", width: "100%", objectFit: "cover",
+                  imageRendering: "pixelated",
+                  ...(typing
+                    ? { flex: 1, minHeight: 0 }
+                    : { aspectRatio: "16 / 9", maxHeight: "34vh" }),
+                }} />
             )}
             <div style={{ padding: "9px 20px", fontFamily: "Newsreader, serif", fontSize: 19,
               color: P.ink }}>
@@ -3002,8 +3028,11 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
         )}
 
         <div ref={logRef} className="hr-log"
-          style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "22px 20px 8px",
-            minHeight: 0, overscrollBehavior: "contain", overflowWrap: "anywhere" }}>
+          style={{
+            flex: 1, overflowY: "auto", overflowX: "hidden", padding: "22px 20px 8px",
+            minHeight: 0, overscrollBehavior: "contain", overflowWrap: "anywhere",
+            display: typing ? "none" : "block",
+          }}>
           {log.map((e, i) => <LogLine key={i} entry={e} />)}
           {busy && <p style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft, margin: "18px 0" }}>…</p>}
         </div>
