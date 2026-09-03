@@ -11,6 +11,7 @@ import {
   SORTS, sortWorlds,
   ROOM_CHOICES, genCost, GEN_BASE_CENTS, GEN_PER_ROOM_CENTS,
   renameEntity, loadNameables, amendWorld,
+  REPORT_REASONS, reportWorld, loadReports, resolveReport, unpublishWorld,
   checkUsername, claimUsername, startCheckout, TOPUPS,
   loadSetting, saveSetting, PROVIDERS,
   signUp, signIn, signOut,
@@ -225,6 +226,67 @@ function advanceQuests(s, note) {
       note(`${quest.name} — ${stages[i].goal}`, "quest");
     }
   }
+}
+
+/* A save is a snapshot of a world that may since have been edited: a
+   character added, an item retired, a room renamed. Rather than throwing the
+   playthrough away, bring it into line with what the world says now.
+
+   Anything the player is holding or has already done is left alone. Only
+   things that no longer exist are dropped, and things that did not exist
+   before are added where the world puts them. */
+function reconcile(state) {
+  const s = JSON.parse(JSON.stringify(state));
+  const changes = [];
+
+  s.mobs ??= {};
+  s.roomItems ??= {};
+  s.player ??= { room: WORLD.startRoom, hp: 20, maxHp: 20, inventory: [] };
+  s.player.inventory ??= [];
+  s.quests ??= {};
+
+  // characters the world has gained
+  for (const [id, def] of Object.entries(WORLD.mobs ?? {})) {
+    if (s.mobs[id]) continue;
+    s.mobs[id] = {
+      room: def.room, hp: def.hp, alive: true, met: false,
+      inventory: [...(def.inventory ?? [])],
+    };
+    changes.push(`${def.name} is here now.`);
+  }
+
+  // and characters it has lost
+  for (const id of Object.keys(s.mobs)) {
+    if (!WORLD.mobs?.[id]) { delete s.mobs[id]; changes.push("Someone has gone."); }
+  }
+
+  // items that no longer exist, wherever they are
+  const known = (id) => Boolean(WORLD.items?.[id]);
+  const dropped = s.player.inventory.filter((i) => !known(i));
+  if (dropped.length) {
+    s.player.inventory = s.player.inventory.filter(known);
+    changes.push("Something you were carrying is no longer part of this world.");
+  }
+  for (const [rk, list] of Object.entries(s.roomItems)) {
+    if (!WORLD.rooms?.[rk]) { delete s.roomItems[rk]; continue; }
+    s.roomItems[rk] = (list ?? []).filter(known);
+  }
+  for (const m of Object.values(s.mobs)) {
+    m.inventory = (m.inventory ?? []).filter(known);
+  }
+
+  // anything the world now places that no save has seen
+  for (const [rk, list] of Object.entries(WORLD.roomItems ?? {})) {
+    if (!s.roomItems[rk]) s.roomItems[rk] = [...list];
+  }
+
+  // and a room that was renamed out from under the player
+  if (!WORLD.rooms?.[s.player.room]) {
+    s.player.room = WORLD.startRoom;
+    changes.push("Where you were standing is gone. You are back at the beginning.");
+  }
+
+  return { state: s, changes };
 }
 
 function applyEffects(prev, effects) {
@@ -1132,6 +1194,139 @@ const EXAMPLE =
   "belongings, and a woman from the village who rows out every day and will not say why. She knows what's " +
   "in the cellar. She'll only tell me if I bring her the keeper's logbook, and nothing else will make her talk.";
 
+function ReportBox({ worldId, onDone }) {
+  const [reason, setReason] = useState(REPORT_REASONS[0]);
+  const [detail, setDetail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState(null);
+
+  const send = async () => {
+    setBusy(true); setError(null);
+    try {
+      await reportWorld(worldId, reason, detail);
+      setSent(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (sent) {
+    return (
+      <div style={{ border: "1px solid " + T.edge, borderRadius: 2, padding: 16, marginTop: 16 }}>
+        <p style={{ fontFamily: T.serif, fontSize: 15, lineHeight: 1.6, margin: 0, color: T.boneDim }}>
+          Thank you. Somebody will look at it. You can keep playing in the meantime.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ border: "1px solid " + T.edge, borderRadius: 2, padding: 16, marginTop: 16 }}>
+      <div style={{ fontFamily: T.serif, fontSize: 16, marginBottom: 10 }}>What is wrong with it?</div>
+
+      <div style={{ display: "grid", gap: 5, marginBottom: 12 }}>
+        {REPORT_REASONS.map((r) => (
+          <button key={r} className="pf-btn" onClick={() => setReason(r)}
+            style={{ textAlign: "left", padding: "7px 10px", borderRadius: 2, cursor: "pointer",
+              background: "transparent", fontFamily: T.mono, fontSize: 12,
+              color: reason === r ? T.bone : T.boneDim,
+              border: "1px solid " + (reason === r ? T.ochre : T.edge) }}>
+            {r}
+          </button>
+        ))}
+      </div>
+
+      <textarea
+        value={detail}
+        onChange={(e) => setDetail(e.target.value)}
+        rows={3}
+        placeholder="Where in the world is it, if that helps."
+        style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical", marginBottom: 12 }} />
+
+      {error && (
+        <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 12px" }}>{error}</p>
+      )}
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <Btn kind="solid" onClick={send} disabled={busy}>{busy ? "\u2026" : "Send"}</Btn>
+        <Btn kind="ghost" onClick={onDone}>Cancel</Btn>
+      </div>
+    </div>
+  );
+}
+
+function ReportQueue({ me }) {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(null);
+
+  const refresh = () => loadReports().then(setRows).catch((e) => setError(e.message));
+  useEffect(() => { refresh(); }, []);
+
+  const act = async (row, unpublish) => {
+    setBusy(row.id);
+    try {
+      if (unpublish) await unpublishWorld(row.world_id);
+      await resolveReport(row.id);
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (!me.isAdmin) return null;
+
+  return (
+    <div style={{ borderTop: "1px solid " + T.edge, paddingTop: 24, marginTop: 28 }}>
+      <h2 style={{ fontFamily: T.serif, fontSize: 20, fontWeight: 400, margin: "0 0 4px" }}>Reports</h2>
+      <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 18px" }}>
+        Unpublishing hides a world without destroying the creator's work or anyone's playthrough,
+        which makes it the right first move in nearly every case.
+      </p>
+
+      {error && (
+        <p style={{ fontFamily: T.mono, fontSize: 12, color: T.clay, lineHeight: 1.7 }}>{error}</p>
+      )}
+
+      {rows === null ? (
+        <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
+      ) : rows.length === 0 ? (
+        <p style={{ fontFamily: T.mono, fontSize: 12, color: T.boneDim }}>Nothing waiting.</p>
+      ) : (
+        rows.map((r) => (
+          <div key={r.id} style={{ border: "1px solid " + T.edge, borderRadius: 2,
+            padding: "12px 14px", marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+              <span style={{ fontFamily: T.serif, fontSize: 16, flex: 1 }}>{r.world_title}</span>
+              {r.report_count > 1 && (
+                <span style={{ fontFamily: T.mono, fontSize: 11, color: T.clay }}>
+                  {r.report_count} reports
+                </span>
+              )}
+            </div>
+            <div style={{ fontFamily: T.mono, fontSize: 11.5, color: T.boneDim, lineHeight: 1.8, marginBottom: 10 }}>
+              <div>{r.reason}</div>
+              {r.detail && <div style={{ color: T.bone }}>{r.detail}</div>}
+              <div>by @{r.owner_username ?? "unknown"} · {new Date(r.created_at).toLocaleDateString()}</div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Btn kind="danger" disabled={busy === r.id} onClick={() => act(r, true)}>
+                Unpublish and close
+              </Btn>
+              <Btn disabled={busy === r.id} onClick={() => act(r, false)}>Leave it, close</Btn>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 /* ---------- admin ---------- */
 
 function AdminPage({ me, go }) {
@@ -1230,6 +1425,8 @@ function AdminPage({ me, go }) {
           {error}
         </p>
       )}
+
+      <ReportQueue me={me} />
     </div>
   );
 }
@@ -1616,6 +1813,7 @@ function Building() {
 /* ---------- game detail ---------- */
 function GameDetail({ game, chars, saves, go, from = "browse", isMine }) {
   const [picked, setPicked] = useState(chars[0]?.id ?? null);
+  const [reporting, setReporting] = useState(false);
   const narrow = useNarrow();
   if (!game) return <Empty title="That world is gone." line="It may have been unpublished by its author." />;
   const save = saves[`${game.id}:${picked}`];
@@ -1665,7 +1863,11 @@ function GameDetail({ game, chars, saves, go, from = "browse", isMine }) {
               {save ? "Continue" : "Start"}
             </Btn>
             {isMine && <Btn onClick={() => go("edit", { id: game.id })}>Edit</Btn>}
-            {!isMine && <Btn kind="ghost">report</Btn>}
+            {!isMine && (
+              <Btn kind="ghost" onClick={() => setReporting((v) => !v)}>
+                {reporting ? "cancel" : "report"}
+              </Btn>
+            )}
           </div>
 
           {!game.playable && (
@@ -1675,6 +1877,8 @@ function GameDetail({ game, chars, saves, go, from = "browse", isMine }) {
                 : "This world isn't finished yet."}
             </div>
           )}
+          {reporting && <ReportBox worldId={game.id} onDone={() => setReporting(false)} />}
+
           {isMine && !game.published && game.playable && (
             <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginTop: 12, lineHeight: 1.6 }}>
               A draft. Only you can see this until you publish it from Edit.
@@ -2434,7 +2638,7 @@ function PlayLoader({ worldId, char, save, onSave, onExit }) {
 function Play({ world, art = {}, char, save, onSave, onExit }) {
   // One engine per world. Every rule below is the world's, not the app's.
   const E = useMemo(() => makeEngine(world), [world]);
-  const { WORLD, freshState, itemName, mobsInRoom, applyEffects, buildPrompt, directCommand } = E;
+  const { WORLD, freshState, reconcile, itemName, mobsInRoom, applyEffects, buildPrompt, directCommand } = E;
 
   /* Walking into a room is a sequence: the place, then who is in it, then
      what is lying about. Each part is skipped if there is nothing to show. */
@@ -2472,10 +2676,26 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
     return entries;
   };
 
-  const [state, setState] = useState(() => save?.state ?? freshState());
-  const [log, setLog] = useState(() => save?.log ?? [
-    ...arrival(WORLD.startRoom),
-  ]);
+  /* A save from before the world was edited is brought into line rather
+     than discarded; whatever changed is announced once, in the log. */
+  const opened = useMemo(() => {
+    if (!save?.state) return { state: freshState(), notes: [] };
+    const { state: fixed, changes } = reconcile(save.state);
+    return { state: fixed, notes: changes };
+  }, []);
+
+  const [state, setState] = useState(opened.state);
+  const [log, setLog] = useState(() => {
+    const base = save?.log ?? [];
+    if (!base.length) return arrival(WORLD.startRoom, opened.state);
+    if (!opened.notes.length) return base;
+    return [
+      ...base,
+      { kind: "system", text: "This world has been changed since you were last here." },
+      ...opened.notes.map((text) => ({ kind: "system", text })),
+      ...arrival(opened.state.player.room, opened.state),
+    ];
+  });
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   // On by default. Browsers will not speak until the page has been

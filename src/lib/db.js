@@ -41,7 +41,14 @@ export async function saveDisplayName(userId, name) {
     .from('profiles')
     .update({ display_name: name })
     .eq('id', userId)
-  if (error) throw error
+  if (error) {
+    // The database refuses names on the shared list; say so plainly rather
+    // than showing a Postgres string.
+    if (/different display name/i.test(error.message ?? '')) {
+      throw new Error('Pick a different display name.')
+    }
+    throw error
+  }
 }
 
 /* ---------- characters ---------- */
@@ -245,6 +252,47 @@ export async function createWorld({ userId, title, brief, roomMin = null, roomMa
   return data.id
 }
 
+export const REPORT_REASONS = [
+  'Sexual content involving minors',
+  'Hate speech or harassment',
+  'Sexual content',
+  'Graphic violence',
+  'Spam or nonsense',
+  'Something else',
+]
+
+/** Files a report. One per person per world; filing twice updates the first,
+    which stops a single objector from inflating the count. */
+export async function reportWorld(worldId, reason, detail = '') {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const { error } = await supabase.from('reports').upsert(
+    { world_id: worldId, reporter_id: session.user.id, reason, detail: detail.slice(0, 1000) },
+    { onConflict: 'world_id,reporter_id' },
+  )
+  if (error) throw error
+}
+
+/** The moderation queue. Admins only; the function refuses anyone else. */
+export async function loadReports() {
+  const { data, error } = await supabase.rpc('open_reports')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function resolveReport(id) {
+  const { error } = await supabase.from('reports').update({ handled: true }).eq('id', id)
+  if (error) throw error
+}
+
+/** Unpublishing is the useful lever: the world stops being visible without
+    destroying the creator's work or anyone's playthrough. */
+export async function unpublishWorld(worldId) {
+  const { error } = await supabase.from('worlds').update({ published: false }).eq('id', worldId)
+  if (error) throw error
+}
+
 /** Rename a character, item or room in place. No model, no charge: a name
     is a string, and paying to change one would be absurd. Also updates the
     art row so the studio shows the new name against the old picture. */
@@ -262,6 +310,13 @@ export async function renameEntity(worldId, kind, key, name) {
 
   if (kind === 'item') bucket[key].short = clean
   bucket[key].name = kind === 'item' ? bucket[key].name : clean
+
+  if (clean.length > 60) throw new Error('That name is too long.')
+  if (/https?:|www\./i.test(clean)) throw new Error('Names cannot contain links.')
+  if (/(.)\1{5,}/.test(clean)) throw new Error('That name is mostly one repeated character.')
+
+  const { data: banned } = await supabase.rpc('contains_banned', { p_text: clean })
+  if (banned) throw new Error('Pick a different name.')
 
   const { error: we } = await supabase
     .from('world_data').update({ data: world }).eq('world_id', worldId)
