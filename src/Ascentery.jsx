@@ -429,7 +429,7 @@ THE PLAYER
 They are called ${charName}. Characters may address them by name.
 
 CURRENT ROOM
-${room.name} — ${room.desc}
+${room.name} (${room.exposure ?? "indoors"}) — ${room.desc}
 Exits: ${exitsOf(room).map(({ dir, to, locked }) => `${dir} to ${WORLD.rooms[to]?.name ?? to}${locked ? " (locked)" : ""}`).join("; ")}
 Lying here: ${here.length ? here.map(itemName).join(", ") : "nothing"}
 Present: ${present.length ? present.map((id) => WORLD.mobs[id].name).join(", ") : "nobody"}
@@ -443,6 +443,8 @@ ${affordances(state)}
 
 HOW TO WRITE
 - Second person, present tense. One to three short paragraphs. Restraint over flourish.
+- The word in brackets after the room name says how exposed it is: open, sheltered, indoors,
+  sealed or underground. Do not put weather or daylight into a sealed or underground room.
 - Speak in each character's voice. Dialogue in double quotes.
 - Use each character's stated pronouns every time. Do not infer them from a name.
 - NEVER state that the player gained or lost an item, took damage, healed, or finished a quest.
@@ -567,7 +569,12 @@ function directCommand(state, input) {
   return { handled: false };
 }
 
-return { WORLD, freshState, reconcile, itemName, mobsInRoom, exitOf, applyEffects, buildPrompt, directCommand };
+/* exposureOf is here for the weather system to come: given the state it
+   returns one of the five tags, so the interface can decide between showing
+   rain, only playing it, or ignoring it entirely. */
+const exposureOf = (s) => WORLD.rooms?.[s?.player?.room]?.exposure ?? "indoors";
+
+return { WORLD, freshState, reconcile, itemName, mobsInRoom, exitOf, exposureOf, applyEffects, buildPrompt, directCommand };
 }
 
 /* ============================================================
