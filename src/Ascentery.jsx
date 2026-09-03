@@ -2022,14 +2022,31 @@ function WorldTab({ game, refreshWorlds, me, setMe, go }) {
 
   const cost = kind === "prose" ? GEN_BASE_CENTS : genCost(game.rooms || 8);
 
+  /* Saving on blur alone is invisible: no button, no confirmation, and from
+     the creator's side it looks as though nothing happened. Enter also
+     commits, and each row reports its own result. */
+  const [saving, setSaving] = useState(null);
+  const [saved, setSaved] = useState(null);
+  const [rowError, setRowError] = useState(null);
+
+  const rowId = (entry) => `${entry.kind}:${entry.key}`;
+
   const rename = async (entry, value) => {
-    if (value.trim() === entry.name) return;
+    const next = String(value ?? "").trim();
+    if (!next || next === entry.name) return;
+
+    setSaving(rowId(entry));
+    setRowError(null);
     try {
-      const clean = await renameEntity(game.id, entry.kind, entry.key, value);
+      const clean = await renameEntity(game.id, entry.kind, entry.key, next);
       setNames((ns) => ns.map((n) =>
         n.kind === entry.kind && n.key === entry.key ? { ...n, name: clean } : n));
+      setSaved(rowId(entry));
+      setTimeout(() => setSaved((cur) => (cur === rowId(entry) ? null : cur)), 1800);
     } catch (e) {
-      setError(e.message);
+      setRowError({ id: rowId(entry), message: e.message });
+    } finally {
+      setSaving(null);
     }
   };
 
@@ -2134,8 +2151,9 @@ function WorldTab({ game, refreshWorlds, me, setMe, go }) {
       <div style={{ borderTop: "1px solid " + T.edge, paddingTop: 22 }}>
         <h2 style={{ fontFamily: T.serif, fontSize: 20, fontWeight: 400, margin: "0 0 4px" }}>Names</h2>
         <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 18px" }}>
-          Renaming is free and immediate. It changes nothing else, so pictures and playthroughs are
-          unaffected.
+          Renaming is free and immediate. Press Enter or click away to save. It changes nothing
+          else, so pictures and playthroughs are unaffected — but a character's written voice will
+          still describe the old name, so use <em>Change the words</em> above if that matters.
         </p>
 
         {names === null ? (
@@ -2145,19 +2163,30 @@ function WorldTab({ game, refreshWorlds, me, setMe, go }) {
             group(k).length ? (
               <div key={k} style={{ marginBottom: 20 }}>
                 <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginBottom: 8 }}>{label}</div>
-                {group(k).map((entry) => (
-                  <div key={entry.kind + entry.key}
-                    style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                    <input
-                      defaultValue={entry.name}
-                      onBlur={(e) => rename(entry, e.target.value)}
-                      style={{ ...inputStyle, fontSize: 14, padding: "7px 10px" }} />
-                    <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.edge, width: 110,
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {entry.key}
-                    </span>
-                  </div>
-                ))}
+                {group(k).map((entry) => {
+                  const id = rowId(entry);
+                  return (
+                    <div key={id} style={{ marginBottom: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <input
+                          defaultValue={entry.name}
+                          onBlur={(e) => rename(entry, e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                          style={{ ...inputStyle, fontSize: 14, padding: "7px 10px" }} />
+                        <span style={{ fontFamily: T.mono, fontSize: 10.5, width: 96, flexShrink: 0,
+                          color: saved === id ? T.moss : T.edge,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {saving === id ? "saving" : saved === id ? "saved" : entry.key}
+                        </span>
+                      </div>
+                      {rowError?.id === id && (
+                        <div style={{ fontFamily: T.mono, fontSize: 11, color: T.clay, marginTop: 4 }}>
+                          {rowError.message}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : null)
         )}
