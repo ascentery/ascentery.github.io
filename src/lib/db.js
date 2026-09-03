@@ -218,10 +218,27 @@ export async function loadWorldData(worldId) {
   return data
 }
 
-export async function createWorld({ userId, title, brief }) {
+/** What building a world costs. Mirrors the generate function; a flat fee
+    for the map and plot passes, plus the prose pass which grows with rooms. */
+export const GEN_BASE_CENTS = 10
+export const GEN_PER_ROOM_CENTS = 2
+export const genCost = (rooms) => GEN_BASE_CENTS + GEN_PER_ROOM_CENTS * rooms
+
+export const ROOM_CHOICES = [
+  { key: 'auto', label: 'Let the brief decide', min: null, max: null,
+    note: 'A lighthouse gets five or six rooms; a city gets more. Costs whatever it turns out to need.' },
+  { key: 'small', label: 'Small', min: 4, max: 6, note: 'One building, or a handful of places.' },
+  { key: 'medium', label: 'Medium', min: 7, max: 10, note: 'A neighbourhood, a large house, a stretch of road.' },
+  { key: 'large', label: 'Large', min: 11, max: 16, note: 'Districts, a wilderness, somewhere you travel through.' },
+]
+
+export async function createWorld({ userId, title, brief, roomMin = null, roomMax = null }) {
   const { data, error } = await supabase
     .from('worlds')
-    .insert({ owner_id: userId, title, brief, status: 'generating' })
+    .insert({
+      owner_id: userId, title, brief, status: 'generating',
+      room_min: roomMin, room_max: roomMax,
+    })
     .select('id')
     .single()
   if (error) throw error
@@ -242,8 +259,13 @@ export async function generateWorld(worldId) {
     body: JSON.stringify({ worldId }),
   })
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(body.error || `Generation failed (${res.status})`)
-  return body    // { status, stats, warnings, title, blurb }
+  if (!res.ok) {
+    const err = new Error(body.error || `Generation failed (${res.status})`)
+    err.needsFunds = Boolean(body.needs_funds)
+    err.failedAt = body.failed_at
+    throw err
+  }
+  return body    // { status, stats, warnings, title, blurb, cost_cents, balance_cents }
 }
 
 export async function setPublished(worldId, published) {

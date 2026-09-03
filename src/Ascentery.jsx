@@ -9,6 +9,7 @@ import {
   loadArt, drawArt, setArtLock, setArtPrompt,
   loadArtConfig, saveArtConfig, DEFAULT_ART, ENGINES, money, PRICE_CENTS,
   SORTS, sortWorlds,
+  ROOM_CHOICES, genCost, GEN_BASE_CENTS, GEN_PER_ROOM_CENTS,
   checkUsername, claimUsername, startCheckout, TOPUPS,
   loadSetting, saveSetting, PROVIDERS,
   signUp, signIn, signOut,
@@ -84,9 +85,9 @@ function affordances(s) {
   for (const id of mobsInRoom(s, s.player.room)) {
     const def = WORLD.mobs[id];
     L.push(`- talk to ${def.name} about anything`);
-    L.push(def.essential
-      ? `- ${def.name} CANNOT be killed or harmed. Any attack simply fails.`
-      : `- attack ${def.name} (this is permitted)`);
+    L.push(`- ${def.name} cannot be fought, harmed or threatened into anything. ` +
+      `Violence is not part of this game; if the player reaches for it, the world declines ` +
+      `in its own voice rather than explaining a rule.`);
     for (const t of def.trades ?? []) {
       if (!s.mobs[id].inventory.includes(t.gives)) continue;
       L.push(s.player.inventory.includes(t.wants)
@@ -243,15 +244,10 @@ function applyEffects(prev, effects) {
       }
       const dest = ex.to;
       s.player.room = dest;
-      for (const id of mobsInRoom(s, dest)) {
-        if (!s.mobs[id].met) {
-          s.mobs[id].met = true;
-          if (WORLD.mobs[id].hostile) {
-            const d = roll([1, 3]); s.player.hp -= d;
-            note(`${WORLD.mobs[id].name} is on you before you have both feet down. −${d} health.`, "hit");
-          }
-        }
-      }
+      // Nobody ambushes anybody while fighting is shelved; meeting is
+      // still recorded, because characters greet a stranger differently
+      // from someone they have seen before.
+      for (const id of mobsInRoom(s, dest)) s.mobs[id].met = true;
       continue;
     }
 
@@ -298,7 +294,15 @@ function applyEffects(prev, effects) {
       continue;
     }
 
+    /* Fighting is shelved, not deleted. The resolution below still works
+       and can be switched back on by removing this guard; for now a world
+       that asks for it is told nothing happened, which is true. */
     if (e.attack || e.kill || e.fight) {
+      note("Nothing here can be fought.");
+      continue;
+    }
+
+    if (false) {
       const target = e.attack ?? e.kill ?? e.fight;
       const mobId = resolveMob(target, mobsInRoom(s, s.player.room));
       if (!mobId) { note(`There is nothing here called ${target} to fight.`); continue; }
@@ -386,7 +390,7 @@ Reply with JSON only. No markdown fences, no preamble.
 {"reply": "your prose", "effects": []}
 
 Effects — use only these, at most two per turn, only for what the list above permits:
-{"move":"north"} {"take":"apple"} {"drop":"apple"} {"give":{"item":"apple","to":"borin"}} {"attack":"crawler"}
+{"move":"north"} {"take":"apple"} {"drop":"apple"} {"give":{"item":"apple","to":"borin"}}
 Conversation, looking and examining need no effects. Use an empty array.`;
 }
 
@@ -398,7 +402,7 @@ const SHORT = {
   n: "north", s: "south", e: "east", w: "west",
   u: "up", d: "down", ne: null, nw: null, se: null, sw: null,
   north: "north", south: "south", east: "east", west: "west",
-  up: "up", down: "down", in: "in", out: "out",
+  up: "up", down: "down",
 };
 
 function directCommand(state, input) {
@@ -414,7 +418,7 @@ function directCommand(state, input) {
 
   if (dirWord && Object.prototype.hasOwnProperty.call(SHORT, dirWord)) {
     const dir = SHORT[dirWord];
-    if (!dir) return { handled: true, entries: [{ kind: "system", text: "Only the eight main directions work here." }] };
+    if (!dir) return { handled: true, entries: [{ kind: "system", text: "Only north, south, east, west, up and down work here." }] };
     if (!exitOf(room, dir)) {
       return { handled: true, entries: [{ kind: "system", text: `There is no way ${dir} from here.` }] };
     }
@@ -1400,14 +1404,19 @@ function Create({ me, refreshWorlds, go }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [worldId, setWorldId] = useState(null);
+  const [size, setSize] = useState("auto");
+  const [needsFunds, setNeedsFunds] = useState(false);
 
   const build = async () => {
     setPhase("building"); setStep(3); setError(null);
     try {
+      const choice = ROOM_CHOICES.find((c) => c.key === size) ?? ROOM_CHOICES[0];
       const id = worldId ?? await createWorld({
         userId: me.id,
         title: title.trim() || "Untitled world",
         brief: desc.trim(),
+        roomMin: choice.min,
+        roomMax: choice.max,
       });
       setWorldId(id);
       const res = await generateWorld(id);
@@ -1416,6 +1425,7 @@ function Create({ me, refreshWorlds, go }) {
       refreshWorlds();
     } catch (e) {
       setError(e.message);
+      setNeedsFunds(Boolean(e.needsFunds));
       setPhase("failed");
       refreshWorlds();
     }
@@ -1468,13 +1478,41 @@ function Create({ me, refreshWorlds, go }) {
             {desc.trim().split(/\s+/).filter(Boolean).length} words
           </span>
         </div>
+        <Field label="How big" hint="Rooms are what a world costs, to build and to illustrate. You can leave this to the brief.">
+          <div style={{ display: "grid", gap: 8 }}>
+            {ROOM_CHOICES.map((c) => {
+              const on = size === c.key;
+              return (
+                <button key={c.key} className="pf-btn" onClick={() => setSize(c.key)}
+                  style={{ textAlign: "left", padding: "11px 13px", borderRadius: 2, cursor: "pointer",
+                    background: "transparent", border: "1px solid " + (on ? T.ochre : T.edge) }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                    <span style={{ fontFamily: T.serif, fontSize: 16, flex: 1,
+                      color: on ? T.bone : T.boneDim }}>{c.label}</span>
+                    <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
+                      {c.min ? `${money(genCost(c.min))}\u2013${money(genCost(c.max))}` : "from " + money(genCost(4))}
+                    </span>
+                  </div>
+                  <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginTop: 3, lineHeight: 1.5 }}>
+                    {c.note}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </Field>
+
         <Btn kind="solid" disabled={desc.trim().length < 40 || !title.trim()} onClick={() => setStep(2)}>Continue</Btn>
       </>)}
 
       {step === 2 && (<>
         <p style={{ fontFamily: T.serif, fontSize: 16, lineHeight: 1.6, color: T.boneDim, marginTop: 0 }}>
-          Building takes a minute or so. Anything your brief says cannot be talked around becomes a rule
-          the game enforces, so it is worth saying it plainly.
+          Building takes a minute or two. Anything your brief says cannot be talked around becomes a
+          rule the game enforces, so it is worth saying it plainly.
+        </p>
+        <p style={{ fontFamily: T.mono, fontSize: 11.5, lineHeight: 1.7, color: T.boneDim, margin: "0 0 20px" }}>
+          {money(GEN_BASE_CENTS)} plus {money(GEN_PER_ROOM_CENTS)} a room, charged only if it builds.
+          Pictures are separate and optional. You have {money(me.balance)}.
         </p>
         <div style={{ border: "1px solid " + T.edge, padding: 18, borderRadius: 2, marginBottom: 24 }}>
           <div style={{ fontFamily: T.serif, fontSize: 19, marginBottom: 8 }}>{title || "Untitled world"}</div>
@@ -1499,7 +1537,9 @@ function Create({ me, refreshWorlds, go }) {
           back and make the gate concrete.
         </p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Btn kind="solid" onClick={build}>Try again</Btn>
+          {needsFunds
+            ? <Btn kind="solid" onClick={() => go("creator")}>Add funds</Btn>
+            : <Btn kind="solid" onClick={build}>Try again</Btn>}
           <Btn onClick={() => { setPhase("idle"); setStep(1); }}>Edit the brief</Btn>
         </div>
       </>)}
@@ -1519,6 +1559,10 @@ function Create({ me, refreshWorlds, go }) {
             <div>{result.stats.rooms} rooms, every exit leads somewhere and comes back</div>
             <div>{result.stats.mobs} characters, all placed in rooms that exist</div>
             <div>{result.stats.quests} quests, {result.stats.items} items, all of them reachable</div>
+            {typeof result.cost_cents === "number" && (
+              <div>Cost {money(result.cost_cents)}{typeof result.balance_cents === "number"
+                ? ` \u00b7 ${money(result.balance_cents)} left` : ""}</div>
+            )}
             {(result.warnings || []).map((w, i) => (
               <div key={i} style={{ color: T.clay }}>{w.message || String(w)}</div>
             ))}
@@ -2028,10 +2072,7 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
 const titleCase = (str) =>
   String(str ?? "").replace(/\b([a-z])/g, (m) => m.toUpperCase());
 
-const DIR_LETTER = {
-  north: "N", south: "S", east: "E", west: "W",
-  up: "U", down: "D", in: "I", out: "O",
-};
+const DIR_LETTER = { north: "N", south: "S", east: "E", west: "W", up: "U", down: "D" };
 
 /* The play surface is pinned to the *visual* viewport rather than to 100vh.
    When a phone keyboard opens, the layout viewport stays full height while
