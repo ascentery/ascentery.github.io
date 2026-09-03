@@ -408,11 +408,13 @@ function buildPrompt(state, charName) {
   const room = WORLD.rooms[state.player.room];
   const present = mobsInRoom(state, state.player.room);
   const cards = present.map((id) => {
-    const d = WORLD.mobs[id], c = d.card;
-    return `${d.name} — ${c.species}\n  voice: ${c.voice}\n  disposition: ${c.disposition}\n` +
-      (c.knows.length ? `  knows: ${c.knows.join(" ")}\n` : "") +
-      (c.withholds.length ? `  will not discuss: ${c.withholds.join(" ")}\n` : "") +
-      `  refuses like this: ${c.refusalStyle}\n` +
+    const d = WORLD.mobs[id], c = d.card ?? {};
+    return `${d.name} — ${c.species}${c.pronouns ? `, ${c.pronouns}` : ""}\n` +
+      `  refer to them as: ${c.pronouns || "they/them"}\n` +
+      `  voice: ${c.voice}\n  disposition: ${c.disposition}\n` +
+      ((c.knows ?? []).length ? `  knows: ${c.knows.join(" ")}\n` : "") +
+      ((c.withholds ?? []).length ? `  will not discuss: ${c.withholds.join(" ")}\n` : "") +
+      `  refuses like this: ${c.refusalStyle ?? "plainly, and without explaining any rules"}\n` +
       `  carrying: ${state.mobs[id].inventory.map(itemName).join(", ") || "nothing"}\n` +
       `  has met the player before: ${state.mobs[id].met ? "yes" : "no"}`;
   }).join("\n\n");
@@ -442,6 +444,7 @@ ${affordances(state)}
 HOW TO WRITE
 - Second person, present tense. One to three short paragraphs. Restraint over flourish.
 - Speak in each character's voice. Dialogue in double quotes.
+- Use each character's stated pronouns every time. Do not infer them from a name.
 - NEVER state that the player gained or lost an item, took damage, healed, or finished a quest.
   The interface reports all of that. You describe the moment, not the bookkeeping.
 - If the player tries something the list above forbids, let the world or the character refuse it
