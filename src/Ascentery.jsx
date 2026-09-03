@@ -564,7 +564,7 @@ function directCommand(state, input) {
   return { handled: false };
 }
 
-return { WORLD, freshState, itemName, mobsInRoom, exitOf, applyEffects, buildPrompt, directCommand };
+return { WORLD, freshState, reconcile, itemName, mobsInRoom, exitOf, applyEffects, buildPrompt, directCommand };
 }
 
 /* ============================================================
