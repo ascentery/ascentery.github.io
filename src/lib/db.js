@@ -17,7 +17,7 @@ export const PRICE_CENTS = { flux: 11, pixel: 5 }
 
 export async function loadMe(userId) {
   const [{ data: profile, error: pe }, { data: credits }] = await Promise.all([
-    supabase.from('profiles').select('id, display_name, gamer_tag, username, is_creator').eq('id', userId).single(),
+    supabase.from('profiles').select('id, display_name, gamer_tag, username, is_creator, is_admin').eq('id', userId).single(),
     supabase.from('credits').select('balance_cents, cap_cents').eq('user_id', userId).single(),
   ])
 
@@ -30,6 +30,7 @@ export async function loadMe(userId) {
     tag: profile.gamer_tag,
     username: profile.username ?? null,
     isCreator: Boolean(profile.is_creator),
+    isAdmin: Boolean(profile.is_admin),
     balance: credits?.balance_cents ?? 0,
     balanceCap: credits?.cap_cents ?? 500,
   }
@@ -258,6 +259,28 @@ export async function setPublished(worldId, published) {
     }
     throw error
   }
+}
+
+/* ---------- platform settings (admin) ---------- */
+
+export const PROVIDERS = [
+  { key: 'deepseek', label: 'DeepSeek', note: 'Cheap and fast. The default. Writes atmospheric worlds, and needs the validator to keep it honest about gating.' },
+  { key: 'claude', label: 'Claude', note: 'Stronger at holding a whole graph in mind, which is what gated chains need. Costs more per world.' },
+  { key: 'openai', label: 'ChatGPT', note: 'A third opinion. Worth comparing on the same brief before committing.' },
+]
+
+export async function loadSetting(key) {
+  const { data, error } = await supabase
+    .from('app_settings').select('value').eq('key', key).single()
+  if (error) throw error
+  return data?.value ?? {}
+}
+
+export async function saveSetting(key, value) {
+  const { error } = await supabase
+    .from('app_settings')
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+  if (error) throw error
 }
 
 /* ---------- usernames ---------- */
