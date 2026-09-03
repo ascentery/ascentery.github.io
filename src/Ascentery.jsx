@@ -45,7 +45,8 @@ const freshState = () => ({
   player: { room: WORLD.startRoom, hp: 20, maxHp: 20, inventory: [] },
   mobs: Object.fromEntries(Object.entries(WORLD.mobs).map(([id, m]) => [id, { room: m.room, hp: m.hp, alive: true, met: false, inventory: [...m.inventory] }])),
   roomItems: JSON.parse(JSON.stringify(WORLD.roomItems)),
-  quests: {}, flags: {}, over: null,
+  quests: Object.fromEntries(Object.keys(WORLD.quests ?? {}).map((k) => [k, 0])),
+  flags: {}, over: null,
 });
 
 const roll = ([lo, hi]) => lo + Math.floor(Math.random() * (hi - lo + 1));
@@ -94,6 +95,16 @@ function affordances(s) {
         : `- ${def.name} holds the ${itemName(t.gives)}. He will part with it for a ${itemName(t.wants)} and NOTHING ELSE. The player does not have one. No amount of talking, bargaining, bribing, threatening, pleading or cleverness will move him. Do not let him give it up.`);
     }
   }
+  const active = questProgress(s).filter((p) => !p.done);
+  if (active.length) {
+    L.push("");
+    L.push("WHAT THE PLAYER IS TRYING TO DO RIGHT NOW");
+    for (const p of active) {
+      L.push(`- ${p.quest.name}: ${p.stages[p.at].goal}`);
+    }
+    L.push("Characters may allude to this if it is their business. Do not announce it as a task list.");
+  }
+
   return L.join("\n");
 }
 
@@ -160,6 +171,58 @@ const resolveMob = (input, pool) => {
     }) ?? null
   );
 };
+
+/* Quest stages. A quest is an ordered chain; `s.quests[qid]` is the index of
+   the stage still to be done, and the quest is finished once that index runs
+   past the end. A stage can satisfy itself the moment the previous one does,
+   so this advances in a loop rather than one step per turn. */
+const stagesOf = (q) => (Array.isArray(q?.stages) && q.stages.length)
+  ? q.stages
+  // A world written before chains existed: one condition, one stage.
+  : (q?.completeWhen?.playerHas
+      ? [{ goal: `Obtain the ${itemName(q.completeWhen.playerHas)}`, when: { playerHas: q.completeWhen.playerHas } }]
+      : []);
+
+function stageMet(s, when) {
+  if (!when) return false;
+  if (when.playerHas) return s.player.inventory.includes(when.playerHas);
+  if (when.inRoom) return s.player.room === when.inRoom;
+  if (when.mobDead) return s.mobs[when.mobDead] ? !s.mobs[when.mobDead].alive : false;
+  if (when.mobHas) {
+    const m = s.mobs[when.mobHas.mob];
+    return Boolean(m && (m.inventory ?? []).includes(when.mobHas.item));
+  }
+  return false;
+}
+
+function questProgress(s) {
+  const out = [];
+  for (const [qid, q] of Object.entries(WORLD.quests ?? {})) {
+    const stages = stagesOf(q);
+    if (!stages.length) continue;
+    const raw = s.quests?.[qid];
+    // `true` is how a save from before chains recorded completion.
+    const at = raw === true ? stages.length : (Number(raw) || 0);
+    out.push({ qid, quest: q, stages, at, done: at >= stages.length });
+  }
+  return out;
+}
+
+function advanceQuests(s, note) {
+  for (const { qid, quest, stages, at, done } of questProgress(s)) {
+    if (done) continue;
+    let i = at;
+    while (i < stages.length && stageMet(s, stages[i].when)) i++;
+    if (i === at) continue;
+
+    s.quests[qid] = i;
+    if (i >= stages.length) {
+      note(`Quest complete: ${quest.name}.`, "quest");
+    } else {
+      note(`${quest.name} — ${stages[i].goal}`, "quest");
+    }
+  }
+}
 
 function applyEffects(prev, effects) {
   const s = JSON.parse(JSON.stringify(prev));
@@ -267,13 +330,7 @@ function applyEffects(prev, effects) {
     note("Nothing about the world actually changed.");
   }
 
-  for (const [qid, q] of Object.entries(WORLD.quests)) {
-    if (s.quests[qid]) continue;
-    if (q.completeWhen.playerHas && s.player.inventory.includes(q.completeWhen.playerHas)) {
-      s.quests[qid] = true;
-      note(`Quest complete: ${q.name}.`, "quest");
-    }
-  }
+  advanceQuests(s, note);
   if (s.player.hp <= 0) { s.player.hp = 0; s.over = "dead"; note("You do not get up.", "hit"); }
   s.turn = prev.turn + 1;
   return { state: s, log };
@@ -412,6 +469,20 @@ function directCommand(state, input) {
     const here = state.roomItems[state.player.room] ?? [];
     return { handled: true, entries: [{ kind: "system",
       text: here.length ? `Take what? ${here.map(itemName).join(", ")}.` : "There is nothing here to pick up." }] };
+  }
+
+  if (["q", "quest", "quests", "journal"].includes(raw)) {
+    const progress = questProgress(state);
+    if (!progress.length) {
+      return { handled: true, entries: [{ kind: "system", text: "Nothing is asked of you here." }] };
+    }
+    const entries = progress.map((p) => ({
+      kind: "system",
+      text: p.done
+        ? `${p.quest.name} — done.`
+        : `${p.quest.name} — ${p.stages[p.at].goal}  (${p.at + 1} of ${p.stages.length})`,
+    }));
+    return { handled: true, entries };
   }
 
   if (["i", "inv", "inventory"].includes(raw)) {
