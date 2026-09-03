@@ -97,15 +97,50 @@ function affordances(s) {
   return L.join("\n");
 }
 
+/* Models write "the Golden Fleece"; the world calls it `golden_fleece` and
+   displays it as "golden fleece". Comparing raw strings makes underscores
+   and a leading article enough to lose a match, so everything is flattened
+   the same way before any of it is compared. */
+const norm = (str) =>
+  String(str ?? "")
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9 ]/g, "")
+    .replace(/^(the|a|an|some|my|your|his|her|their)\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
 const resolveItem = (input, pool) => {
-  const q = String(input).toLowerCase().trim();
-  return pool.find((id) => id === q) ?? pool.find((id) => itemName(id).toLowerCase() === q)
-    ?? pool.find((id) => itemName(id).toLowerCase().includes(q) || q.includes(id)) ?? null;
+  const q = norm(input);
+  if (!q) return null;
+  const names = (id) => [norm(id), norm(itemName(id)), norm(WORLD.items[id]?.name)];
+
+  return (
+    pool.find((id) => names(id).includes(q)) ??
+    // "give him the fleece" against "golden fleece", or the other way round
+    pool.find((id) => names(id).some((n) => n && (n.includes(q) || q.includes(n)))) ??
+    // last resort: any shared word longer than three letters
+    pool.find((id) => {
+      const words = new Set(q.split(" ").filter((w) => w.length > 3));
+      return names(id).some((n) => n && n.split(" ").some((w) => words.has(w)));
+    }) ?? null
+  );
 };
+
 const resolveMob = (input, pool) => {
-  const q = String(input).toLowerCase().trim();
-  return pool.find((id) => id === q) ?? pool.find((id) => WORLD.mobs[id].name.toLowerCase().includes(q))
-    ?? pool.find((id) => q.includes(id)) ?? null;
+  const q = norm(input);
+  if (!q) return null;
+  const names = (id) => [norm(id), norm(WORLD.mobs[id]?.name)];
+
+  return (
+    pool.find((id) => names(id).includes(q)) ??
+    pool.find((id) => names(id).some((n) => n && (n.includes(q) || q.includes(n)))) ??
+    // "Chiron the Centaur" against "chiron"
+    pool.find((id) => {
+      const words = new Set(q.split(" ").filter((w) => w.length > 2));
+      return names(id).some((n) => n && n.split(" ").some((w) => words.has(w)));
+    }) ?? null
+  );
 };
 
 function applyEffects(prev, effects) {
