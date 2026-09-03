@@ -110,6 +110,24 @@ const norm = (str) =>
     .replace(/\s+/g, " ")
     .trim();
 
+/* Every item in `pool` that the phrase could plausibly mean, best tier
+   first. "golden" matches both the apples and the fleece; the caller asks
+   rather than guessing. */
+const matchItems = (input, pool) => {
+  const q = norm(input);
+  if (!q) return [];
+  const names = (id) => [norm(id), norm(itemName(id)), norm(WORLD.items[id]?.name)].filter(Boolean);
+
+  const exact = pool.filter((id) => names(id).includes(q));
+  if (exact.length) return exact;
+
+  const partial = pool.filter((id) => names(id).some((n) => n.includes(q) || q.includes(n)));
+  if (partial.length) return partial;
+
+  const words = new Set(q.split(" ").filter((w) => w.length > 2));
+  return pool.filter((id) => names(id).some((n) => n.split(" ").some((w) => words.has(w))));
+};
+
 const resolveItem = (input, pool) => {
   const q = norm(input);
   if (!q) return null;
@@ -349,6 +367,51 @@ function directCommand(state, input) {
     // Handled by the caller, which has the art maps. The engine only says
     // that this is a look, not what a look renders.
     return { handled: true, look: true };
+  }
+
+  /* Taking and dropping are as deterministic as walking, and just as
+     annoying to wait on. Handling them here means "take fleece" works as
+     well as "take the golden fleece", instantly and for nothing. */
+  const takeMatch = raw.match(/^(?:take|get|grab|pick up|pickup|pick)\s+(.+)$/);
+  if (takeMatch) {
+    const here = state.roomItems[state.player.room] ?? [];
+    if (!here.length) {
+      return { handled: true, entries: [{ kind: "system", text: "There is nothing here to pick up." }] };
+    }
+    const found = matchItems(takeMatch[1].replace(/^up\s+/, ""), here);
+    if (!found.length) {
+      return { handled: true, entries: [{ kind: "system",
+        text: `No ${takeMatch[1]} here. Lying here: ${here.map(itemName).join(", ")}.` }] };
+    }
+    if (found.length > 1) {
+      return { handled: true, entries: [{ kind: "system",
+        text: `Which one — ${found.map(itemName).join(", ")}?` }] };
+    }
+    return { handled: true, effects: [{ take: found[0] }] };
+  }
+
+  const dropMatch = raw.match(/^(?:drop|put down|discard)\s+(.+)$/);
+  if (dropMatch) {
+    const inv = state.player.inventory;
+    if (!inv.length) {
+      return { handled: true, entries: [{ kind: "system", text: "You are carrying nothing." }] };
+    }
+    const found = matchItems(dropMatch[1].replace(/^down\s+/, ""), inv);
+    if (!found.length) {
+      return { handled: true, entries: [{ kind: "system",
+        text: `You are not carrying ${dropMatch[1]}.` }] };
+    }
+    if (found.length > 1) {
+      return { handled: true, entries: [{ kind: "system",
+        text: `Which one — ${found.map(itemName).join(", ")}?` }] };
+    }
+    return { handled: true, effects: [{ drop: found[0] }] };
+  }
+
+  if (["take", "get", "grab"].includes(raw)) {
+    const here = state.roomItems[state.player.room] ?? [];
+    return { handled: true, entries: [{ kind: "system",
+      text: here.length ? `Take what? ${here.map(itemName).join(", ")}.` : "There is nothing here to pick up." }] };
   }
 
   if (["i", "inv", "inventory"].includes(raw)) {
@@ -2074,6 +2137,13 @@ function Play({ world, art = {}, char, save, onSave, onExit }) {
       }
       const { state: next, log: engineLog } = applyEffects(state, direct.effects);
       const entries = [...engineLog];
+      // Picking something up changes what is on the floor; say what is left.
+      if (direct.effects.some((x) => x.take || x.drop)) {
+        const here = next.roomItems[next.player.room] ?? [];
+        if (here.length) {
+          entries.push({ kind: "system", text: `Still here: ${here.map(itemName).join(", ")}.` });
+        }
+      }
       if (next.player.room !== state.player.room) {
         entries.push(...arrival(next.player.room, next));
       }
