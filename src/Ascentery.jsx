@@ -3067,7 +3067,21 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
 
         {voicePanel && (
           <div style={{ borderTop: `1px solid ${P.inkSoft}33`, padding: "12px 20px", background: P.paperDeep,
-            flexShrink: 0, fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft }}>
+            flexShrink: 0, maxHeight: "60%", overflowY: "auto", overscrollBehavior: "contain",
+            fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft }}>
+            <div style={{ marginBottom: 12, borderBottom: `1px solid ${P.inkSoft}22`, paddingBottom: 10,
+              fontSize: 10.5, color: P.inkSoft, lineHeight: 1.9 }}>
+              <div>
+                touch {String(coarse)} · narrow {String(narrow)} · pinned {String(pinned)} ·
+                {" "}focus {String(inputFocused)} · hiding {String(typing)}
+              </div>
+              <div>
+                width {typeof window !== "undefined" ? window.innerWidth : 0} ·
+                {" "}visible {vv ? Math.round(vv.height) : "?"} of
+                {" "}{typeof window !== "undefined" ? window.innerHeight : 0}
+              </div>
+            </div>
+
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
               <span style={{ flex: 1 }}>reading voice</span>
               <button className="hr-btn" onClick={() => setVoicePanel(false)}
@@ -3107,19 +3121,6 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                   fontFamily: "inherit", fontSize: 11, padding: "4px 9px", cursor: "pointer" }}>
                 test
               </button>
-            </div>
-
-            <div style={{ marginTop: 12, borderTop: `1px solid ${P.inkSoft}22`, paddingTop: 10,
-              fontSize: 10.5, color: P.inkSoft, lineHeight: 1.9 }}>
-              <div>
-                touch {String(coarse)} · narrow {String(narrow)} · pinned {String(pinned)} ·
-                {" "}focus {String(inputFocused)} · hiding {String(typing)}
-              </div>
-              <div>
-                width {typeof window !== "undefined" ? window.innerWidth : 0} ·
-                {" "}visible {vv ? Math.round(vv.height) : "?"} of
-                {" "}{typeof window !== "undefined" ? window.innerHeight : 0}
-              </div>
             </div>
 
             <details style={{ marginTop: 12, borderTop: `1px solid ${P.inkSoft}22`, paddingTop: 10 }}>
