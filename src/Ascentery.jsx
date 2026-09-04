@@ -2588,8 +2588,15 @@ const VERBS = [
 /* Pressing a button while the input has focus used to take two taps: the
    first blurred the field, which un-hid the transcript and moved the button
    out from under the finger, and only the second landed. Preventing the
-   default on pointer-down keeps focus where it is, so the first tap works. */
-const keepFocus = { onMouseDown: (e) => e.preventDefault() };
+   default on pointer-down keeps focus where it is, so the first tap works.
+
+   Both handlers are needed. Touch devices do not fire mousedown until after
+   the touch has already moved focus, so on a phone it is the touchstart
+   that has to be stopped. */
+const keepFocus = {
+  onMouseDown: (e) => e.preventDefault(),
+  onTouchStart: (e) => e.preventDefault(),
+};
 
 function EyeIcon({ open }) {
   return (
@@ -3460,7 +3467,39 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
               <Glyph name={actions ? "keys" : "grid"} />
             </button>
 
-            {actions ? (
+            {/* The action bar and the input share this row, but the input is
+                never unmounted: a removed element cannot hold focus, and a
+                phone retracts its keyboard the moment focus is lost. It is
+                shrunk out of sight instead, so switching to the buttons and
+                back does not close the keyboard under the player. */}
+            <div style={{ flex: actions ? "0 0 0px" : "1 1 auto", minWidth: 0,
+              display: "flex", alignItems: "center", gap: 10,
+              opacity: actions ? 0 : 1,
+              width: actions ? 0 : undefined,
+              overflow: actions ? "hidden" : "visible",
+              pointerEvents: actions ? "none" : "auto" }}>
+              <span aria-hidden style={{ fontFamily: "'IBM Plex Mono', monospace", color: P.ochre, fontSize: 13 }}>›</span>
+              <input ref={inputRef} className="hr-in" value={input} disabled={busy}
+                autoFocus={!onPhone}
+                tabIndex={actions ? -1 : 0}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+                onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()}
+                style={{
+                  flex: 1, minWidth: 0, background: "transparent", border: "none",
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontSize: 16,              // anything smaller and iOS zooms on focus
+                  color: P.ink, padding: "4px 0",
+                  touchAction: "manipulation",
+                }} />
+              <button className="hr-btn" onClick={() => submit()} disabled={busy} {...keepFocus}
+                style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, background: "transparent",
+                  border: `1px solid ${P.inkSoft}55`, color: P.inkSoft, padding: "5px 10px", cursor: busy ? "default" : "pointer" }}>
+                send
+              </button>
+            </div>
+
+            {actions && (
               /* One row that slides sideways rather than wrapping onto a
                  second line: the bar sits directly above the keyboard on a
                  phone, and a second row would push the input off screen. */
@@ -3490,27 +3529,6 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                   );
                 })}
               </div>
-            ) : (
-              <>
-                <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: P.ochre, fontSize: 13 }}>›</span>
-                <input ref={inputRef} className="hr-in" value={input} disabled={busy}
-                  autoFocus={!onPhone}
-                  onFocus={() => setInputFocused(true)}
-                  onBlur={() => setInputFocused(false)}
-                  onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()}
-                  style={{
-                    flex: 1, minWidth: 0, background: "transparent", border: "none",
-                    fontFamily: "'IBM Plex Mono', monospace",
-                    fontSize: 16,              // anything smaller and iOS zooms on focus
-                    color: P.ink, padding: "4px 0",
-                    touchAction: "manipulation",
-                  }} />
-                <button className="hr-btn" onClick={() => submit()} disabled={busy}
-                  style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, background: "transparent",
-                    border: `1px solid ${P.inkSoft}55`, color: P.inkSoft, padding: "5px 10px", cursor: busy ? "default" : "pointer" }}>
-                  send
-                </button>
-              </>
             )}
           </div>
         )}
