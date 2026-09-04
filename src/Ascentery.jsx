@@ -68,6 +68,11 @@ const exitOf = (room, dir) => {
 };
 const exitsOf = (room) => Object.keys(room?.exits ?? {}).map((d) => ({ dir: d, ...exitOf(room, d) }));
 
+const propsInRoom = (room) =>
+  Object.entries(WORLD.props ?? {}).filter(([, p]) => p?.room === room).map(([id]) => id);
+
+const propName = (id) => WORLD.props?.[id]?.name ?? id;
+
 const mobsInRoom = (s, room) => Object.entries(s.mobs).filter(([, m]) => m.alive && m.room === room).map(([id]) => id);
 const playerWeapon = (s) => {
   const armed = s.player.inventory.find((i) => WORLD.items[i]?.damage);
@@ -90,6 +95,14 @@ function affordances(s) {
   const here = s.roomItems[s.player.room] ?? [];
   if (here.length) L.push("- take " + here.map(itemName).join(", "));
   if (s.player.inventory.length) L.push("- drop " + s.player.inventory.map(itemName).join(", "));
+  for (const id of propsInRoom(s.player.room)) {
+    const pr = WORLD.props[id];
+    if (s.flags?.[pr.sets]) { L.push(`- the ${pr.name} has already been worked and will not do it twice`); continue; }
+    L.push(pr.requires && !s.player.inventory.includes(pr.requires)
+      ? `- the ${pr.name} is here but will not move without the ${itemName(pr.requires)}`
+      : `- ${pr.verb ?? "use"} the ${pr.name} (this works, and changes something)`);
+  }
+
   for (const id of mobsInRoom(s, s.player.room)) {
     const def = WORLD.mobs[id];
     L.push(`- talk to ${def.name} about anything`);
@@ -162,6 +175,20 @@ const resolveItem = (input, pool) => {
     pool.find((id) => {
       const words = new Set(q.split(" ").filter((w) => w.length > 3));
       return names(id).some((n) => n && n.split(" ").some((w) => words.has(w)));
+    }) ?? null
+  );
+};
+
+const resolveProp = (input, pool) => {
+  const q = norm(input);
+  if (!q) return null;
+  const names = (id) => [norm(id), norm(WORLD.props?.[id]?.name)].filter(Boolean);
+  return (
+    pool.find((id) => names(id).includes(q)) ??
+    pool.find((id) => names(id).some((n) => n.includes(q) || q.includes(n))) ??
+    pool.find((id) => {
+      const words = new Set(q.split(" ").filter((w) => w.length > 2));
+      return names(id).some((n) => n.split(" ").some((w) => words.has(w)));
     }) ?? null
   );
 };
@@ -251,6 +278,7 @@ function reconcile(state) {
   s.player.inventory ??= [];
   s.quests ??= {};
   s.opened ??= {};
+  s.flags ??= {};
 
   // characters the world has gained
   for (const [id, def] of Object.entries(WORLD.mobs ?? {})) {
@@ -308,6 +336,10 @@ function applyEffects(prev, effects) {
       const dir = String(e.move).toLowerCase();
       const ex = exitOf(room, dir);
       if (!ex?.to || !WORLD.rooms[ex.to]) { note(`There is no way ${e.move} from here.`); continue; }
+      if (ex.needs && !s.flags?.[ex.needs]) {
+        note(`The way ${dir} will not open. Something has to change first.`);
+        continue;
+      }
       if (ex.locked && !s.opened?.[`${s.player.room}:${dir}`]) {
         note(s.player.inventory.includes(ex.locked)
           ? `The way ${dir} is locked. You have the ${itemName(ex.locked)}; open it first.`
@@ -400,6 +432,22 @@ function applyEffects(prev, effects) {
       continue;
     }
 
+    if (e.work) {
+      const id = resolveProp(e.work, propsInRoom(s.player.room));
+      if (!id) { note(`There is nothing here called ${e.work}.`); continue; }
+      const pr = WORLD.props[id];
+
+      if (s.flags?.[pr.sets]) { note(`The ${pr.name} has already been worked.`); continue; }
+      if (pr.requires && !s.player.inventory.includes(pr.requires)) {
+        note(`The ${pr.name} will not move. It needs the ${itemName(pr.requires)}.`);
+        continue;
+      }
+
+      (s.flags ??= {})[pr.sets] = true;
+      note(pr.result, "gain");
+      continue;
+    }
+
     if (e.open || e.close) {
       const closing = Boolean(e.close);
       const dir = String(e.open ?? e.close).toLowerCase();
@@ -469,6 +517,7 @@ CURRENT ROOM
 ${room.name} (${room.exposure ?? "indoors"}) — ${room.desc}
 Exits: ${exitsOf(room).map(({ dir, to, locked }) => `${dir} to ${WORLD.rooms[to]?.name ?? to}${locked ? " (locked)" : ""}`).join("; ")}
 Lying here: ${here.length ? here.map(itemName).join(", ") : "nothing"}
+Fixed here: ${propsInRoom(state.player.room).map((id) => WORLD.props[id].name).join(", ") || "nothing"}
 Present: ${present.length ? present.map((id) => WORLD.mobs[id].name).join(", ") : "nobody"}
 
 ${cards ? "CHARACTERS PRESENT\n" + cards + "\n" : ""}
@@ -501,6 +550,7 @@ Reply with JSON only. No markdown fences, no preamble.
 Effects — use only these, at most two per turn, only for what the list above permits:
 {"move":"north"} {"take":"apple"} {"drop":"apple"} {"give":{"item":"apple","to":"borin"}}
 {"open":"north"} {"close":"north"}   — only for exits that are locked
+{"work":"lever_key"}                — a prop in this room: a lever, a valve, a winch
 Conversation, looking and examining need no effects. Use an empty array.`;
 }
 
@@ -590,6 +640,17 @@ function directCommand(state, input) {
      and the engine settles it; a chest, a book or a drawer is a thing, and
      only the narrator knows what is inside. Work out which was meant before
      deciding who answers. */
+  /* A prop answers to its own verb — pull, turn, wind — and to the general
+     ones. Direct, because working a lever is as settled as taking a key. */
+  const workMatch = raw.match(/^(pull|push|turn|twist|wind|crank|flip|lift|lower|press|use|operate|work)\s+(.+)$/);
+  if (workMatch) {
+    const here = propsInRoom(state.player.room);
+    const found = here.length ? resolveProp(workMatch[2], here) : null;
+    if (found) return { handled: true, effects: [{ work: found }] };
+    // Not a prop: let the narrator make sense of it.
+    return { handled: false };
+  }
+
   const doorMatch = raw.match(/^(open|unlock|close|lock|shut)\s*(.*)$/);
   if (doorMatch) {
     const closing = ["close", "lock", "shut"].includes(doorMatch[1]);
@@ -598,6 +659,12 @@ function directCommand(state, input) {
 
     const locked = exitsOf(room).filter((e) => e.locked);
     let dir = SHORT[asDoor] ?? null;
+
+    // A prop by that name is worked, not narrated.
+    if (!dir && rest) {
+      const prop = resolveProp(rest, propsInRoom(state.player.room));
+      if (prop) return { handled: true, effects: [{ work: prop }] };
+    }
 
     // Something here or in hand by that name: a thing, not a way out.
     const reachable = [...(state.roomItems[state.player.room] ?? []), ...state.player.inventory];
@@ -1839,7 +1906,10 @@ function Create({ me, refreshWorlds, go }) {
           <div style={{ padding: "14px 18px", fontFamily: T.mono, fontSize: 12.5, lineHeight: 2, color: T.boneDim }}>
             <div>{result.stats.rooms} rooms, every exit leads somewhere and comes back</div>
             <div>{result.stats.mobs} characters, all placed in rooms that exist</div>
-            <div>{result.stats.quests} quests, {result.stats.items} items, all of them reachable</div>
+            <div>
+              {result.stats.quests} quests, {result.stats.items} items
+              {result.stats.props ? `, ${result.stats.props} things to work` : ""}, all of them reachable
+            </div>
             {typeof result.cost_cents === "number" && (
               <div>Cost {money(result.cost_cents)}{typeof result.balance_cents === "number"
                 ? ` \u00b7 ${money(result.balance_cents)} left` : ""}</div>
@@ -2067,15 +2137,16 @@ const KINDS = [
   { key: "cover", label: "Splash", ratio: 0.5625 },
   { key: "room",  label: "Rooms", ratio: 0.5625 },
   { key: "mob",   label: "Characters", ratio: 1.33 },
+  { key: "prop",  label: "Props", ratio: 1 },
   { key: "item",  label: "Items", ratio: 1 },
 ];
 
 // Items and splash screens are always flux: the LoRA is trained heavily on
 // sprite sheets and fights a single object, and a titled splash needs type
 // the model can actually render.
-const ENGINE_LOCKED = { item: "flux", cover: "flux" };
+const ENGINE_LOCKED = { item: "flux", prop: "flux", cover: "flux" };
 
-const KIND_LABEL = { cover: "the splash screen", room: "rooms", mob: "characters", item: "items" };
+const KIND_LABEL = { cover: "the splash screen", room: "rooms", mob: "characters", prop: "props", item: "items" };
 
 const AMEND_KINDS = [
   {
@@ -2393,8 +2464,8 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
           <Field
             label={`Engine for ${KIND_LABEL[kind] ?? kind}`}
             hint={ENGINE_LOCKED[kind]
-              ? (kind === "item"
-                  ? "Items always use Flux. The pixel LoRA is trained heavily on sprite sheets and fights a single object."
+              ? (kind === "item" || kind === "prop"
+                  ? "Single objects always use Flux. The pixel LoRA is trained heavily on sprite sheets and fights one thing on its own."
                   : "Splash screens always use Flux, because the title has to be readable.")
               : ENGINES.find((x) => x.key === engine)?.note}>
             <div style={{ display: "flex", gap: 6 }}>
@@ -2816,7 +2887,7 @@ function useNarrator(enabled, voiceURI, rate) {
     states out of the game itself. */
 function PlayLoader({ worldId, char, save, onSave, onExit, onHome }) {
   const [world, setWorld] = useState(null);
-  const [art, setArt] = useState({ room: {}, mob: {}, item: {} });
+  const [art, setArt] = useState({ room: {}, mob: {}, item: {}, prop: {} });
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -2828,7 +2899,7 @@ function PlayLoader({ worldId, char, save, onSave, onExit, onHome }) {
     ])
       .then(([{ data }, entries]) => {
         if (cancelled) return;
-        const byKind = { room: {}, mob: {}, item: {} };
+        const byKind = { room: {}, mob: {}, item: {}, prop: {} };
         for (const e of entries) {
           if (e.url && byKind[e.kind]) byKind[e.kind][e.key] = e.url;
         }
@@ -2888,6 +2959,19 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
         url: art.mob?.[id] ?? null,
         name: mob.name,
         text: mob.card?.presence || `${mob.name} is here.`,
+      });
+    }
+
+    const fixtures = propsInRoom(roomKey);
+    if (fixtures.length) {
+      entries.push({
+        kind: "items",
+        label: "fixed here",
+        items: fixtures.map((id) => ({
+          key: id,
+          name: WORLD.props[id].name,
+          url: art.prop?.[id] ?? null,
+        })),
       });
     }
 
@@ -3328,6 +3412,27 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
 
                     <div style={{ position: "absolute", right: 8, bottom: 8, display: "flex",
                       flexDirection: "column-reverse", gap: 6 }}>
+                      {propsInRoom(state.player.room).map((id) => {
+                        const url = art.prop?.[id];
+                        if (!url) return null;
+                        const pr = WORLD.props[id];
+                        const done = Boolean(state.flags?.[pr.sets]);
+                        return (
+                          <button key={id} className="hr-btn"
+                            title={done ? `${pr.name} — already worked` : `${pr.verb ?? "use"} the ${pr.name}`}
+                            onClick={() => { if (!busy && !state.over) submit(`${pr.verb ?? "use"} ${pr.name}`); }}
+                            {...keepFocus}
+                            style={{ padding: 0, background: "none", cursor: busy ? "default" : "pointer",
+                              border: `1px solid ${P.paper}`, lineHeight: 0, opacity: done ? 0.45 : 1,
+                              boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
+                            <img src={url} alt={pr.name}
+                              onError={(e) => { e.currentTarget.style.display = "none"; }}
+                              style={{ width: 46, height: 46, objectFit: "cover",
+                                imageRendering: "pixelated", display: "block" }} />
+                          </button>
+                        );
+                      })}
+
                       {(state.roomItems[state.player.room] ?? []).map((id) => {
                         const url = art.item?.[id];
                         if (!url) return null;
