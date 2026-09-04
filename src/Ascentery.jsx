@@ -3570,20 +3570,24 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
           display: "flex", alignItems: "center", gap: 12,
           fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft,
         }}>
-          <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center",
-            gap: 6, flexWrap: "wrap" }}>
+          {/* One line that slides sideways. Wrapping grew the bar upward,
+              which moved the input and everything above it. */}
+          <div className="hr-actions" style={{ flex: 1, minWidth: 0, display: "flex",
+            alignItems: "center", gap: 6, flexWrap: "nowrap",
+            overflowX: "auto", overflowY: "hidden",
+            overscrollBehaviorX: "contain", WebkitOverflowScrolling: "touch" }}>
             <button
               className="hr-btn"
               onClick={() => { if (!busy && !state.over) submit("i"); }}
               {...keepFocus}
               title="Check your inventory"
-              style={{ background: "none", border: "none", padding: 0,
+              style={{ background: "none", border: "none", padding: 0, flexShrink: 0,
                 cursor: busy ? "default" : "pointer",
                 fontFamily: "inherit", fontSize: 11, color: P.inkSoft }}>
               Carrying:
             </button>
 
-            {carrying.length === 0 && <span>Nothing</span>}
+            {carrying.length === 0 && <span style={{ flexShrink: 0 }}>Nothing</span>}
 
             {state.player.inventory.map((id, i) => {
               const on = held === id;
@@ -3596,6 +3600,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                   title={verb ? `${verb} ${itemName(id)}` : on ? "Put it down" : "Hold it ready to give"}
                   style={{
                     background: "none", border: "none", padding: 0,
+                    flexShrink: 0, whiteSpace: "nowrap",
                     cursor: busy ? "default" : "pointer",
                     fontFamily: "inherit", fontSize: 11,
                     color: on ? P.ochre : P.ink,
