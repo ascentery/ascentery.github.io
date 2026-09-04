@@ -2494,6 +2494,36 @@ const titleCase = (str) =>
 
 const DIR_LETTER = { north: "N", south: "S", east: "E", west: "W", up: "U", down: "D" };
 
+/* Small line icons, drawn rather than imported: the set is tiny, they need to
+   inherit colour from their button, and a dependency for six glyphs is not
+   worth the weight. */
+function Glyph({ name }) {
+  const p = { stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round", fill: "none" };
+  const paths = {
+    look: <><path d="M1.5 8s2.6-4.5 6.5-4.5S14.5 8 14.5 8s-2.6 4.5-6.5 4.5S1.5 8 1.5 8z" {...p} /><circle cx="8" cy="8" r="1.9" {...p} /></>,
+    talk: <path d="M13.5 9.5a1.5 1.5 0 01-1.5 1.5H6l-3 2.5V4a1.5 1.5 0 011.5-1.5h7.5A1.5 1.5 0 0113.5 4z" {...p} />,
+    take: <><path d="M8 10.5V2.5" {...p} /><path d="M4.5 6L8 2.5 11.5 6" {...p} /><path d="M2.5 13.5h11" {...p} /></>,
+    drop: <><path d="M8 2.5v8" {...p} /><path d="M4.5 7L8 10.5 11.5 7" {...p} /><path d="M2.5 13.5h11" {...p} /></>,
+    give: <><rect x="2.5" y="6.5" width="11" height="7" rx="1" {...p} /><path d="M8 6.5v7" {...p} /><path d="M2.5 9.5h11" {...p} /><path d="M8 6.5S6 2.5 4.5 3.9 6.5 6.5 8 6.5zM8 6.5s2-4 3.5-2.6S9.5 6.5 8 6.5z" {...p} /></>,
+    use: <path d="M10.5 2.5a3.5 3.5 0 00-3.1 5.1l-4.6 4.6 1.4 1.4 4.6-4.6a3.5 3.5 0 104.2-4.5l-1.9 1.9-1.5-1.5 1.9-1.9a3.5 3.5 0 00-1-.5z" {...p} />,
+    keys: <><rect x="1.5" y="4.5" width="13" height="8" rx="1.2" {...p} /><path d="M4 7h.01M6.5 7h.01M9 7h.01M11.5 7h.01M4.5 10h7" {...p} /></>,
+    grid: <><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" {...p} /><rect x="9" y="2.5" width="4.5" height="4.5" rx="1" {...p} /><rect x="2.5" y="9" width="4.5" height="4.5" rx="1" {...p} /><rect x="9" y="9" width="4.5" height="4.5" rx="1" {...p} /></>,
+  };
+  return <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden>{paths[name] ?? null}</svg>;
+}
+
+/* look and talk are questions, so they go to the narrator. take and drop are
+   settled by the engine. give and use may be either, depending on what the
+   world says. */
+const VERBS = [
+  { key: "look", label: "look", targets: ["mob", "item", "carried"] },
+  { key: "talk", label: "talk", targets: ["mob"] },
+  { key: "take", label: "take", targets: ["item"] },
+  { key: "drop", label: "drop", targets: ["carried"] },
+  { key: "give", label: "give", targets: ["carried"] },
+  { key: "use",  label: "use",  targets: ["item", "carried"] },
+];
+
 function EyeIcon({ open }) {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -2799,6 +2829,10 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
   /* Holding an item is a UI state, not a game state: it means "this is the
      one I will hand over if I tap somebody". */
   const [held, setHeld] = useState(null);
+  /* The action bar is the alternative to typing: pick a verb, then tap what
+     it applies to. `verb` is what is waiting for a target. */
+  const [actions, setActions] = useState(false);
+  const [verb, setVerb] = useState(null);
   const narrator = useNarrator(voice, voiceURI, rate);
   const vv = useVisualViewport();
   const narrow = useNarrow();
@@ -2959,6 +2993,36 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
     setLog(arrival(WORLD.startRoom, undefined, !pinned));
   };
 
+  /* Every target — a character or an item, in the overlay or the bottom bar
+     — asks this what a tap should do. Keeping the decision in one place
+     means the action bar and the plain taps cannot drift apart. */
+  const tapTarget = (kind, id) => {
+    const isMob = kind === "mob";
+    const label = isMob ? (WORLD.mobs[id]?.name ?? id) : itemName(id);
+
+    // Giving takes two taps: what you are holding out, then who to.
+    if (verb === "give") {
+      if (!isMob) { setHeld(id); return; }
+      if (held) { submit(`give the ${itemName(held)} to ${label}`); setHeld(null); setVerb(null); }
+      return;
+    }
+
+    if (verb) {
+      submit(`${verb} ${label}`);
+      setVerb(null);
+      return;
+    }
+
+    // No verb chosen: the old behaviour.
+    if (kind === "carried") { setHeld(held === id ? null : id); return; }
+    if (isMob) {
+      if (held) { submit(`give the ${itemName(held)} to ${label}`); setHeld(null); }
+      else submit(`look at ${label}`);
+      return;
+    }
+    submit(`take ${label}`);
+  };
+
   const room = WORLD.rooms[state.player.room];
   const carrying = state.player.inventory.map(itemName);
   const hpFrac = state.player.hp / state.player.maxHp;
@@ -3094,15 +3158,8 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                         return (
                           <button key={id} className="hr-btn"
                             disabled={busy || state.over}
-                            title={held ? `Give the ${itemName(held)} to ${who}` : `Look at ${who}`}
-                            onClick={() => {
-                              if (held) {
-                                submit(`give the ${itemName(held)} to ${who}`);
-                                setHeld(null);
-                              } else {
-                                submit(`look at ${who}`);
-                              }
-                            }}
+                            title={verb ? `${verb} ${who}` : held ? `Give the ${itemName(held)} to ${who}` : `Look at ${who}`}
+                            onClick={() => tapTarget("mob", id)}
                             style={{ padding: 0, background: "none", cursor: busy ? "default" : "pointer",
                               border: `1px solid ${held ? P.ochre : P.paper}`, lineHeight: 0,
                               boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
@@ -3123,8 +3180,8 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                         return (
                           <button key={id} className="hr-btn"
                             disabled={busy || state.over}
-                            title={`Take the ${itemName(id)}`}
-                            onClick={() => submit(`take ${itemName(id)}`)}
+                            title={verb ? `${verb} ${itemName(id)}` : `Take the ${itemName(id)}`}
+                            onClick={() => tapTarget("item", id)}
                             style={{ padding: 0, background: "none", cursor: busy ? "default" : "pointer",
                               border: `1px solid ${P.paper}`, lineHeight: 0,
                               boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
@@ -3259,16 +3316,24 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
             {titleCase(room.name)}
           </span>
 
-          <span style={{ whiteSpace: "nowrap", letterSpacing: ".08em" }}>
-            EXITS:{" "}
+          <span style={{ whiteSpace: "nowrap", letterSpacing: ".08em", display: "inline-flex",
+            alignItems: "baseline", gap: 6 }}>
+            <span>EXITS:</span>
             {Object.keys(room.exits ?? {}).length
               ? Object.keys(room.exits).map((d) => {
                   const ex = room.exits[d];
                   const locked = typeof ex === "object" && ex?.locked;
                   return (
-                    <span key={d} style={{ color: locked ? P.rust : P.ink }}>
-                      {DIR_LETTER[d] ?? d[0].toUpperCase()}{" "}
-                    </span>
+                    <button key={d} className="hr-btn"
+                      onClick={() => submit(d)}
+                      disabled={busy || state.over}
+                      title={locked ? `${d} — locked` : `Go ${d}`}
+                      style={{ background: "none", border: "none", padding: "0 1px",
+                        cursor: busy ? "default" : "pointer", fontFamily: "inherit",
+                        fontSize: 11.5, letterSpacing: ".08em",
+                        color: locked ? P.rust : P.ink }}>
+                      {DIR_LETTER[d] ?? d[0].toUpperCase()}
+                    </button>
                   );
                 })
               : <span style={{ color: P.inkSoft }}>NONE</span>}
@@ -3286,24 +3351,75 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 20px 14px", flexShrink: 0,
             borderTop: `1px solid ${P.inkSoft}33`, paddingBottom: "max(14px, env(safe-area-inset-bottom))" }}>
-            <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: P.ochre, fontSize: 13 }}>›</span>
-            <input ref={inputRef} className="hr-in" value={input} disabled={busy}
-              autoFocus={!onPhone}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-              onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()}
-              style={{
-                flex: 1, minWidth: 0, background: "transparent", border: "none",
-                fontFamily: "'IBM Plex Mono', monospace",
-                fontSize: 16,              // anything smaller and iOS zooms on focus
-                color: P.ink, padding: "4px 0",
-                touchAction: "manipulation",
-              }} />
-            <button className="hr-btn" onClick={() => submit()} disabled={busy}
-              style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, background: "transparent",
-                border: `1px solid ${P.inkSoft}55`, color: P.inkSoft, padding: "5px 10px", cursor: busy ? "default" : "pointer" }}>
-              send
+
+            {/* Typing and tapping are two ways to do the same things, and
+                only one of them fits on a phone at a time. */}
+            <button className="hr-btn"
+              onClick={() => { setActions((v) => !v); setVerb(null); }}
+              title={actions ? "Type a command instead" : "Choose an action instead"}
+              aria-pressed={actions}
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
+                display: "inline-flex", alignItems: "center", flexShrink: 0,
+                color: actions ? P.ochre : P.inkSoft }}>
+              <Glyph name={actions ? "keys" : "grid"} />
             </button>
+
+            {actions ? (
+              <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center",
+                gap: 6, flexWrap: "wrap" }}>
+                {VERBS.map((v) => {
+                  const on = verb === v.key;
+                  return (
+                    <button key={v.key} className="hr-btn"
+                      onClick={() => setVerb(on ? null : v.key)}
+                      disabled={busy || state.over}
+                      title={`${v.label}, then tap something`}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5,
+                        padding: "6px 9px", borderRadius: 2, cursor: busy ? "default" : "pointer",
+                        background: "transparent",
+                        fontFamily: "'IBM Plex Mono', monospace", fontSize: 12,
+                        color: on ? P.ochre : P.ink,
+                        border: `1px solid ${on ? P.ochre : P.inkSoft}44` }}>
+                      <Glyph name={v.key} />
+                      {v.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <>
+                <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: P.ochre, fontSize: 13 }}>›</span>
+                <input ref={inputRef} className="hr-in" value={input} disabled={busy}
+                  autoFocus={!onPhone}
+                  onFocus={() => setInputFocused(true)}
+                  onBlur={() => setInputFocused(false)}
+                  onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()}
+                  style={{
+                    flex: 1, minWidth: 0, background: "transparent", border: "none",
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: 16,              // anything smaller and iOS zooms on focus
+                    color: P.ink, padding: "4px 0",
+                    touchAction: "manipulation",
+                  }} />
+                <button className="hr-btn" onClick={() => submit()} disabled={busy}
+                  style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, background: "transparent",
+                    border: `1px solid ${P.inkSoft}55`, color: P.inkSoft, padding: "5px 10px", cursor: busy ? "default" : "pointer" }}>
+                  send
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+
+        {verb && (
+          <div style={{ flexShrink: 0, padding: "0 20px 8px",
+            fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.ochre }}>
+            {verb === "give"
+              ? (held
+                  ? `give the ${itemName(held)} — now tap who to`
+                  : "give — tap what you are carrying, then who to")
+              : `${verb} — tap something`}
           </div>
         )}
 
@@ -3337,9 +3453,9 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                 <button
                   key={id}
                   className="hr-btn"
-                  onClick={() => setHeld(on ? null : id)}
+                  onClick={() => tapTarget("carried", id)}
                   disabled={busy || state.over}
-                  title={on ? "Put it down" : "Hold it ready to give"}
+                  title={verb ? `${verb} ${itemName(id)}` : on ? "Put it down" : "Hold it ready to give"}
                   style={{
                     background: "none", border: "none", padding: 0,
                     cursor: busy ? "default" : "pointer",
