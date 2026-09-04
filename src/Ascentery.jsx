@@ -3079,6 +3079,10 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
      — asks this what a tap should do. Keeping the decision in one place
      means the action bar and the plain taps cannot drift apart. */
   const tapTarget = (kind, id) => {
+    // Buttons stay enabled while a turn is in flight, because disabling one
+    // under a finger blurs the input and drops the keyboard. They simply do
+    // nothing instead.
+    if (busy || state.over) return;
     const isMob = kind === "mob";
     const label = isMob ? (WORLD.mobs[id]?.name ?? id) : itemName(id);
 
@@ -3261,7 +3265,6 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                         const who = WORLD.mobs[id]?.name ?? id;
                         return (
                           <button key={id} className="hr-btn"
-                            disabled={busy || state.over}
                             title={verb ? `${verb} ${who}` : held ? `Give the ${itemName(held)} to ${who}` : `Look at ${who}`}
                             onClick={() => tapTarget("mob", id)}
                             {...keepFocus}
@@ -3284,7 +3287,6 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                         if (!url) return null;
                         return (
                           <button key={id} className="hr-btn"
-                            disabled={busy || state.over}
                             title={verb ? `${verb} ${itemName(id)}` : `Take the ${itemName(id)}`}
                             onClick={() => tapTarget("item", id)}
                             {...keepFocus}
@@ -3307,9 +3309,8 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 20px" }}>
               <button
                 className="hr-btn"
-                onClick={() => submit("look")}
+                onClick={() => { if (!busy && !state.over) submit("look"); }}
                 {...keepFocus}
-                disabled={busy || state.over}
                 title="Look around"
                 style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none",
                   padding: 0, cursor: busy ? "default" : "pointer",
@@ -3449,7 +3450,6 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                         } else submit(d);
                       }}
                       {...keepFocus}
-                      disabled={busy || state.over}
                       title={verb === "open" || verb === "close"
                         ? `${verb} the way ${d}`
                         : locked ? `${d} — locked` : `Go ${d}`}
@@ -3502,7 +3502,12 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
               overflow: actions ? "hidden" : "visible",
               pointerEvents: actions ? "none" : "auto" }}>
               <span aria-hidden style={{ fontFamily: "'IBM Plex Mono', monospace", color: P.ochre, fontSize: 13 }}>›</span>
-              <input ref={inputRef} className="hr-in" value={input} disabled={busy}
+              <input ref={inputRef} className="hr-in" value={input}
+                /* readOnly rather than disabled: disabling a focused field
+                   blurs it, and on a phone that closes the keyboard every
+                   time a turn is sent. submit() already refuses while busy,
+                   so nothing gets through anyway. */
+                readOnly={busy}
                 autoFocus={!onPhone}
                 tabIndex={actions ? -1 : 0}
                 onFocus={() => setInputFocused(true)}
@@ -3512,10 +3517,10 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                   flex: 1, minWidth: 0, background: "transparent", border: "none",
                   fontFamily: "'IBM Plex Mono', monospace",
                   fontSize: 16,              // anything smaller and iOS zooms on focus
-                  color: P.ink, padding: "4px 0",
+                  color: busy ? P.inkSoft : P.ink, padding: "4px 0",
                   touchAction: "manipulation",
                 }} />
-              <button className="hr-btn" onClick={() => submit()} disabled={busy} {...keepFocus}
+              <button className="hr-btn" onClick={() => { if (!busy) submit(); }} {...keepFocus}
                 style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, background: "transparent",
                   border: `1px solid ${P.inkSoft}55`, color: P.inkSoft, padding: "5px 10px", cursor: busy ? "default" : "pointer" }}>
                 send
@@ -3535,8 +3540,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                   const on = verb === v.key;
                   return (
                     <button key={v.key} className="hr-btn"
-                      onClick={() => setVerb(on ? null : v.key)}
-                      disabled={busy || state.over}
+                      onClick={() => { if (!busy && !state.over) setVerb(on ? null : v.key); }}
                       title={`${v.label}, then tap something`}
                       {...keepFocus}
                       style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -3570,9 +3574,8 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
             gap: 6, flexWrap: "wrap" }}>
             <button
               className="hr-btn"
-              onClick={() => submit("i")}
+              onClick={() => { if (!busy && !state.over) submit("i"); }}
               {...keepFocus}
-              disabled={busy || state.over}
               title="Check your inventory"
               style={{ background: "none", border: "none", padding: 0,
                 cursor: busy ? "default" : "pointer",
@@ -3590,7 +3593,6 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                   className="hr-btn"
                   onClick={() => tapTarget("carried", id)}
                   {...keepFocus}
-                  disabled={busy || state.over}
                   title={verb ? `${verb} ${itemName(id)}` : on ? "Put it down" : "Hold it ready to give"}
                   style={{
                     background: "none", border: "none", padding: 0,
