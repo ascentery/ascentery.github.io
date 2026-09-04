@@ -2494,6 +2494,17 @@ const titleCase = (str) =>
 
 const DIR_LETTER = { north: "N", south: "S", east: "E", west: "W", up: "U", down: "D" };
 
+function EyeIcon({ open }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"
+        stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="2.6" stroke="currentColor" strokeWidth="1.6" />
+      {!open && <path d="M4 20L20 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />}
+    </svg>
+  );
+}
+
 function PinIcon({ pinned }) {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden
@@ -2784,6 +2795,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
      fresh in each room, which reads like being somewhere rather than like
      scrolling back through a transcript. */
   const [pinned, setPinned] = useState(true);
+  const [overlay, setOverlay] = useState(true);
   const narrator = useNarrator(voice, voiceURI, rate);
   const vv = useVisualViewport();
   const narrow = useNarrow();
@@ -3047,21 +3059,81 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
             flex: typing ? "1 1 auto" : "0 0 auto",
           }}>
             {art.room?.[state.player.room] && (
-              <img
-                src={art.room[state.player.room]}
-                alt=""
-                onError={(e) => { e.currentTarget.style.display = "none"; }}
-                style={{
-                  display: "block", width: "100%", objectFit: "cover",
-                  imageRendering: "pixelated",
-                  ...(typing
-                    ? { flex: 1, minHeight: 0 }
-                    : { aspectRatio: "16 / 9", maxHeight: "34vh" }),
-                }} />
+              <div style={{ position: "relative", minHeight: 0, display: "flex" }}>
+                <img
+                  src={art.room[state.player.room]}
+                  alt=""
+                  onError={(e) => { e.currentTarget.style.display = "none"; }}
+                  style={{
+                    display: "block", width: "100%", objectFit: "cover",
+                    imageRendering: "pixelated",
+                    ...(typing
+                      ? { flex: 1, minHeight: 0 }
+                      : { aspectRatio: "16 / 9", maxHeight: "34vh" }),
+                  }} />
+
+                {/* Who and what is here, laid over the room itself. People
+                    to the left, things to the right, both stacking upward
+                    from the floor of the picture. */}
+                {overlay && (
+                  <>
+                    <div style={{ position: "absolute", left: 8, bottom: 8, display: "flex",
+                      flexDirection: "column-reverse", gap: 6, pointerEvents: "none" }}>
+                      {mobsInRoom(state, state.player.room).map((id) => {
+                        const url = art.mob?.[id];
+                        if (!url) return null;
+                        return (
+                          <img key={id} src={url} alt={WORLD.mobs[id]?.name ?? ""} title={WORLD.mobs[id]?.name}
+                            onError={(e) => { e.currentTarget.style.display = "none"; }}
+                            style={{ width: 46, height: 46, objectFit: "cover", objectPosition: "50% 25%",
+                              imageRendering: "pixelated", display: "block",
+                              border: `1px solid ${P.paper}`, boxShadow: "0 1px 3px rgba(0,0,0,.4)" }} />
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ position: "absolute", right: 8, bottom: 8, display: "flex",
+                      flexDirection: "column-reverse", gap: 6, pointerEvents: "none" }}>
+                      {(state.roomItems[state.player.room] ?? []).map((id) => {
+                        const url = art.item?.[id];
+                        if (!url) return null;
+                        return (
+                          <img key={id} src={url} alt={itemName(id)} title={itemName(id)}
+                            onError={(e) => { e.currentTarget.style.display = "none"; }}
+                            style={{ width: 46, height: 46, objectFit: "cover",
+                              imageRendering: "pixelated", display: "block",
+                              border: `1px solid ${P.paper}`, boxShadow: "0 1px 3px rgba(0,0,0,.4)" }} />
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
-            <div style={{ padding: "9px 20px", fontFamily: "Newsreader, serif", fontSize: 19,
-              color: P.ink }}>
-              {titleCase(room.name)}
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 20px" }}>
+              <button
+                className="hr-btn"
+                onClick={() => submit("look")}
+                disabled={busy || state.over}
+                title="Look around"
+                style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none",
+                  padding: 0, cursor: busy ? "default" : "pointer",
+                  fontFamily: "Newsreader, serif", fontSize: 19, color: P.ink,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {titleCase(room.name)}
+              </button>
+
+              <button
+                className="hr-btn"
+                onClick={() => setOverlay((v) => !v)}
+                title={overlay ? "Hide who and what is here" : "Show who and what is here"}
+                aria-pressed={overlay}
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
+                  display: "inline-flex", alignItems: "center",
+                  color: overlay ? P.ochre : P.inkSoft }}>
+                <EyeIcon open={overlay} />
+              </button>
             </div>
           </div>
         )}
