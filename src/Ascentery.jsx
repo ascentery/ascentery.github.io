@@ -1994,8 +1994,7 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
 const KINDS = [
   { key: "cover", label: "Splash", ratio: 0.5625 },
   { key: "room",  label: "Rooms", ratio: 0.5625 },
-  // Portraits are square now; 1.33 is the value to restore if that changes.
-  { key: "mob",   label: "Characters", ratio: 1 },
+  { key: "mob",   label: "Characters", ratio: 1.33 },
   { key: "item",  label: "Items", ratio: 1 },
 ];
 
@@ -3242,7 +3241,7 @@ function LogLine({ entry }) {
             loading="lazy"
             onError={(e) => { e.currentTarget.style.display = "none"; }}
             style={{
-              width: 88, flexShrink: 0, aspectRatio: "1 / 1", objectFit: "cover",
+              width: 88, flexShrink: 0, aspectRatio: "3 / 4", objectFit: "cover",
               imageRendering: "pixelated", border: `1px solid ${P.inkSoft}33`,
             }}
           />
