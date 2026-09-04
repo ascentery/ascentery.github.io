@@ -488,6 +488,10 @@ HOW TO WRITE
   The interface reports all of that. You describe the moment, not the bookkeeping.
 - If the player tries something the list above forbids, let the world or the character refuse it
   from inside the fiction, in their own style. Never mention rules, systems, or that you are an AI.
+- Opening a chest, a drawer, a book or anything else that is not a way out is yours to describe.
+  Say what is inside in prose, but do not put anything into the player's hands: if they should
+  come away with something, it has to be a thing this world already has, and they take it with a
+  {"take":...} effect of their own. Never invent an object.
 - If the player just talks, that is a complete turn. Nothing has to change.
 
 REPLY FORMAT
@@ -582,21 +586,35 @@ function directCommand(state, input) {
       text: here.length ? `Take what? ${here.map(itemName).join(", ")}.` : "There is nothing here to pick up." }] };
   }
 
+  /* Opening is two different things wearing one word. A door is a direction
+     and the engine settles it; a chest, a book or a drawer is a thing, and
+     only the narrator knows what is inside. Work out which was meant before
+     deciding who answers. */
   const doorMatch = raw.match(/^(open|unlock|close|lock|shut)\s*(.*)$/);
   if (doorMatch) {
     const closing = ["close", "lock", "shut"].includes(doorMatch[1]);
-    const rest = doorMatch[2].replace(/^(the|a)\s+/, "").replace(/\b(door|gate|hatch|way|exit)\b/g, "").trim();
+    const rest = doorMatch[2].replace(/^(the|a|an|my)\s+/, "").trim();
+    const asDoor = rest.replace(/\b(door|gate|hatch|way|exit|passage)\b/g, "").trim();
 
     const locked = exitsOf(room).filter((e) => e.locked);
-    let dir = SHORT[rest] ?? null;
+    let dir = SHORT[asDoor] ?? null;
 
-    // "open the door" is unambiguous when there is only one locked way out.
-    if (!dir && locked.length === 1) dir = locked[0].dir;
+    // Something here or in hand by that name: a thing, not a way out.
+    const reachable = [...(state.roomItems[state.player.room] ?? []), ...state.player.inventory];
+    if (!dir && rest && matchItems(rest, reachable).length) {
+      return { handled: false };          // the narrator takes it
+    }
+
+    // "open the door" is unambiguous when only one way out is locked.
+    if (!dir && asDoor === "" && locked.length === 1) dir = locked[0].dir;
 
     if (!dir) {
-      return { handled: true, entries: [{ kind: "system", text: locked.length
-        ? `Which one? ${locked.map((e) => e.dir).join(", ")}.`
-        : "Nothing here is locked." }] };
+      if (!rest) {
+        return { handled: true, entries: [{ kind: "system", text: locked.length
+          ? `Which way? ${locked.map((e) => e.dir).join(", ")}.`
+          : "Open what?" }] };
+      }
+      return { handled: false };          // not a door and not a thing we know: let it be narrated
     }
     return { handled: true, effects: [closing ? { close: dir } : { open: dir }] };
   }
@@ -3118,8 +3136,8 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
       return;
     }
 
-    if (verb === "open" || verb === "close") {
-      // Doors are directions. Tapping a character or an item cannot mean one.
+    if ((verb === "open" || verb === "close") && isMob) {
+      // A person is not a thing to be opened.
       setVerb(null);
       return;
     }
@@ -3461,7 +3479,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                       ? `give the ${titleCase(itemName(held))} — now tap who to`
                       : "give — tap what you are carrying")
                   : (verb === "open" || verb === "close")
-                    ? `${verb} — tap an exit`
+                    ? `${verb} — tap an exit or something here`
                     : `${verb} — tap something`)
               : held
                 ? `Holding: ${titleCase(itemName(held))}`
@@ -3590,7 +3608,9 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                         }
                         setVerb(v.key);
                       }}
-                      title={`${v.label}, then tap something`}
+                      title={v.key === "open" || v.key === "close"
+                        ? `${v.label}, then tap an exit or a thing`
+                        : `${v.label}, then tap something`}
                       {...keepFocus}
                       style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
                         gap: 5, padding: "6px 4px", borderRadius: 2,
