@@ -559,11 +559,8 @@ function directCommand(state, input) {
   }
 
   if (["i", "inv", "inventory"].includes(raw)) {
-    const inv = state.player.inventory;
-    return { handled: true, entries: [{
-      kind: "system",
-      text: inv.length ? `You are carrying: ${inv.map(itemName).join(", ")}.` : "You are carrying nothing.",
-    }] };
+    // Rendered by the caller, which has the pictures.
+    return { handled: true, inventory: true };
   }
 
   return { handled: false };
@@ -2743,6 +2740,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
     if (here.length) {
       entries.push({
         kind: "items",
+        label: "lying here",
         items: here.map((id) => ({
           key: id,
           name: itemName(id),
@@ -2856,6 +2854,19 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
     // Deterministic commands never reach the narrator.
     const direct = directCommand(state, command);
     if (direct.handled) {
+      if (direct.inventory) {
+        const inv = state.player.inventory;
+        const entries = inv.length
+          ? [{
+              kind: "items",
+              label: "carrying",
+              items: inv.map((id) => ({ key: id, name: itemName(id), url: art.item?.[id] ?? null })),
+            }]
+          : [{ kind: "system", text: "You are carrying nothing." }];
+        setLog((l) => [...l, ...entries]);
+        return;
+      }
+
       if (direct.look) {
         const entries = arrival(state.player.room);
         // Looking is asking to see the room again, so pinned it replaces the
@@ -3241,7 +3252,11 @@ function LogLine({ entry }) {
             loading="lazy"
             onError={(e) => { e.currentTarget.style.display = "none"; }}
             style={{
-              width: 88, flexShrink: 0, aspectRatio: "3 / 4", objectFit: "cover",
+              // Square and the same size as an item tile, so a room's
+              // characters and its objects read as one row of things rather
+              // than two unrelated treatments.
+              width: 74, height: 74, flexShrink: 0, objectFit: "cover",
+              objectPosition: "50% 25%",   // portraits are tall; keep the head
               imageRendering: "pixelated", border: `1px solid ${P.inkSoft}33`,
             }}
           />
@@ -3259,7 +3274,7 @@ function LogLine({ entry }) {
     return (
       <div className="hr-fade" style={{ margin: "0 0 20px" }}>
         <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft, marginBottom: 8 }}>
-          lying here
+          {entry.label ?? "lying here"}
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
           {entry.items.map((it) => (
