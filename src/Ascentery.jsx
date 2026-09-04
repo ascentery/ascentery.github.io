@@ -2598,6 +2598,14 @@ const keepFocus = {
   onTouchStart: (e) => e.preventDefault(),
 };
 
+/* The few things that must be allowed to take focus for themselves. Anything
+   else tapped inside the play surface leaves focus where it was, so the
+   keyboard does not drop when a player touches the room picture or the gap
+   between two buttons. */
+function wantsFocus(el) {
+  return Boolean(el?.closest?.("input, textarea, select, option, [contenteditable=true]"));
+}
+
 function EyeIcon({ open }) {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -3108,14 +3116,29 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
   const hpFrac = state.player.hp / state.player.maxHp;
 
   return (
-    <div style={{
-      background: P.paper, color: P.ink, overflow: "hidden",
-      width: "100%", maxWidth: "100vw",
-      // Fixed to the visible area, so the keyboard cannot push it out of view.
-      position: "fixed", left: 0,
-      top: vv ? vv.top : 0,
-      height: vv ? vv.height : "100dvh",
-    }}>
+    <div
+      /* A tap on the background — the room picture, a gap in a bar, the
+         transcript — should not close the keyboard. Preventing the default
+         at the surface keeps focus wherever it already is, and anything
+         that genuinely wants focus (the input, the voice controls) stops
+         the event before it reaches here. */
+      onMouseDown={(e) => { if (!wantsFocus(e.target)) e.preventDefault(); }}
+      onTouchStart={(e) => {
+        /* Preventing the default on touchstart also cancels scrolling, so
+           the two scrollable regions are left alone. Everything else in the
+           surface is a button or a picture, and neither needs to scroll. */
+        if (wantsFocus(e.target)) return;
+        if (e.target?.closest?.(".hr-log, .hr-actions, .hr-scroll")) return;
+        e.preventDefault();
+      }}
+      style={{
+        background: P.paper, color: P.ink, overflow: "hidden",
+        width: "100%", maxWidth: "100vw",
+        // Fixed to the visible area, so the keyboard cannot push it out of view.
+        position: "fixed", left: 0,
+        top: vv ? vv.top : 0,
+        height: vv ? vv.height : "100dvh",
+      }}>
       <style>{`
         html, body { overflow: hidden; overscroll-behavior: none; }
         @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
@@ -3321,7 +3344,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
         </div>
 
         {voicePanel && (
-          <div style={{ borderTop: `1px solid ${P.inkSoft}33`, padding: "12px 20px", background: P.paperDeep,
+          <div className="hr-scroll" style={{ borderTop: `1px solid ${P.inkSoft}33`, padding: "12px 20px", background: P.paperDeep,
             flexShrink: 0, maxHeight: "60%", overflowY: "auto", overscrollBehavior: "contain",
             fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft }}>
             <div style={{ marginBottom: 12, borderBottom: `1px solid ${P.inkSoft}22`, paddingBottom: 10,
