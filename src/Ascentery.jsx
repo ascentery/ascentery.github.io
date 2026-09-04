@@ -50,6 +50,10 @@ const freshState = () => ({
   mobs: Object.fromEntries(Object.entries(WORLD.mobs).map(([id, m]) => [id, { room: m.room, hp: m.hp, alive: true, met: false, inventory: [...m.inventory] }])),
   roomItems: JSON.parse(JSON.stringify(WORLD.roomItems)),
   quests: Object.fromEntries(Object.keys(WORLD.quests ?? {}).map((k) => [k, 0])),
+  /* Doors you have opened, keyed "room:direction". Having the key is not
+     the same as having used it: a locked door should be a moment, not a
+     silent tax on your inventory. */
+  opened: {},
   flags: {}, over: null,
 });
 
@@ -77,8 +81,10 @@ function affordances(s) {
   L.push("- move " + exitsOf(room).map(({ dir, to, locked }) => {
     const dest = WORLD.rooms[to]?.name ?? to;
     if (!locked) return `${dir} (to ${dest})`;
+    if (s.opened?.[`${s.player.room}:${dir}`]) return `${dir} (to ${dest}, unlocked earlier)`;
     return held.has(locked)
-      ? `${dir} (to ${dest}, locked but the player is carrying the ${itemName(locked)})`
+      ? `${dir} (to ${dest}, LOCKED. The player holds the ${itemName(locked)} but has not used it. ` +
+        `They must open it before they can pass; carrying the key is not the same as having opened the door)`
       : `${dir} (to ${dest}, LOCKED — the player does not have the ${itemName(locked)} and cannot pass)`;
   }).join(", "));
   const here = s.roomItems[s.player.room] ?? [];
@@ -244,6 +250,7 @@ function reconcile(state) {
   s.player ??= { room: WORLD.startRoom, hp: 20, maxHp: 20, inventory: [] };
   s.player.inventory ??= [];
   s.quests ??= {};
+  s.opened ??= {};
 
   // characters the world has gained
   for (const [id, def] of Object.entries(WORLD.mobs ?? {})) {
@@ -301,8 +308,10 @@ function applyEffects(prev, effects) {
       const dir = String(e.move).toLowerCase();
       const ex = exitOf(room, dir);
       if (!ex?.to || !WORLD.rooms[ex.to]) { note(`There is no way ${e.move} from here.`); continue; }
-      if (ex.locked && !s.player.inventory.includes(ex.locked)) {
-        note(`The way ${dir} is locked. It needs the ${itemName(ex.locked)}.`);
+      if (ex.locked && !s.opened?.[`${s.player.room}:${dir}`]) {
+        note(s.player.inventory.includes(ex.locked)
+          ? `The way ${dir} is locked. You have the ${itemName(ex.locked)}; open it first.`
+          : `The way ${dir} is locked. It needs the ${itemName(ex.locked)}.`);
         continue;
       }
       const dest = ex.to;
@@ -391,6 +400,34 @@ function applyEffects(prev, effects) {
       continue;
     }
 
+    if (e.open || e.close) {
+      const closing = Boolean(e.close);
+      const dir = String(e.open ?? e.close).toLowerCase();
+      const ex = exitOf(room, dir);
+      if (!ex?.to) { note(`There is nothing ${dir} of here to open.`); continue; }
+      if (!ex.locked) {
+        note(closing ? `The way ${dir} has no lock on it.` : `The way ${dir} is already open.`);
+        continue;
+      }
+
+      const key = `${s.player.room}:${dir}`;
+      if (closing) {
+        if (!s.opened[key]) { note(`The way ${dir} is already shut.`); continue; }
+        delete s.opened[key];
+        note(`You shut the way ${dir}. It locks behind you.`);
+        continue;
+      }
+
+      if (s.opened[key]) { note(`The way ${dir} is already open.`); continue; }
+      if (!s.player.inventory.includes(ex.locked)) {
+        note(`It will not open. It needs the ${itemName(ex.locked)}.`);
+        continue;
+      }
+      s.opened[key] = true;
+      note(`The ${itemName(ex.locked)} turns. The way ${dir} is open.`, "gain");
+      continue;
+    }
+
     /* Nothing matched. Silence here is how a player comes to believe a trade
        happened: the prose says it did and the state disagrees. Say so, and
        log the shape so it can be handled above. */
@@ -459,6 +496,7 @@ Reply with JSON only. No markdown fences, no preamble.
 
 Effects — use only these, at most two per turn, only for what the list above permits:
 {"move":"north"} {"take":"apple"} {"drop":"apple"} {"give":{"item":"apple","to":"borin"}}
+{"open":"north"} {"close":"north"}   — only for exits that are locked
 Conversation, looking and examining need no effects. Use an empty array.`;
 }
 
@@ -542,6 +580,25 @@ function directCommand(state, input) {
     const here = state.roomItems[state.player.room] ?? [];
     return { handled: true, entries: [{ kind: "system",
       text: here.length ? `Take what? ${here.map(itemName).join(", ")}.` : "There is nothing here to pick up." }] };
+  }
+
+  const doorMatch = raw.match(/^(open|unlock|close|lock|shut)\s*(.*)$/);
+  if (doorMatch) {
+    const closing = ["close", "lock", "shut"].includes(doorMatch[1]);
+    const rest = doorMatch[2].replace(/^(the|a)\s+/, "").replace(/\b(door|gate|hatch|way|exit)\b/g, "").trim();
+
+    const locked = exitsOf(room).filter((e) => e.locked);
+    let dir = SHORT[rest] ?? null;
+
+    // "open the door" is unambiguous when there is only one locked way out.
+    if (!dir && locked.length === 1) dir = locked[0].dir;
+
+    if (!dir) {
+      return { handled: true, entries: [{ kind: "system", text: locked.length
+        ? `Which one? ${locked.map((e) => e.dir).join(", ")}.`
+        : "Nothing here is locked." }] };
+    }
+    return { handled: true, effects: [closing ? { close: dir } : { open: dir }] };
   }
 
   if (["q", "quest", "quests", "journal"].includes(raw)) {
@@ -2498,7 +2555,7 @@ const DIR_LETTER = { north: "N", south: "S", east: "E", west: "W", up: "U", down
    inherit colour from their button, and a dependency for six glyphs is not
    worth the weight. */
 function Glyph({ name }) {
-  const p = { stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round", fill: "none" };
+  const p = { stroke: "currentColor", strokeWidth: 1.15, strokeLinecap: "round", strokeLinejoin: "round", fill: "none" };
   const paths = {
     look: <><path d="M1.5 8s2.6-4.5 6.5-4.5S14.5 8 14.5 8s-2.6 4.5-6.5 4.5S1.5 8 1.5 8z" {...p} /><circle cx="8" cy="8" r="1.9" {...p} /></>,
     talk: <path d="M13.5 9.5a1.5 1.5 0 01-1.5 1.5H6l-3 2.5V4a1.5 1.5 0 011.5-1.5h7.5A1.5 1.5 0 0113.5 4z" {...p} />,
@@ -2506,6 +2563,8 @@ function Glyph({ name }) {
     drop: <><path d="M8 2.5v8" {...p} /><path d="M4.5 7L8 10.5 11.5 7" {...p} /><path d="M2.5 13.5h11" {...p} /></>,
     give: <><rect x="2.5" y="6.5" width="11" height="7" rx="1" {...p} /><path d="M8 6.5v7" {...p} /><path d="M2.5 9.5h11" {...p} /><path d="M8 6.5S6 2.5 4.5 3.9 6.5 6.5 8 6.5zM8 6.5s2-4 3.5-2.6S9.5 6.5 8 6.5z" {...p} /></>,
     use: <path d="M10.5 2.5a3.5 3.5 0 00-3.1 5.1l-4.6 4.6 1.4 1.4 4.6-4.6a3.5 3.5 0 104.2-4.5l-1.9 1.9-1.5-1.5 1.9-1.9a3.5 3.5 0 00-1-.5z" {...p} />,
+    open: <><path d="M3.5 13.5V3.5l6-1.5v13z" {...p} /><path d="M9.5 4.5h3v9h-3" {...p} /><circle cx="7.6" cy="8" r=".6" fill="currentColor" stroke="none" /></>,
+    close: <><rect x="4" y="2.5" width="8" height="11" rx="1" {...p} /><circle cx="9.6" cy="8" r=".6" fill="currentColor" stroke="none" /></>,
     keys: <><rect x="1.5" y="4.5" width="13" height="8" rx="1.2" {...p} /><path d="M4 7h.01M6.5 7h.01M9 7h.01M11.5 7h.01M4.5 10h7" {...p} /></>,
     grid: <><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" {...p} /><rect x="9" y="2.5" width="4.5" height="4.5" rx="1" {...p} /><rect x="2.5" y="9" width="4.5" height="4.5" rx="1" {...p} /><rect x="9" y="9" width="4.5" height="4.5" rx="1" {...p} /></>,
   };
@@ -2516,13 +2575,21 @@ function Glyph({ name }) {
    settled by the engine. give and use may be either, depending on what the
    world says. */
 const VERBS = [
-  { key: "look", label: "look", targets: ["mob", "item", "carried"] },
-  { key: "talk", label: "talk", targets: ["mob"] },
-  { key: "take", label: "take", targets: ["item"] },
-  { key: "drop", label: "drop", targets: ["carried"] },
-  { key: "give", label: "give", targets: ["carried"] },
-  { key: "use",  label: "use",  targets: ["item", "carried"] },
+  { key: "look",  label: "look" },
+  { key: "talk",  label: "talk" },
+  { key: "take",  label: "take" },
+  { key: "drop",  label: "drop" },
+  { key: "give",  label: "give" },
+  { key: "use",   label: "use" },
+  { key: "open",  label: "open" },
+  { key: "close", label: "close" },
 ];
+
+/* Pressing a button while the input has focus used to take two taps: the
+   first blurred the field, which un-hid the transcript and moved the button
+   out from under the finger, and only the second landed. Preventing the
+   default on pointer-down keeps focus where it is, so the first tap works. */
+const keepFocus = { onMouseDown: (e) => e.preventDefault() };
 
 function EyeIcon({ open }) {
   return (
@@ -3007,6 +3074,12 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
       return;
     }
 
+    if (verb === "open" || verb === "close") {
+      // Doors are directions. Tapping a character or an item cannot mean one.
+      setVerb(null);
+      return;
+    }
+
     if (verb) {
       submit(`${verb} ${label}`);
       setVerb(null);
@@ -3160,6 +3233,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                             disabled={busy || state.over}
                             title={verb ? `${verb} ${who}` : held ? `Give the ${itemName(held)} to ${who}` : `Look at ${who}`}
                             onClick={() => tapTarget("mob", id)}
+                            {...keepFocus}
                             style={{ padding: 0, background: "none", cursor: busy ? "default" : "pointer",
                               border: `1px solid ${held ? P.ochre : P.paper}`, lineHeight: 0,
                               boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
@@ -3182,6 +3256,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                             disabled={busy || state.over}
                             title={verb ? `${verb} ${itemName(id)}` : `Take the ${itemName(id)}`}
                             onClick={() => tapTarget("item", id)}
+                            {...keepFocus}
                             style={{ padding: 0, background: "none", cursor: busy ? "default" : "pointer",
                               border: `1px solid ${P.paper}`, lineHeight: 0,
                               boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
@@ -3202,6 +3277,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
               <button
                 className="hr-btn"
                 onClick={() => submit("look")}
+                {...keepFocus}
                 disabled={busy || state.over}
                 title="Look around"
                 style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none",
@@ -3214,6 +3290,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
               <button
                 className="hr-btn"
                 onClick={() => setOverlay((v) => !v)}
+                {...keepFocus}
                 title={overlay ? "Hide who and what is here" : "Show who and what is here"}
                 aria-pressed={overlay}
                 style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
@@ -3325,9 +3402,17 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                   const locked = typeof ex === "object" && ex?.locked;
                   return (
                     <button key={d} className="hr-btn"
-                      onClick={() => submit(d)}
+                      onClick={() => {
+                        if (verb === "open" || verb === "close") {
+                          submit(`${verb} ${d}`);
+                          setVerb(null);
+                        } else submit(d);
+                      }}
+                      {...keepFocus}
                       disabled={busy || state.over}
-                      title={locked ? `${d} — locked` : `Go ${d}`}
+                      title={verb === "open" || verb === "close"
+                        ? `${verb} the way ${d}`
+                        : locked ? `${d} — locked` : `Go ${d}`}
                       style={{ background: "none", border: "none", padding: "0 1px",
                         cursor: busy ? "default" : "pointer", fontFamily: "inherit",
                         fontSize: 11.5, letterSpacing: ".08em",
@@ -3356,6 +3441,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                 only one of them fits on a phone at a time. */}
             <button className="hr-btn"
               onClick={() => { setActions((v) => !v); setVerb(null); }}
+              {...keepFocus}
               title={actions ? "Type a command instead" : "Choose an action instead"}
               aria-pressed={actions}
               style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
@@ -3374,9 +3460,11 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                       onClick={() => setVerb(on ? null : v.key)}
                       disabled={busy || state.over}
                       title={`${v.label}, then tap something`}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 5,
-                        padding: "6px 9px", borderRadius: 2, cursor: busy ? "default" : "pointer",
-                        background: "transparent",
+                      {...keepFocus}
+                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        gap: 5, padding: "6px 4px", borderRadius: 2,
+                        flex: "1 1 0", minWidth: 74,
+                        cursor: busy ? "default" : "pointer", background: "transparent",
                         fontFamily: "'IBM Plex Mono', monospace", fontSize: 12,
                         color: on ? P.ochre : P.ink,
                         border: `1px solid ${on ? P.ochre : P.inkSoft}44` }}>
@@ -3419,7 +3507,9 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
               ? (held
                   ? `give the ${itemName(held)} — now tap who to`
                   : "give — tap what you are carrying, then who to")
-              : `${verb} — tap something`}
+              : (verb === "open" || verb === "close")
+                ? `${verb} — tap one of the exits above`
+                : `${verb} — tap something`}
           </div>
         )}
 
@@ -3437,6 +3527,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
             <button
               className="hr-btn"
               onClick={() => submit("i")}
+              {...keepFocus}
               disabled={busy || state.over}
               title="Check your inventory"
               style={{ background: "none", border: "none", padding: 0,
@@ -3454,6 +3545,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                   key={id}
                   className="hr-btn"
                   onClick={() => tapTarget("carried", id)}
+                  {...keepFocus}
                   disabled={busy || state.over}
                   title={verb ? `${verb} ${itemName(id)}` : on ? "Put it down" : "Hold it ready to give"}
                   style={{
