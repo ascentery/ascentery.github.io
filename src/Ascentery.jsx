@@ -2796,6 +2796,9 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
      scrolling back through a transcript. */
   const [pinned, setPinned] = useState(true);
   const [overlay, setOverlay] = useState(true);
+  /* Holding an item is a UI state, not a game state: it means "this is the
+     one I will hand over if I tap somebody". */
+  const [held, setHeld] = useState(null);
   const narrator = useNarrator(voice, voiceURI, rate);
   const vv = useVisualViewport();
   const narrow = useNarrow();
@@ -2830,6 +2833,11 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
     else el.scrollTop = 0;
   }, [log, busy, typing]);
   useEffect(() => { onSave({ state, log }); }, [state, log]);
+
+  // Once it is no longer in your hands there is nothing to hold ready.
+  useEffect(() => {
+    if (held && !state.player.inventory.includes(held)) setHeld(null);
+  }, [state.player.inventory, held]);
 
   /* The ambient timer fires often and then declines most of the time: it
      skips while a turn is resolving, while the narrator is speaking, and at
@@ -3078,31 +3086,53 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                 {overlay && (
                   <>
                     <div style={{ position: "absolute", left: 8, bottom: 8, display: "flex",
-                      flexDirection: "column-reverse", gap: 6, pointerEvents: "none" }}>
+                      flexDirection: "column-reverse", gap: 6 }}>
                       {mobsInRoom(state, state.player.room).map((id) => {
                         const url = art.mob?.[id];
                         if (!url) return null;
+                        const who = WORLD.mobs[id]?.name ?? id;
                         return (
-                          <img key={id} src={url} alt={WORLD.mobs[id]?.name ?? ""} title={WORLD.mobs[id]?.name}
-                            onError={(e) => { e.currentTarget.style.display = "none"; }}
-                            style={{ width: 46, height: 46, objectFit: "cover", objectPosition: "50% 25%",
-                              imageRendering: "pixelated", display: "block",
-                              border: `1px solid ${P.paper}`, boxShadow: "0 1px 3px rgba(0,0,0,.4)" }} />
+                          <button key={id} className="hr-btn"
+                            disabled={busy || state.over}
+                            title={held ? `Give the ${itemName(held)} to ${who}` : `Look at ${who}`}
+                            onClick={() => {
+                              if (held) {
+                                submit(`give the ${itemName(held)} to ${who}`);
+                                setHeld(null);
+                              } else {
+                                submit(`look at ${who}`);
+                              }
+                            }}
+                            style={{ padding: 0, background: "none", cursor: busy ? "default" : "pointer",
+                              border: `1px solid ${held ? P.ochre : P.paper}`, lineHeight: 0,
+                              boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
+                            <img src={url} alt={who}
+                              onError={(e) => { e.currentTarget.style.display = "none"; }}
+                              style={{ width: 46, height: 46, objectFit: "cover", objectPosition: "50% 25%",
+                                imageRendering: "pixelated", display: "block" }} />
+                          </button>
                         );
                       })}
                     </div>
 
                     <div style={{ position: "absolute", right: 8, bottom: 8, display: "flex",
-                      flexDirection: "column-reverse", gap: 6, pointerEvents: "none" }}>
+                      flexDirection: "column-reverse", gap: 6 }}>
                       {(state.roomItems[state.player.room] ?? []).map((id) => {
                         const url = art.item?.[id];
                         if (!url) return null;
                         return (
-                          <img key={id} src={url} alt={itemName(id)} title={itemName(id)}
-                            onError={(e) => { e.currentTarget.style.display = "none"; }}
-                            style={{ width: 46, height: 46, objectFit: "cover",
-                              imageRendering: "pixelated", display: "block",
-                              border: `1px solid ${P.paper}`, boxShadow: "0 1px 3px rgba(0,0,0,.4)" }} />
+                          <button key={id} className="hr-btn"
+                            disabled={busy || state.over}
+                            title={`Take the ${itemName(id)}`}
+                            onClick={() => submit(`take ${itemName(id)}`)}
+                            style={{ padding: 0, background: "none", cursor: busy ? "default" : "pointer",
+                              border: `1px solid ${P.paper}`, lineHeight: 0,
+                              boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
+                            <img src={url} alt={itemName(id)}
+                              onError={(e) => { e.currentTarget.style.display = "none"; }}
+                              style={{ width: 46, height: 46, objectFit: "cover",
+                                imageRendering: "pixelated", display: "block" }} />
+                          </button>
                         );
                       })}
                     </div>
@@ -3277,24 +3307,51 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
           </div>
         )}
 
-        {/* what you are carrying, and how you are doing. Tap to check inventory. */}
-        <button
-          className="hr-btn"
-          onClick={() => submit("i")}
-          disabled={busy || state.over}
-          title="Check your inventory"
-          style={{
-            width: "100%", textAlign: "left", flexShrink: 0, cursor: busy ? "default" : "pointer",
-            borderTop: `1px solid ${P.inkSoft}22`, border: "none", borderTopWidth: 1,
-            borderTopStyle: "solid", borderTopColor: `${P.inkSoft}22`,
-            background: "transparent", padding: "10px 20px",
-            display: "flex", alignItems: "center", gap: 12,
-            fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft,
-          }}>
-          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis",
-            whiteSpace: "nowrap" }}>
-            Carrying: {carrying.length ? carrying.map(titleCase).join(", ") : "Nothing"}
-          </span>
+        {/* What you are carrying, and how you are doing. Tapping an item
+            picks it up in the sense of holding it ready — tap a character
+            above to hand it over, or tap it again to put it down. */}
+        <div style={{
+          flexShrink: 0, borderTop: `1px solid ${P.inkSoft}22`,
+          background: "transparent", padding: "10px 20px",
+          display: "flex", alignItems: "center", gap: 12,
+          fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft,
+        }}>
+          <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center",
+            gap: 6, flexWrap: "wrap" }}>
+            <button
+              className="hr-btn"
+              onClick={() => submit("i")}
+              disabled={busy || state.over}
+              title="Check your inventory"
+              style={{ background: "none", border: "none", padding: 0,
+                cursor: busy ? "default" : "pointer",
+                fontFamily: "inherit", fontSize: 11, color: P.inkSoft }}>
+              Carrying:
+            </button>
+
+            {carrying.length === 0 && <span>Nothing</span>}
+
+            {state.player.inventory.map((id, i) => {
+              const on = held === id;
+              return (
+                <button
+                  key={id}
+                  className="hr-btn"
+                  onClick={() => setHeld(on ? null : id)}
+                  disabled={busy || state.over}
+                  title={on ? "Put it down" : "Hold it ready to give"}
+                  style={{
+                    background: "none", border: "none", padding: 0,
+                    cursor: busy ? "default" : "pointer",
+                    fontFamily: "inherit", fontSize: 11,
+                    color: on ? P.ochre : P.ink,
+                    textDecoration: on ? "underline" : "none",
+                  }}>
+                  {titleCase(itemName(id))}{i < state.player.inventory.length - 1 ? "," : ""}
+                </button>
+              );
+            })}
+          </div>
 
           <span style={{ display: "inline-flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
             <span aria-hidden style={{ width: 34, height: 3, background: `${P.inkSoft}33`,
@@ -3304,7 +3361,8 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
             </span>
             {state.player.hp}/{state.player.maxHp}
           </span>
-        </button>
+        </div>
+
 
       </div>
     </div>
@@ -3326,10 +3384,13 @@ function LogLine({ entry }) {
             style={{
               // Square and the same size as an item tile, so a room's
               // characters and its objects read as one row of things rather
-              // than two unrelated treatments.
+              // than two unrelated treatments. Same border and shadow as the
+              // tiles over the room picture, so they are recognisably the
+              // same objects in two places.
               width: 74, height: 74, flexShrink: 0, objectFit: "cover",
               objectPosition: "50% 25%",   // portraits are tall; keep the head
-              imageRendering: "pixelated", border: `1px solid ${P.inkSoft}33`,
+              imageRendering: "pixelated",
+              border: `1px solid ${P.paper}`, boxShadow: "0 1px 3px rgba(0,0,0,.35)",
             }}
           />
         )}
@@ -3359,7 +3420,8 @@ function LogLine({ entry }) {
                   onError={(e) => { e.currentTarget.style.display = "none"; }}
                   style={{
                     width: 74, height: 74, objectFit: "cover", display: "block",
-                    imageRendering: "pixelated", border: `1px solid ${P.inkSoft}33`,
+                    imageRendering: "pixelated",
+                    border: `1px solid ${P.paper}`, boxShadow: "0 1px 3px rgba(0,0,0,.35)",
                   }}
                 />
               ) : (
