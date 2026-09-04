@@ -2773,11 +2773,20 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
   const [pinned, setPinned] = useState(true);
   const narrator = useNarrator(voice, voiceURI, rate);
   const vv = useVisualViewport();
+  const narrow = useNarrow();
+  const [inputFocused, setInputFocused] = useState(false);
+
   /* With a keyboard up on a phone there is barely three hundred pixels of
      visible height. Rather than shrink everything, the transcript steps out
      of the way: the picture and the input are what you need while typing,
-     and the text comes back the moment the keyboard closes. */
-  const typing = Boolean(vv?.keyboard) && pinned;
+     and the text comes back the moment the keyboard closes.
+
+     Focus rather than viewport arithmetic. Comparing window.innerHeight
+     against visualViewport.height used to work, but the viewport meta asks
+     the browser for interactive-widget=resizes-content, which shrinks both
+     together and leaves nothing to measure. Focus says the same thing more
+     directly: on a phone the keyboard is up exactly when the field has it. */
+  const typing = pinned && narrow && inputFocused;
   const logRef = useRef(null), inputRef = useRef(null), stateRef = useRef(state), busyRef = useRef(busy);
   const narratorRef = useRef(narrator);
   stateRef.current = state; busyRef.current = busy; narratorRef.current = narrator;
@@ -2840,7 +2849,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
       }
       if (direct.entries) {
         setLog((l) => [...l, ...direct.entries]);
-        setTimeout(() => inputRef.current?.focus(), 0);
+        if (!narrow) setTimeout(() => inputRef.current?.focus(), 0);
         return;
       }
       const { state: next, log: engineLog } = applyEffects(state, direct.effects);
@@ -2862,7 +2871,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
       setLog((l) => (pinned && moved ? entries : [...l, ...entries]));
       setState(next);
       narrator.speak(readable(entries));
-      setTimeout(() => inputRef.current?.focus(), 0);
+      if (!narrow) setTimeout(() => inputRef.current?.focus(), 0);
       return;
     }
 
@@ -2891,9 +2900,11 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
       setLog((l) => [...l, { kind: "system", text: err.message || "The connection dropped mid-sentence. Try the command again." }]);
     } finally {
       setBusy(false);
-      setTimeout(() => inputRef.current?.focus(), 0);
+      // Refocusing on a phone would pop the keyboard straight back up and
+      // hide the reply the player just waited for.
+      if (!narrow) setTimeout(() => inputRef.current?.focus(), 0);
     }
-  }, [input, busy, state, char]);
+  }, [input, busy, state, char, narrow]);
 
   const restart = () => {
     setState(freshState());
@@ -3132,7 +3143,10 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 20px 14px", flexShrink: 0,
             borderTop: `1px solid ${P.inkSoft}33`, paddingBottom: "max(14px, env(safe-area-inset-bottom))" }}>
             <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: P.ochre, fontSize: 13 }}>›</span>
-            <input ref={inputRef} className="hr-in" value={input} autoFocus disabled={busy}
+            <input ref={inputRef} className="hr-in" value={input} disabled={busy}
+              autoFocus={!narrow}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
               onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()}
               style={{
                 flex: 1, minWidth: 0, background: "transparent", border: "none",
