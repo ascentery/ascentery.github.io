@@ -3388,9 +3388,18 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
           background: P.paperDeep, flexShrink: 0, display: "flex", alignItems: "baseline", gap: 12,
           fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: P.inkSoft }}>
 
-          <span style={{ flex: 1, minWidth: 0, color: P.ink, overflow: "hidden",
-            textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {titleCase(room.name)}
+          <span style={{ flex: 1, minWidth: 0, overflow: "hidden",
+            textOverflow: "ellipsis", whiteSpace: "nowrap",
+            color: verb ? P.ochre : P.ink }}>
+            {verb
+              ? (verb === "give"
+                  ? (held
+                      ? `give the ${itemName(held)} — now tap who to`
+                      : "give — tap what you are carrying")
+                  : (verb === "open" || verb === "close")
+                    ? `${verb} — tap an exit`
+                    : `${verb} — tap something`)
+              : titleCase(room.name)}
           </span>
 
           <span style={{ whiteSpace: "nowrap", letterSpacing: ".08em", display: "inline-flex",
@@ -3466,7 +3475,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                         flex: "1 1 0", minWidth: 74,
                         cursor: busy ? "default" : "pointer", background: "transparent",
                         fontFamily: "'IBM Plex Mono', monospace", fontSize: 12,
-                        color: on ? P.ochre : P.ink,
+                        color: on ? P.ochre : P.inkSoft,
                         border: `1px solid ${on ? P.ochre : P.inkSoft}44` }}>
                       <Glyph name={v.key} />
                       {v.label}
@@ -3499,19 +3508,6 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
           </div>
         )}
 
-
-        {verb && (
-          <div style={{ flexShrink: 0, padding: "0 20px 8px",
-            fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.ochre }}>
-            {verb === "give"
-              ? (held
-                  ? `give the ${itemName(held)} — now tap who to`
-                  : "give — tap what you are carrying, then who to")
-              : (verb === "open" || verb === "close")
-                ? `${verb} — tap one of the exits above`
-                : `${verb} — tap something`}
-          </div>
-        )}
 
         {/* What you are carrying, and how you are doing. Tapping an item
             picks it up in the sense of holding it ready — tap a character
