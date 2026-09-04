@@ -2650,19 +2650,33 @@ function useCoarsePointer() {
 
 function useVisualViewport() {
   const [box, setBox] = useState(null);
+  /* The tallest the viewport has ever been is the no-keyboard baseline.
+     Comparing against window.innerHeight does not work: the viewport meta
+     asks for interactive-widget=resizes-content, which shrinks both
+     together and leaves nothing to measure. */
+  const tallest = useRef(0);
+  const lastWidth = useRef(0);
 
   useEffect(() => {
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
     if (!vv) return;
-    const update = () => setBox({
-      height: vv.height,
-      top: vv.offsetTop,
-      /* The layout viewport does not move when a keyboard opens; the visual
-         one shrinks. The gap between them is the keyboard, plus a little
-         browser chrome. 120px separates the two cleanly: no keyboard is
-         shorter than that and no address bar is taller. */
-      keyboard: window.innerHeight - vv.height > 120,
-    });
+
+    const update = () => {
+      // A rotation changes what "full height" means, so the baseline resets.
+      if (vv.width !== lastWidth.current) {
+        lastWidth.current = vv.width;
+        tallest.current = 0;
+      }
+      if (vv.height > tallest.current) tallest.current = vv.height;
+
+      setBox({
+        height: vv.height,
+        top: vv.offsetTop,
+        // Something is covering part of the screen: a keyboard, usually.
+        shrunk: vv.height < tallest.current - 100,
+      });
+    };
+
     update();
     vv.addEventListener("resize", update);
     vv.addEventListener("scroll", update);
@@ -2932,7 +2946,11 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
      together and leaves nothing to measure. Focus says the same thing more
      directly: on a phone the keyboard is up exactly when the field has it. */
   const onPhone = coarse || narrow;
-  const typing = pinned && onPhone && inputFocused;
+  /* Focus alone is not enough: a keyboard can be swiped away without the
+     field losing focus, and the transcript should come back when the room
+     to show it does. Where the viewport cannot be measured, focus stands
+     in on its own. */
+  const typing = pinned && onPhone && inputFocused && (vv ? vv.shrunk : true);
   const logRef = useRef(null), inputRef = useRef(null), stateRef = useRef(state), busyRef = useRef(busy);
   const narratorRef = useRef(narrator);
   stateRef.current = state; busyRef.current = busy; narratorRef.current = narrator;
@@ -3570,23 +3588,23 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
           display: "flex", alignItems: "center", gap: 12,
           fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft,
         }}>
-          {/* One line that slides sideways. Wrapping grew the bar upward,
-              which moved the input and everything above it. */}
+          <button
+            className="hr-btn"
+            onClick={() => { if (!busy && !state.over) submit("i"); }}
+            {...keepFocus}
+            title="Check your inventory"
+            style={{ background: "none", border: "none", padding: 0, flexShrink: 0,
+              cursor: busy ? "default" : "pointer",
+              fontFamily: "inherit", fontSize: 11, color: P.inkSoft }}>
+            Carrying:
+          </button>
+
+          {/* Only the items slide. The label stays put, or it scrolls away
+              and the row reads as a list of nothing in particular. */}
           <div className="hr-actions" style={{ flex: 1, minWidth: 0, display: "flex",
             alignItems: "center", gap: 6, flexWrap: "nowrap",
             overflowX: "auto", overflowY: "hidden",
             overscrollBehaviorX: "contain", WebkitOverflowScrolling: "touch" }}>
-            <button
-              className="hr-btn"
-              onClick={() => { if (!busy && !state.over) submit("i"); }}
-              {...keepFocus}
-              title="Check your inventory"
-              style={{ background: "none", border: "none", padding: 0, flexShrink: 0,
-                cursor: busy ? "default" : "pointer",
-                fontFamily: "inherit", fontSize: 11, color: P.inkSoft }}>
-              Carrying:
-            </button>
-
             {carrying.length === 0 && <span style={{ flexShrink: 0 }}>Nothing</span>}
 
             {state.player.inventory.map((id, i) => {
