@@ -3113,8 +3113,9 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
         html, body { overflow: hidden; overscroll-behavior: none; }
         @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; } body { margin: 0 }
-        .hr-log { scrollbar-width: none; -ms-overflow-style: none; }
-        .hr-log::-webkit-scrollbar { width: 0; height: 0; display: none; }
+        .hr-log, .hr-actions { scrollbar-width: none; -ms-overflow-style: none; }
+        .hr-log::-webkit-scrollbar,
+        .hr-actions::-webkit-scrollbar { width: 0; height: 0; display: none; }
         .hr-in::placeholder { color: ${P.inkSoft}88 }
         .hr-in:focus { outline: none }
         .hr-btn:focus-visible { outline: 2px solid ${P.ochre}; outline-offset: 2px }
@@ -3460,8 +3461,14 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
             </button>
 
             {actions ? (
-              <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center",
-                gap: 6, flexWrap: "wrap" }}>
+              /* One row that slides sideways rather than wrapping onto a
+                 second line: the bar sits directly above the keyboard on a
+                 phone, and a second row would push the input off screen. */
+              <div className="hr-actions" style={{ flex: 1, minWidth: 0, display: "flex",
+                alignItems: "center", gap: 6, flexWrap: "nowrap",
+                overflowX: "auto", overflowY: "hidden",
+                overscrollBehaviorX: "contain", WebkitOverflowScrolling: "touch",
+                scrollSnapType: "x proximity", padding: "1px 0" }}>
                 {VERBS.map((v) => {
                   const on = verb === v.key;
                   return (
@@ -3472,7 +3479,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                       {...keepFocus}
                       style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
                         gap: 5, padding: "6px 4px", borderRadius: 2,
-                        flex: "1 1 0", minWidth: 74,
+                        flex: "0 0 auto", width: 76, scrollSnapAlign: "start",
                         cursor: busy ? "default" : "pointer", background: "transparent",
                         fontFamily: "'IBM Plex Mono', monospace", fontSize: 12,
                         color: on ? P.ochre : P.inkSoft,
