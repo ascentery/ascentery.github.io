@@ -2929,6 +2929,10 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
      it applies to. `verb` is what is waiting for a target. */
   const [actions, setActions] = useState(false);
   const [verb, setVerb] = useState(null);
+  /* What the last action was aimed at. Shown where the room name goes, so
+     the bar answers "what am I dealing with" rather than repeating where
+     you are, which the panel above already says. */
+  const [subject, setSubject] = useState(null);
   const narrator = useNarrator(voice, voiceURI, rate);
   const vv = useVisualViewport();
   const narrow = useNarrow();
@@ -2972,6 +2976,9 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
   useEffect(() => {
     if (held && !state.player.inventory.includes(held)) setHeld(null);
   }, [state.player.inventory, held]);
+
+  // A new room is a new subject.
+  useEffect(() => { setSubject(null); }, [state.player.room]);
 
   /* The ambient timer fires often and then declines most of the time: it
      skips while a turn is resolving, while the narrator is speaking, and at
@@ -3119,6 +3126,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
 
     if (verb) {
       submit(`${verb} ${label}`);
+      setSubject(label);
       setVerb(null);
       return;
     }
@@ -3128,9 +3136,11 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
     if (isMob) {
       if (held) { submit(`give the ${itemName(held)} to ${label}`); setHeld(null); }
       else submit(`look at ${label}`);
+      setSubject(label);
       return;
     }
     submit(`take ${label}`);
+    setSubject(label);
   };
 
   const room = WORLD.rooms[state.player.room];
@@ -3438,18 +3448,26 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
           background: P.paperDeep, flexShrink: 0, display: "flex", alignItems: "baseline", gap: 12,
           fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: P.inkSoft }}>
 
+          {/* Whatever you are dealing with: the action you are part-way
+              through, then what you are holding, then what you last acted
+              on, and only failing all of that, where you are. The picture
+              above already says where you are. */}
           <span style={{ flex: 1, minWidth: 0, overflow: "hidden",
             textOverflow: "ellipsis", whiteSpace: "nowrap",
-            color: verb ? P.ochre : P.ink }}>
+            color: verb || held ? P.ochre : P.ink }}>
             {verb
               ? (verb === "give"
                   ? (held
-                      ? `give the ${itemName(held)} — now tap who to`
+                      ? `give the ${titleCase(itemName(held))} — now tap who to`
                       : "give — tap what you are carrying")
                   : (verb === "open" || verb === "close")
                     ? `${verb} — tap an exit`
                     : `${verb} — tap something`)
-              : titleCase(room.name)}
+              : held
+                ? `Holding: ${titleCase(itemName(held))}`
+                : subject
+                  ? titleCase(subject)
+                  : titleCase(room.name)}
           </span>
 
           <span style={{ whiteSpace: "nowrap", letterSpacing: ".08em", display: "inline-flex",
@@ -3558,7 +3576,20 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                   const on = verb === v.key;
                   return (
                     <button key={v.key} className="hr-btn"
-                      onClick={() => { if (!busy && !state.over) setVerb(on ? null : v.key); }}
+                      onClick={() => {
+                        if (busy || state.over) return;
+                        if (on) { setVerb(null); return; }
+                        /* drop and use can only mean the thing in your hand.
+                           Asking for a tap you have already made is busywork. */
+                        if (held && (v.key === "drop" || v.key === "use")) {
+                          submit(`${v.key} ${itemName(held)}`);
+                          setSubject(itemName(held));
+                          setHeld(null);
+                          setVerb(null);
+                          return;
+                        }
+                        setVerb(v.key);
+                      }}
                       title={`${v.label}, then tap something`}
                       {...keepFocus}
                       style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
