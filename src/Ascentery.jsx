@@ -2513,6 +2513,21 @@ function PinIcon({ pinned }) {
    page pans around to follow the caret — which reads as the whole interface
    sliding and zooming. Measuring visualViewport instead keeps the input
    sitting directly above the keyboard. */
+/* Width is a poor test for "is there an on-screen keyboard": a narrow
+   desktop window is not a phone, and a tablet in landscape is. Pointer
+   coarseness asks the question directly. */
+function useCoarsePointer() {
+  const [coarse, setCoarse] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse)");
+    const update = () => setCoarse(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return coarse;
+}
+
 function useVisualViewport() {
   const [box, setBox] = useState(null);
 
@@ -2774,6 +2789,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
   const narrator = useNarrator(voice, voiceURI, rate);
   const vv = useVisualViewport();
   const narrow = useNarrow();
+  const coarse = useCoarsePointer();
   const [inputFocused, setInputFocused] = useState(false);
 
   /* With a keyboard up on a phone there is barely three hundred pixels of
@@ -2786,7 +2802,8 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
      the browser for interactive-widget=resizes-content, which shrinks both
      together and leaves nothing to measure. Focus says the same thing more
      directly: on a phone the keyboard is up exactly when the field has it. */
-  const typing = pinned && narrow && inputFocused;
+  const onPhone = coarse || narrow;
+  const typing = pinned && onPhone && inputFocused;
   const logRef = useRef(null), inputRef = useRef(null), stateRef = useRef(state), busyRef = useRef(busy);
   const narratorRef = useRef(narrator);
   stateRef.current = state; busyRef.current = busy; narratorRef.current = narrator;
@@ -2849,7 +2866,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
       }
       if (direct.entries) {
         setLog((l) => [...l, ...direct.entries]);
-        if (!narrow) setTimeout(() => inputRef.current?.focus(), 0);
+        if (!onPhone) setTimeout(() => inputRef.current?.focus(), 0);
         return;
       }
       const { state: next, log: engineLog } = applyEffects(state, direct.effects);
@@ -2871,7 +2888,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
       setLog((l) => (pinned && moved ? entries : [...l, ...entries]));
       setState(next);
       narrator.speak(readable(entries));
-      if (!narrow) setTimeout(() => inputRef.current?.focus(), 0);
+      if (!onPhone) setTimeout(() => inputRef.current?.focus(), 0);
       return;
     }
 
@@ -2902,9 +2919,9 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
       setBusy(false);
       // Refocusing on a phone would pop the keyboard straight back up and
       // hide the reply the player just waited for.
-      if (!narrow) setTimeout(() => inputRef.current?.focus(), 0);
+      if (!onPhone) setTimeout(() => inputRef.current?.focus(), 0);
     }
-  }, [input, busy, state, char, narrow]);
+  }, [input, busy, state, char, onPhone]);
 
   const restart = () => {
     setState(freshState());
@@ -3092,6 +3109,19 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
               </button>
             </div>
 
+            <div style={{ marginTop: 12, borderTop: `1px solid ${P.inkSoft}22`, paddingTop: 10,
+              fontSize: 10.5, color: P.inkSoft, lineHeight: 1.9 }}>
+              <div>
+                touch {String(coarse)} · narrow {String(narrow)} · pinned {String(pinned)} ·
+                {" "}focus {String(inputFocused)} · hiding {String(typing)}
+              </div>
+              <div>
+                width {typeof window !== "undefined" ? window.innerWidth : 0} ·
+                {" "}visible {vv ? Math.round(vv.height) : "?"} of
+                {" "}{typeof window !== "undefined" ? window.innerHeight : 0}
+              </div>
+            </div>
+
             <details style={{ marginTop: 12, borderTop: `1px solid ${P.inkSoft}22`, paddingTop: 10 }}>
               <summary style={{ cursor: "pointer", fontSize: 11, color: P.inkSoft, letterSpacing: ".04em" }}>
                 what gets prepended to your next command
@@ -3144,7 +3174,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
             borderTop: `1px solid ${P.inkSoft}33`, paddingBottom: "max(14px, env(safe-area-inset-bottom))" }}>
             <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: P.ochre, fontSize: 13 }}>›</span>
             <input ref={inputRef} className="hr-in" value={input} disabled={busy}
-              autoFocus={!narrow}
+              autoFocus={!onPhone}
               onFocus={() => setInputFocused(true)}
               onBlur={() => setInputFocused(false)}
               onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()}
