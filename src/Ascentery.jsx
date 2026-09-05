@@ -2938,6 +2938,12 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
   const E = useMemo(() => makeEngine(world), [world]);
   const { WORLD, freshState, reconcile, itemName, propName, mobsInRoom, propsInRoom, applyEffects, buildPrompt, directCommand } = E;
 
+  /* Pinned by default: the picture stays put and the text below it starts
+     fresh in each room, which reads like being somewhere rather than like
+     scrolling back through a transcript. */
+  const [pinned, setPinned] = useState(true);
+  const [overlay, setOverlay] = useState(true);
+
   /* Walking into a room is a sequence: the place, then who is in it, then
      what is lying about. Each part is skipped if there is nothing to show. */
   const arrival = (roomKey, st = state, withHeading = !pinned) => {
@@ -3020,11 +3026,6 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
   const [voiceURI, setVoiceURI] = useState(null);
   const [rate, setRate] = useState(0.95);
   const [voicePanel, setVoicePanel] = useState(false);
-  /* Pinned by default: the picture stays put and the text below it starts
-     fresh in each room, which reads like being somewhere rather than like
-     scrolling back through a transcript. */
-  const [pinned, setPinned] = useState(true);
-  const [overlay, setOverlay] = useState(true);
   /* Holding an item is a UI state, not a game state: it means "this is the
      one I will hand over if I tap somebody". */
   const [held, setHeld] = useState(null);
