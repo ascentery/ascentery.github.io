@@ -3076,29 +3076,19 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
       });
     }
 
+    /* Props first, then items, in one row: they read as "what is in this
+       room" rather than as two separate categories the player has to parse
+       apart. */
     const fixtures = propsInRoom(st, roomKey);
-    if (fixtures.length) {
-      entries.push({
-        kind: "items",
-        label: "fixed here",
-        items: fixtures.map((id) => ({
-          key: id,
-          name: WORLD.props[id].name,
-          url: art.prop?.[id] ?? null,
-        })),
-      });
-    }
-
     const here = itemsInRoom(st, roomKey);
-    if (here.length) {
+    if (fixtures.length || here.length) {
       entries.push({
         kind: "items",
-        label: "lying here",
-        items: here.map((id) => ({
-          key: id,
-          name: itemName(id),
-          url: art.item?.[id] ?? null,
-        })),
+        label: "You see",
+        items: [
+          ...fixtures.map((id) => ({ key: id, name: WORLD.props[id].name, url: art.prop?.[id] ?? null })),
+          ...here.map((id) => ({ key: id, name: itemName(id), url: art.item?.[id] ?? null })),
+        ],
       });
     }
 
@@ -3954,7 +3944,7 @@ function LogLine({ entry }) {
     return (
       <div className="hr-fade" style={{ margin: "0 0 20px" }}>
         <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: P.inkSoft, marginBottom: 8 }}>
-          {entry.label ?? "lying here"}
+          {entry.label ?? "You see"}
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
           {entry.items.map((it) => (
