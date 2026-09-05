@@ -12,6 +12,7 @@ import {
   ROOM_CHOICES, genCost, GEN_BASE_CENTS, GEN_PER_ROOM_CENTS,
   renameEntity, loadNameables, amendWorld,
   loadHistory, undoTo, deleteArt,
+  saveWorldDetails, isFullyIllustrated, watchGeneration,
   REPORT_REASONS, reportWorld, loadReports, resolveReport, unpublishWorld,
   checkUsername, claimUsername, startCheckout, TOPUPS,
   loadSetting, saveSetting, PROVIDERS,
@@ -997,7 +998,7 @@ export default function Ascentery() {
         {view.name === "username" && <UsernamePage me={me} setMe={setMe} go={go} reason={view.reason} next={view.next} />}
         {view.name === "create" && <Create me={me} refreshWorlds={refreshWorlds} go={go} />}
         {view.name === "game" && <GameDetail game={games.find((g) => g.id === view.id)} chars={chars} saves={saves} go={go} from={view.from ?? "browse"} isMine={games.find((g) => g.id === view.id)?.authorId === me.id} />}
-        {view.name === "edit" && <EditGame game={games.find((g) => g.id === view.id)} refreshWorlds={refreshWorlds} me={me} setMe={setMe} go={go} />}
+        {view.name === "edit" && <EditGame game={games.find((g) => g.id === view.id)} refreshWorlds={refreshWorlds} me={me} setMe={setMe} go={go} chars={chars} />}
       </main>
     </Shell>
   );
@@ -1802,12 +1803,14 @@ function Create({ me, refreshWorlds, go }) {
   const [worldId, setWorldId] = useState(null);
   const [size, setSize] = useState("auto");
   const [needsFunds, setNeedsFunds] = useState(false);
+  const [stage, setStage] = useState(null);   // map | plot | prose | done, while building
 
   const build = async () => {
-    setPhase("building"); setStep(3); setError(null);
+    setPhase("building"); setStep(3); setError(null); setStage(null);
+    let id = worldId;
     try {
       const choice = ROOM_CHOICES.find((c) => c.key === size) ?? ROOM_CHOICES[0];
-      const id = worldId ?? await createWorld({
+      id = id ?? await createWorld({
         userId: me.id,
         title: title.trim() || "Untitled world",
         brief: desc.trim(),
@@ -1815,15 +1818,26 @@ function Create({ me, refreshWorlds, go }) {
         roomMax: choice.max,
       });
       setWorldId(id);
-      const res = await generateWorld(id);
-      setResult(res);
-      setPhase("review");
-      refreshWorlds();
+
+      // Poll the real stage while the request is in flight, rather than
+      // guessing at progress with a timer.
+      const stop = watchGeneration(id, (status, gs) => { if (status === "generating") setStage(gs); });
+      let res;
+      try {
+        res = await generateWorld(id);
+      } finally {
+        stop();
+      }
+
+      await refreshWorlds();
+      // Straight to the editor: illustrating is the next real step, and the
+      // old review screen was one more click between building and doing it.
+      go("edit", { id });
     } catch (e) {
       setError(e.message);
       setNeedsFunds(Boolean(e.needsFunds));
       setPhase("failed");
-      refreshWorlds();
+      await refreshWorlds();
     }
   };
 
@@ -1920,7 +1934,7 @@ function Create({ me, refreshWorlds, go }) {
         </div>
       </>)}
 
-      {step === 3 && phase === "building" && <Building />}
+      {step === 3 && phase === "building" && <Building stage={stage} />}
 
       {step === 3 && phase === "failed" && (<>
         <div style={{ border: "1px solid " + T.clay + "55", padding: 18, borderRadius: 2, marginBottom: 22 }}>
@@ -1939,73 +1953,44 @@ function Create({ me, refreshWorlds, go }) {
           <Btn onClick={() => { setPhase("idle"); setStep(1); }}>Edit the brief</Btn>
         </div>
       </>)}
-
-      {step === 3 && phase === "review" && result && (<>
-        <div style={{ border: "1px solid " + T.edge, borderRadius: 2, marginBottom: 24 }}>
-          <div style={{ padding: "14px 18px", borderBottom: "1px solid " + T.edge, display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontFamily: T.serif, fontSize: 17, flex: 1 }}>{result.title}</span>
-            {/* Which model built it is an operational detail, not something
-                a creator needs. Admins see it because they chose it. */}
-            {me.isAdmin && result.built_by && (
-              <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.boneDim }}>{result.built_by}</span>
-            )}
-            <Chip status="ready" />
-          </div>
-          <div style={{ padding: "14px 18px", fontFamily: T.mono, fontSize: 12.5, lineHeight: 2, color: T.boneDim }}>
-            <div>{result.stats.rooms} rooms, every exit leads somewhere and comes back</div>
-            <div>{result.stats.mobs} characters, all placed in rooms that exist</div>
-            <div>
-              {result.stats.quests} quests, {result.stats.items} items
-              {result.stats.props ? `, ${result.stats.props} things to work` : ""}, all of them reachable
-            </div>
-            {typeof result.cost_cents === "number" && (
-              <div>Cost {money(result.cost_cents)}{typeof result.balance_cents === "number"
-                ? ` \u00b7 ${money(result.balance_cents)} left` : ""}</div>
-            )}
-            {(result.warnings || []).map((w, i) => (
-              <div key={i} style={{ color: T.clay }}>{w.message || String(w)}</div>
-            ))}
-          </div>
-        </div>
-        <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, marginTop: 0 }}>
-          Publishing puts it in Browse for everyone. A draft stays yours alone, and you can publish
-          later from its settings.
-        </p>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Btn kind="solid" onClick={() => finish(true)}>Publish</Btn>
-          <Btn onClick={() => finish(false)}>Keep as draft</Btn>
-        </div>
-      </>)}
     </div>
   );
 }
 
-function Building() {
-  /* This used to tick through a list of named steps, which read as progress
-     and was not: the model is working the whole time and nothing reports
-     back until it finishes. A world that failed at the end looked like it
-     had failed at whichever line the timer had reached, which sent us
-     looking in the wrong place. An elapsed clock is honest. */
+function Building({ stage }) {
   const [secs, setSecs] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setSecs((n) => n + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
+  const at = GEN_STEPS.findIndex((s) => s.key === stage);
   const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
 
   return (
-    <div style={{ border: "1px solid " + T.edge, padding: "34px 22px", borderRadius: 2 }}>
-      <div style={{ fontFamily: T.serif, fontSize: 19, marginBottom: 8 }}>
+    <div style={{ border: "1px solid " + T.edge, padding: "30px 22px", borderRadius: 2 }}>
+      <div style={{ fontFamily: T.serif, fontSize: 19, marginBottom: 16 }}>
         Building the world
       </div>
-      <p style={{ fontFamily: T.serif, fontSize: 15.5, color: T.boneDim, lineHeight: 1.6, margin: "0 0 16px" }}>
-        Rooms and exits, characters and what they carry, then a check that every door leads
-        somewhere and everything you need can be reached. If it does not hold together it goes
-        back to be fixed, which is why this sometimes takes two passes.
+
+      {GEN_STEPS.map((s, i) => {
+        const state = at < 0 ? "pending" : i < at ? "done" : i === at ? "active" : "pending";
+        return (
+          <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 10,
+            fontFamily: T.mono, fontSize: 12.5, lineHeight: 2.1,
+            color: state === "done" ? T.boneDim : state === "active" ? T.ochre : T.edge }}>
+            <span style={{ width: 14, flexShrink: 0 }}>{state === "done" ? "\u2713" : state === "active" ? "\u00b7" : ""}</span>
+            {s.label}
+          </div>
+        );
+      })}
+
+      <p style={{ fontFamily: T.serif, fontSize: 14.5, color: T.boneDim, lineHeight: 1.6, margin: "16px 0 0" }}>
+        If it does not hold together it goes back and fixes itself, which is why this sometimes
+        pauses on one step longer than the others.
       </p>
-      <div style={{ fontFamily: T.mono, fontSize: 12, color: secs > 120 ? T.clay : T.ochre }}>
-        {clock}{secs > 120 ? " — longer than usual" : ""}
+      <div style={{ fontFamily: T.mono, fontSize: 11, color: secs > 150 ? T.clay : T.boneDim, marginTop: 10 }}>
+        {clock}{secs > 150 ? " — longer than usual" : ""}
       </div>
     </div>
   );
@@ -2092,9 +2077,16 @@ function GameDetail({ game, chars, saves, go, from = "browse", isMine }) {
 }
 
 /* ---------- edit ---------- */
-function EditGame({ game, refreshWorlds, me, setMe, go }) {
+function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
   const [tab, setTab] = useState("art");
   const [art, setArt] = useState(null);
+  const [illustrated, setIllustrated] = useState(false);
+  const [pubError, setPubError] = useState(null);
+
+  const checkIllustrated = () => {
+    if (!game?.id) return;
+    isFullyIllustrated(game.id).then(setIllustrated).catch(() => setIllustrated(false));
+  };
 
   useEffect(() => {
     if (!game) return;
@@ -2102,6 +2094,7 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
     loadArt(game.id)
       .then((rs) => { if (!cancelled) setArt(rs); })
       .catch(() => { if (!cancelled) setArt([]); });
+    checkIllustrated();
     return () => { cancelled = true; };
   }, [game?.id]);
 
@@ -2115,9 +2108,23 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
         <h1 style={{ fontFamily: T.serif, fontSize: 28, fontWeight: 400, margin: 0 }}>{game.title}</h1>
         <Chip status={game.status} />
       </div>
-      <div style={{ fontFamily: T.mono, fontSize: 11.5, color: T.boneDim, marginBottom: 22 }}>
+      <div style={{ fontFamily: T.mono, fontSize: 11.5, color: T.boneDim, marginBottom: 18 }}>
         {game.rooms} rooms &middot; {game.mobs} characters &middot; {game.plays.toLocaleString()} plays
       </div>
+
+      {game.status === "ready" && (
+        <div style={{ marginBottom: 22 }}>
+          <Btn kind="solid" disabled={!chars?.length}
+            onClick={() => go("play", { id: game.id, charId: chars?.[0]?.id })}>
+            Play
+          </Btn>
+          {!chars?.length && (
+            <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginLeft: 10 }}>
+              Make a character on your profile first.
+            </span>
+          )}
+        </div>
+      )}
 
       {game.status === "failed" && game.failureNote && (
         <p style={{ fontFamily: T.mono, fontSize: 12, color: T.clay, lineHeight: 1.7,
@@ -2126,8 +2133,8 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
         </p>
       )}
 
-      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24 }}>
-        {[["art", "Pictures"], ["world", "World"], ["settings", "Settings"]].map(([k, label]) => (
+      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24, flexWrap: "wrap" }}>
+        {[["art", "Pictures"], ["world", "World"], ["details", "Details"], ["settings", "Settings"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className="pf-btn"
             style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px", fontFamily: T.mono, fontSize: 12,
               color: tab === k ? T.bone : T.boneDim, boxShadow: tab === k ? "inset 0 -2px 0 " + T.ochre : "none" }}>
@@ -2140,7 +2147,7 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
         art === null
           ? <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
           : art.length
-            ? <ArtTab entries={art} setEntries={setArt} me={me} setMe={setMe} worldId={game.id} />
+            ? <ArtTab entries={art} setEntries={setArt} me={me} setMe={setMe} worldId={game.id} onDrawn={checkIllustrated} />
             : <Empty title="Nothing to draw yet." line="Pictures appear once the world has been built." />
       )}
 
@@ -2150,23 +2157,35 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
           : <Empty title="Nothing to change yet." line="This world has not finished building." />
       )}
 
+      {tab === "details" && <DetailsTab game={game} refreshWorlds={refreshWorlds} />}
+
       {tab === "settings" && (
         <div style={{ maxWidth: 480 }}>
-          <Field label="Published" hint="Unpublishing hides it from Browse. People mid-playthrough keep their saves.">
-            <Btn disabled={game.status !== "ready"} onClick={async () => {
-              try {
-                await setPublished(game.id, !game.published);
-                await refreshWorlds();
-              } catch (e) {
-                // The database refuses to publish anonymously. Send them to
-                // claim a name and come straight back here.
-                if (e.needsUsername) go("username", { reason: "publish", next: "mine" });
-                else console.error(e);
-              }
-            }}>
+          <Field label="Published"
+            hint={game.published
+              ? "Unpublishing hides it from Browse. People mid-playthrough keep their saves."
+              : illustrated
+                ? "Every picture is drawn. Ready when you are."
+                : "A world can be published once every room, character, item and prop has a picture. Check the Pictures tab."}>
+            <Btn disabled={game.status !== "ready" || (!game.published && !illustrated)}
+              onClick={async () => {
+                setPubError(null);
+                try {
+                  await setPublished(game.id, !game.published);
+                  await refreshWorlds();
+                } catch (e) {
+                  if (e.needsUsername) go("username", { reason: "publish", next: "mine" });
+                  else setPubError(e.message);
+                }
+              }}>
               {game.published ? "Unpublish" : "Publish"}
             </Btn>
           </Field>
+          {pubError && (
+            <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, marginTop: -8, marginBottom: 18 }}>
+              {pubError}
+            </p>
+          )}
           <div style={{ borderTop: "1px solid " + T.edge, paddingTop: 20, marginTop: 20 }}>
             <Btn kind="danger" onClick={async () => {
               try { await deleteWorld(game.id); await refreshWorlds(); go("mine"); }
@@ -2177,6 +2196,44 @@ function EditGame({ game, refreshWorlds, me, setMe, go }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function DetailsTab({ game, refreshWorlds }) {
+  const [title, setTitle] = useState(game.title);
+  const [brief, setBrief] = useState(game.brief ?? "");
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
+
+  const save = async (patch) => {
+    setError(null);
+    try {
+      await saveWorldDetails(game.id, patch);
+      await refreshWorlds();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1600);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 560 }}>
+      <Field label="Title" hint="Shown on the catalog card and used to build the splash screen.">
+        <input value={title} onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => save({ title })} style={inputStyle} />
+      </Field>
+
+      <Field label="Brief" hint="What you originally described. This is not shown to players, but it is what an amendment reads for context.">
+        <textarea value={brief} onChange={(e) => setBrief(e.target.value)}
+          onBlur={() => save({ brief })} rows={10}
+          style={{ ...inputStyle, lineHeight: 1.6, resize: "vertical" }} />
+      </Field>
+
+      <div style={{ fontFamily: T.mono, fontSize: 11, color: saved ? T.moss : T.clay, minHeight: 16 }}>
+        {saved ? "saved" : error || "\u00a0"}
+      </div>
     </div>
   );
 }
@@ -2217,6 +2274,7 @@ function WorldTab({ game, refreshWorlds, me, setMe, go }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [needsFunds, setNeedsFunds] = useState(false);
+  const [stage, setStage] = useState(null);   // map | plot | prose | done, while building
   const [history, setHistory] = useState([]);
   const [undoing, setUndoing] = useState(false);
 
@@ -2434,7 +2492,7 @@ function WorldTab({ game, refreshWorlds, me, setMe, go }) {
   );
 }
 
-function ArtTab({ entries, setEntries, me, setMe, worldId }) {
+function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
   const [kind, setKind] = useState("room");
   const [config, setConfig] = useState(null);
   const [showStyle, setShowStyle] = useState(false);
@@ -2485,6 +2543,7 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
       const { url, balance_cents } = await drawArt(entry.id);
       setEntries((es) => es.map((e) => e.id === entry.id ? { ...e, url, art: true } : e));
       if (typeof balance_cents === "number") setMe((m) => ({ ...m, balance: balance_cents }));
+      onDrawn?.();
     } catch (e) {
       setError(e.message);
       if (typeof e.balanceCents === "number") setMe((m) => ({ ...m, balance: e.balanceCents }));

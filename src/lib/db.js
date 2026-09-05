@@ -239,6 +239,45 @@ export const ROOM_CHOICES = [
   { key: 'large', label: 'Large', min: 11, max: 16, note: 'Districts, a wilderness, somewhere you travel through.' },
 ]
 
+export async function saveWorldDetails(worldId, { title, brief }) {
+  const patch = {}
+  if (title !== undefined) patch.title = title.trim() || 'Untitled world'
+  if (brief !== undefined) patch.brief = brief.trim()
+  if (!Object.keys(patch).length) return
+  const { error } = await supabase.from('worlds').update(patch).eq('id', worldId)
+  if (error) throw error
+}
+
+/** Whether every drawable thing in a world has a picture. Publishing is
+    gated on this: a world half full of placeholder art is not ready to
+    show strangers. */
+export async function isFullyIllustrated(worldId) {
+  const { count, error } = await supabase
+    .from('world_art')
+    .select('id', { count: 'exact', head: true })
+    .eq('world_id', worldId)
+    .is('image_path', null)
+  if (error) throw error
+  return (count ?? 0) === 0
+}
+
+/** Polls gen_stage while a world is being built, so progress can be shown
+    honestly instead of guessed at with a timer. Stops itself once the
+    world leaves "generating", however that happens. */
+export function watchGeneration(worldId, onStage) {
+  let stopped = false
+  const tick = async () => {
+    if (stopped) return
+    const { data } = await supabase
+      .from('worlds').select('status, gen_stage').eq('id', worldId).single()
+    if (stopped) return
+    if (data) onStage(data.status, data.gen_stage)
+    if (data?.status === 'generating') setTimeout(tick, 1500)
+  }
+  tick()
+  return () => { stopped = true }
+}
+
 export async function createWorld({ userId, title, brief, roomMin = null, roomMax = null }) {
   const { data, error } = await supabase
     .from('worlds')
