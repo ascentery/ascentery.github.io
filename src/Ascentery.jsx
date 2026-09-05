@@ -2502,24 +2502,19 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
               style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
           </Field>
 
-          {kind === "cover" ? (
-            <p style={{ fontFamily: T.serif, fontSize: 14.5, color: T.boneDim, lineHeight: 1.6, margin: "0 0 18px" }}>
-              The splash screen is framed for you as <em>splash screen of a game with the title
-              '{"{title}"}' by '{"{your name}"}'</em>, followed by the description below. Rename the
-              world and the next draw follows.
-            </p>
-          ) : (
           <Field
-            label={`Framing for ${KIND_LABEL[kind] ?? kind}`}
-            hint="How this kind is composed. Rooms are wide views, characters are portraits, items are single objects.">
+            label={kind === "cover" ? "Framing for the splash screen" : `Framing for ${KIND_LABEL[kind] ?? kind}`}
+            hint={kind === "cover"
+              ? "Every splash begins with 'splash screen of a game with the title …, by …', built from the world's own title and your username so a rename carries through. Anything here is added after that."
+              : "How this kind is composed. Rooms are wide views, characters are portraits, items are single objects."}>
             <textarea
               defaultValue={config[kind] ?? ""}
               rows={3}
               key={kind}
               onBlur={(e) => writeConfig({ ...config, [kind]: e.target.value })}
+              placeholder={kind === "cover" ? "e.g. dramatic key art, one figure against a landscape," : undefined}
               style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
           </Field>
-          )}
 
           {engine === "pixel" && (
           <div style={{ borderTop: `1px solid ${T.edge}`, paddingTop: 16, marginTop: 4 }}>
