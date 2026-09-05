@@ -342,6 +342,67 @@ export async function loadNameables(worldId) {
   ]
 }
 
+/* ---------- undo ---------- */
+
+/** Versions kept before each amendment, newest first. */
+export async function loadHistory(worldId) {
+  const { data, error } = await supabase
+    .from('world_history')
+    .select('id, note, created_at')
+    .eq('world_id', worldId)
+    .order('created_at', { ascending: false })
+    .limit(5)
+  if (error) throw error
+  return data ?? []
+}
+
+/** Puts a kept version back. Art rows are matched on entity_key, so
+    anything that comes back reattaches its own picture. */
+export async function undoTo(worldId, historyId) {
+  const { data: kept, error } = await supabase
+    .from('world_history').select('data').eq('id', historyId).single()
+  if (error) throw error
+
+  const world = kept.data
+  const { error: we } = await supabase
+    .from('world_data').update({ data: world }).eq('world_id', worldId)
+  if (we) throw we
+
+  // Anything the restored world knows about again is no longer orphaned.
+  const live = [
+    ...Object.keys(world.rooms ?? {}).map((k) => `room:${k}`),
+    ...Object.keys(world.mobs ?? {}).map((k) => `mob:${k}`),
+    ...Object.keys(world.items ?? {}).map((k) => `item:${k}`),
+    ...Object.keys(world.props ?? {}).map((k) => `prop:${k}`),
+    'cover:cover',
+  ]
+
+  const { data: rows } = await supabase
+    .from('world_art').select('id, kind, entity_key, orphaned_at').eq('world_id', worldId)
+
+  for (const r of rows ?? []) {
+    const here = live.includes(`${r.kind}:${r.entity_key}`)
+    if (here && r.orphaned_at) {
+      await supabase.from('world_art').update({ orphaned_at: null }).eq('id', r.id)
+    } else if (!here && !r.orphaned_at) {
+      await supabase.from('world_art')
+        .update({ orphaned_at: new Date().toISOString() }).eq('id', r.id)
+    }
+  }
+
+  // The version just undone is spent; keeping it would let undo bounce.
+  await supabase.from('world_history').delete().eq('id', historyId)
+
+  // A restored world describes a different arrangement than any save holds.
+  await supabase.from('saves').delete().eq('world_id', worldId)
+}
+
+/** Delete a picture for good. Only offered for orphaned ones. */
+export async function deleteArt(artId) {
+  const { error } = await supabase.from('world_art').delete().eq('id', artId)
+  if (error) throw error
+}
+
 /** Rebuild part of an existing world from a written instruction.
     'plot' keeps the map and rewrites characters, items and quests.
     'prose' keeps everything and rewrites the words. */
@@ -474,7 +535,7 @@ export const artUrl = (path, bucket = 'art') =>
 export async function loadArt(worldId) {
   const { data, error } = await supabase
     .from('world_art')
-    .select('id, kind, entity_key, name, image_prompt, image_path, bucket, locked, sort')
+    .select('id, kind, entity_key, name, image_prompt, image_path, bucket, locked, sort, orphaned_at')
     .eq('world_id', worldId)
     .order('kind')
     .order('sort')
@@ -488,6 +549,7 @@ export async function loadArt(worldId) {
     url: artUrl(r.image_path, r.bucket ?? 'art'),
     art: Boolean(r.image_path),
     locked: r.locked,
+    orphaned: Boolean(r.orphaned_at),
   }))
 }
 

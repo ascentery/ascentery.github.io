@@ -11,6 +11,7 @@ import {
   SORTS, sortWorlds,
   ROOM_CHOICES, genCost, GEN_BASE_CENTS, GEN_PER_ROOM_CENTS,
   renameEntity, loadNameables, amendWorld,
+  loadHistory, undoTo, deleteArt,
   REPORT_REASONS, reportWorld, loadReports, resolveReport, unpublishWorld,
   checkUsername, claimUsername, startCheckout, TOPUPS,
   loadSetting, saveSetting, PROVIDERS,
@@ -2216,9 +2217,14 @@ function WorldTab({ game, refreshWorlds, me, setMe, go }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [needsFunds, setNeedsFunds] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [undoing, setUndoing] = useState(false);
+
+  const refreshHistory = () => loadHistory(game.id).then(setHistory).catch(() => setHistory([]));
 
   useEffect(() => {
     loadNameables(game.id).then(setNames).catch(() => setNames([]));
+    refreshHistory();
   }, [game.id]);
 
   const cost = kind === "prose" ? GEN_BASE_CENTS : genCost(game.rooms || 8);
@@ -2260,6 +2266,7 @@ function WorldTab({ game, refreshWorlds, me, setMe, go }) {
       if (typeof res.balance_cents === "number") setMe((m) => ({ ...m, balance: res.balance_cents }));
       await refreshWorlds();
       loadNameables(game.id).then(setNames).catch(() => {});
+      refreshHistory();
     } catch (e) {
       setError(e.message);
       setNeedsFunds(Boolean(e.needsFunds));
@@ -2348,6 +2355,37 @@ function WorldTab({ game, refreshWorlds, me, setMe, go }) {
         </div>
       )}
 
+      {history.length > 0 && (
+        <div style={{ border: "1px solid " + T.edge, borderRadius: 2, padding: "12px 14px",
+          marginBottom: 22 }}>
+          <div style={{ fontFamily: T.serif, fontSize: 16, marginBottom: 6 }}>Undo</div>
+          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.boneDim, lineHeight: 1.7, margin: "0 0 12px" }}>
+            The version before &ldquo;{history[0].note || "your last change"}&rdquo;, kept
+            {" "}{new Date(history[0].created_at).toLocaleString()}. Putting it back restores every
+            character, item and prop exactly as they were, and any picture that came back with them.
+            Playthroughs in progress are cleared, as they are for any change.
+          </p>
+          <Btn kind="danger" disabled={undoing}
+            onClick={async () => {
+              setUndoing(true);
+              setError(null);
+              try {
+                await undoTo(game.id, history[0].id);
+                await refreshWorlds();
+                await refreshHistory();
+                loadNameables(game.id).then(setNames).catch(() => {});
+                setResult(null);
+              } catch (e) {
+                setError(e.message);
+              } finally {
+                setUndoing(false);
+              }
+            }}>
+            {undoing ? "\u2026" : "Undo the last change"}
+          </Btn>
+        </div>
+      )}
+
       {/* ---- renames ---- */}
       <div style={{ borderTop: "1px solid " + T.edge, paddingTop: 22 }}>
         <h2 style={{ fontFamily: T.serif, fontSize: 20, fontWeight: 400, margin: "0 0 4px" }}>Names</h2>
@@ -2432,9 +2470,11 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
   const engine = ENGINE_LOCKED[kind] ?? (config?.[`engine_${kind}`] ?? "pixel");
   const COST = PRICE_CENTS[engine] ?? 5;      // cents
   const styleKey = engine === "flux" ? "style_flux" : "style_pixel";
-  const shown = entries.filter((e) => e.kind === kind);
+  const shown = kind === "orphan"
+    ? entries.filter((e) => e.orphaned)
+    : entries.filter((e) => e.kind === kind && !e.orphaned);
   const ratio = KINDS.find((k) => k.key === kind)?.ratio ?? 1;
-  const missing = shown.filter((e) => !e.art && !e.locked);
+  const missing = kind === "orphan" ? [] : shown.filter((e) => !e.art && !e.locked);
   const affordable = Math.floor(me.balance / COST);
 
   const draw = async (entry) => {
@@ -2479,9 +2519,13 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
 
   return (<>
     <div style={{ display: "flex", gap: 4, marginBottom: 16, flexWrap: "wrap" }}>
-      {KINDS.map((k) => {
-        const n = entries.filter((e) => e.kind === k.key).length;
-        const done = entries.filter((e) => e.kind === k.key && e.art).length;
+      {[...KINDS, { key: "orphan", label: "No longer here", ratio: 1 }].map((k) => {
+        const n = k.key === "orphan"
+          ? entries.filter((e) => e.orphaned).length
+          : entries.filter((e) => e.kind === k.key && !e.orphaned).length;
+        const done = k.key === "orphan"
+          ? n
+          : entries.filter((e) => e.kind === k.key && !e.orphaned && e.art).length;
         if (!n) return null;
         return (
           <button key={k.key} onClick={() => setKind(k.key)} className="pf-btn"
@@ -2612,7 +2656,9 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
 
     <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10, flexWrap: "wrap" }}>
       <p style={{ fontFamily: T.serif, fontSize: 15.5, color: T.boneDim, lineHeight: 1.55, margin: 0, flex: 1, minWidth: 240 }}>
-        Lock one once you are happy with it. Locked pictures are skipped by redraws, including bulk ones.
+        {kind === "orphan"
+          ? "These were drawn for something a change removed. They are kept because you paid for them: undo the change, or bring the character or item back under the same name, and the picture reattaches itself."
+          : "Lock one once you are happy with it. Locked pictures are skipped by redraws, including bulk ones."}
       </p>
       {missing.length > 0 && (
         <Btn onClick={() => { setError(null); setQueue(missing.slice(0, affordable).map((e) => e.id)); }}
@@ -2652,11 +2698,25 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
 
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
             <span style={{ fontFamily: T.serif, fontSize: 15.5, flex: 1, minWidth: 0 }}>{e.name}</span>
+            {kind === "orphan" ? (
+              <button className="pf-btn"
+                onClick={async () => {
+                  try {
+                    await deleteArt(e.id);
+                    setEntries((es) => es.filter((x) => x.id !== e.id));
+                  } catch (err) { setError(err.message); }
+                }}
+                style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono,
+                  fontSize: 11, color: T.clay, cursor: "pointer" }}>
+                delete for good
+              </button>
+            ) : (
             <button onClick={() => draw(e)} disabled={e.locked || busy || me.balance < COST} className="pf-btn"
               style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
                 color: e.locked ? T.edge : T.boneDim, cursor: (e.locked || busy) ? "not-allowed" : "pointer" }}>
               {drawing === e.id ? "drawing" : (e.art ? "redraw \u00b7 " : "draw \u00b7 ") + money(COST)}
             </button>
+            )}
           </div>
 
           <button onClick={() => setEditing(editing === e.id ? null : e.id)} className="pf-btn"
