@@ -83,6 +83,16 @@ const propVisible = (s, id) => {
 
 const propsInRoom = (s, room) => allPropsInRoom(room).filter((id) => propVisible(s, id));
 
+/* Items conceal the same way props do. Everything that reads the floor of a
+   room goes through this, so a letter behind a portrait is not listed, not
+   takeable and not mentioned until the portrait has been searched. */
+const itemVisible = (s, id) => {
+  const until = WORLD.items?.[id]?.hiddenUntil;
+  return !until || Boolean(s?.flags?.[until]);
+};
+
+const itemsInRoom = (s, room) => (s.roomItems?.[room] ?? []).filter((id) => itemVisible(s, id));
+
 const propName = (id) => WORLD.props?.[id]?.name ?? id;
 
 const mobsInRoom = (s, room) => Object.entries(s.mobs).filter(([, m]) => m.alive && m.room === room).map(([id]) => id);
@@ -104,7 +114,7 @@ function affordances(s) {
         `They must open it before they can pass; carrying the key is not the same as having opened the door)`
       : `${dir} (to ${dest}, LOCKED — the player does not have the ${itemName(locked)} and cannot pass)`;
   }).join(", "));
-  const here = s.roomItems[s.player.room] ?? [];
+  const here = itemsInRoom(s, s.player.room);
   if (here.length) L.push("- take " + here.map(itemName).join(", "));
   if (s.player.inventory.length) L.push("- drop " + s.player.inventory.map(itemName).join(", "));
   for (const id of propsInRoom(s, s.player.room)) {
@@ -369,7 +379,7 @@ function applyEffects(prev, effects) {
     }
 
     if (e.take) {
-      const id = resolveItem(e.take, s.roomItems[s.player.room] ?? []);
+      const id = resolveItem(e.take, itemsInRoom(s, s.player.room));
       if (!id) { note(`There is no ${e.take} here to take.`); continue; }
       s.roomItems[s.player.room] = s.roomItems[s.player.room].filter((x) => x !== id);
       s.player.inventory.push(id);
@@ -459,11 +469,18 @@ function applyEffects(prev, effects) {
       (s.flags ??= {})[pr.sets] = true;
       note(pr.result, "gain");
 
-      // Something may have just come into view.
-      for (const other of allPropsInRoom(s.player.room)) {
-        if (other !== id && WORLD.props[other]?.hiddenUntil === pr.sets) {
-          note(`You can see ${WORLD.props[other].name} now.`, "gain");
-        }
+      /* One search can uncover several things. Everything waiting on this
+         flag comes into view at once, props and items alike. */
+      const found = [
+        ...allPropsInRoom(s.player.room)
+          .filter((o) => o !== id && WORLD.props[o]?.hiddenUntil === pr.sets)
+          .map((o) => WORLD.props[o].name),
+        ...(s.roomItems?.[s.player.room] ?? [])
+          .filter((o) => WORLD.items?.[o]?.hiddenUntil === pr.sets)
+          .map((o) => itemName(o)),
+      ];
+      if (found.length) {
+        note(`You can see ${found.join(" and ")} now.`, "gain");
       }
       continue;
     }
@@ -523,7 +540,7 @@ function buildPrompt(state, charName) {
       `  carrying: ${state.mobs[id].inventory.map(itemName).join(", ") || "nothing"}\n` +
       `  has met the player before: ${state.mobs[id].met ? "yes" : "no"}`;
   }).join("\n\n");
-  const here = state.roomItems[state.player.room] ?? [];
+  const here = itemsInRoom(state, state.player.room);
 
   return `You are the narrator and the character voices for a text adventure called ${WORLD.title}.
 
@@ -616,7 +633,7 @@ function directCommand(state, input) {
      well as "take the golden fleece", instantly and for nothing. */
   const takeMatch = raw.match(/^(?:take|get|grab|pick up|pickup|pick)\s+(.+)$/);
   if (takeMatch) {
-    const here = state.roomItems[state.player.room] ?? [];
+    const here = itemsInRoom(state, state.player.room);
     if (!here.length) {
       return { handled: true, entries: [{ kind: "system", text: "There is nothing here to pick up." }] };
     }
@@ -651,7 +668,7 @@ function directCommand(state, input) {
   }
 
   if (["take", "get", "grab"].includes(raw)) {
-    const here = state.roomItems[state.player.room] ?? [];
+    const here = itemsInRoom(state, state.player.room);
     return { handled: true, entries: [{ kind: "system",
       text: here.length ? `Take what? ${here.map(itemName).join(", ")}.` : "There is nothing here to pick up." }] };
   }
@@ -697,7 +714,7 @@ function directCommand(state, input) {
     }
 
     // Something here or in hand by that name: a thing, not a way out.
-    const reachable = [...(state.roomItems[state.player.room] ?? []), ...state.player.inventory];
+    const reachable = [...itemsInRoom(state, state.player.room), ...state.player.inventory];
     if (!dir && rest && matchItems(rest, reachable).length) {
       return { handled: false };          // the narrator takes it
     }
@@ -743,7 +760,7 @@ function directCommand(state, input) {
    rain, only playing it, or ignoring it entirely. */
 const exposureOf = (s) => WORLD.rooms?.[s?.player?.room]?.exposure ?? "indoors";
 
-return { WORLD, freshState, reconcile, itemName, propName, mobsInRoom, propsInRoom, propVisible, exitOf, exposureOf, applyEffects, buildPrompt, directCommand };
+return { WORLD, freshState, reconcile, itemName, propName, mobsInRoom, propsInRoom, itemsInRoom, propVisible, exitOf, exposureOf, applyEffects, buildPrompt, directCommand };
 }
 
 /* ============================================================
@@ -2966,7 +2983,7 @@ function PlayLoader({ worldId, char, save, onSave, onExit, onHome }) {
 function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
   // One engine per world. Every rule below is the world's, not the app's.
   const E = useMemo(() => makeEngine(world), [world]);
-  const { WORLD, freshState, reconcile, itemName, propName, mobsInRoom, propsInRoom, propVisible, applyEffects, buildPrompt, directCommand } = E;
+  const { WORLD, freshState, reconcile, itemName, propName, mobsInRoom, propsInRoom, itemsInRoom, propVisible, applyEffects, buildPrompt, directCommand } = E;
 
   /* Pinned by default: the picture stays put and the text below it starts
      fresh in each room, which reads like being somewhere rather than like
@@ -3012,7 +3029,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
       });
     }
 
-    const here = st.roomItems?.[roomKey] ?? [];
+    const here = itemsInRoom(st, roomKey);
     if (here.length) {
       entries.push({
         kind: "items",
@@ -3181,7 +3198,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
 
       // Picking something up changes what is on the floor; say what is left.
       if (direct.effects.some((x) => x.take || x.drop)) {
-        const here = next.roomItems[next.player.room] ?? [];
+        const here = itemsInRoom(next, next.player.room);
         if (here.length) {
           entries.push({ kind: "system", text: `Still here: ${here.map(itemName).join(", ")}.` });
         }
@@ -3306,9 +3323,9 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
         height: vv ? vv.height : "100dvh",
       }}>
       <style>{`
-        html, body { overflow: hidden; overscroll-behavior: none; }
         @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; } body { margin: 0 }
+        html, body { overflow: hidden; overscroll-behavior: none; }
         .hr-log, .hr-actions { scrollbar-width: none; -ms-overflow-style: none; }
         .hr-log::-webkit-scrollbar,
         .hr-actions::-webkit-scrollbar { width: 0; height: 0; display: none; }
@@ -3430,7 +3447,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                             title={verb ? `${verb} ${who}` : held ? `Give the ${itemName(held)} to ${who}` : `Look at ${who}`}
                             onClick={() => tapTarget("mob", id)}
                             {...keepFocus}
-                            style={{ padding: 0, background: "none", cursor: busy ? "default" : "pointer",
+                            style={{ padding: 0, background: P.ink, cursor: busy ? "default" : "pointer",
                               border: `1px solid ${held ? P.ochre : P.paper}`, lineHeight: 0,
                               boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
                             <img src={url} alt={who}
@@ -3454,8 +3471,13 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                             title={done ? `${pr.name} — already worked` : `${pr.verb ?? "use"} the ${pr.name}`}
                             onClick={() => { if (!busy && !state.over) submit(`${pr.verb ?? "use"} ${pr.name}`); }}
                             {...keepFocus}
-                            style={{ padding: 0, background: "none", cursor: busy ? "default" : "pointer",
-                              border: `1px solid ${P.paper}`, lineHeight: 0, opacity: done ? 0.45 : 1,
+                            /* A solid backing. Some drawn PNGs carry an alpha
+                               channel, and without something behind them the
+                               room shows through and the tile reads as
+                               half-there. A lever you have pulled is still a
+                               lever, so nothing here is dimmed on purpose. */
+                            style={{ padding: 0, background: P.ink, cursor: busy ? "default" : "pointer",
+                              border: `1px solid ${P.paper}`, lineHeight: 0,
                               boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
                             <img src={url} alt={pr.name}
                               onError={(e) => { e.currentTarget.style.display = "none"; }}
@@ -3465,7 +3487,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                         );
                       })}
 
-                      {(state.roomItems[state.player.room] ?? []).map((id) => {
+                      {itemsInRoom(state, state.player.room).map((id) => {
                         const url = art.item?.[id];
                         if (!url) return null;
                         return (
@@ -3473,7 +3495,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                             title={verb ? `${verb} ${itemName(id)}` : `Take the ${itemName(id)}`}
                             onClick={() => tapTarget("item", id)}
                             {...keepFocus}
-                            style={{ padding: 0, background: "none", cursor: busy ? "default" : "pointer",
+                            style={{ padding: 0, background: P.ink, cursor: busy ? "default" : "pointer",
                               border: `1px solid ${P.paper}`, lineHeight: 0,
                               boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
                             <img src={url} alt={itemName(id)}
@@ -3854,7 +3876,7 @@ function LogLine({ entry }) {
               // same objects in two places.
               width: 74, height: 74, flexShrink: 0, objectFit: "cover",
               objectPosition: "50% 25%",   // portraits are tall; keep the head
-              imageRendering: "pixelated",
+              imageRendering: "pixelated", background: P.ink,
               border: `1px solid ${P.paper}`, boxShadow: "0 1px 3px rgba(0,0,0,.35)",
             }}
           />
@@ -3885,7 +3907,7 @@ function LogLine({ entry }) {
                   onError={(e) => { e.currentTarget.style.display = "none"; }}
                   style={{
                     width: 74, height: 74, objectFit: "cover", display: "block",
-                    imageRendering: "pixelated",
+                    imageRendering: "pixelated", background: P.ink,
                     border: `1px solid ${P.paper}`, boxShadow: "0 1px 3px rgba(0,0,0,.35)",
                   }}
                 />
