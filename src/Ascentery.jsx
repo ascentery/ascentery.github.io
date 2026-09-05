@@ -68,8 +68,20 @@ const exitOf = (room, dir) => {
 };
 const exitsOf = (room) => Object.keys(room?.exits ?? {}).map((d) => ({ dir: d, ...exitOf(room, d) }));
 
-const propsInRoom = (room) =>
+/* Everything in the room, found or not. `propsInRoom` is the one to use
+   almost everywhere: a hidden prop is not in the room at all until whatever
+   conceals it has been dealt with — not shown, not mentioned to the
+   narrator, not workable. */
+const allPropsInRoom = (room) =>
   Object.entries(WORLD.props ?? {}).filter(([, p]) => p?.room === room).map(([id]) => id);
+
+const propVisible = (s, id) => {
+  const pr = WORLD.props?.[id];
+  if (!pr) return false;
+  return !pr.hiddenUntil || Boolean(s?.flags?.[pr.hiddenUntil]);
+};
+
+const propsInRoom = (s, room) => allPropsInRoom(room).filter((id) => propVisible(s, id));
 
 const propName = (id) => WORLD.props?.[id]?.name ?? id;
 
@@ -95,12 +107,13 @@ function affordances(s) {
   const here = s.roomItems[s.player.room] ?? [];
   if (here.length) L.push("- take " + here.map(itemName).join(", "));
   if (s.player.inventory.length) L.push("- drop " + s.player.inventory.map(itemName).join(", "));
-  for (const id of propsInRoom(s.player.room)) {
+  for (const id of propsInRoom(s, s.player.room)) {
     const pr = WORLD.props[id];
     if (s.flags?.[pr.sets]) { L.push(`- the ${pr.name} has already been worked and will not do it twice`); continue; }
     L.push(pr.requires && !s.player.inventory.includes(pr.requires)
       ? `- the ${pr.name} is here but will not move without the ${itemName(pr.requires)}`
       : `- ${pr.verb ?? "use"} the ${pr.name} (this works, and changes something)`);
+    // Never hint at what is hidden. Finding it is the point.
   }
 
   for (const id of mobsInRoom(s, s.player.room)) {
@@ -433,7 +446,7 @@ function applyEffects(prev, effects) {
     }
 
     if (e.work) {
-      const id = resolveProp(e.work, propsInRoom(s.player.room));
+      const id = resolveProp(e.work, propsInRoom(s, s.player.room));
       if (!id) { note(`There is nothing here called ${e.work}.`); continue; }
       const pr = WORLD.props[id];
 
@@ -445,6 +458,13 @@ function applyEffects(prev, effects) {
 
       (s.flags ??= {})[pr.sets] = true;
       note(pr.result, "gain");
+
+      // Something may have just come into view.
+      for (const other of allPropsInRoom(s.player.room)) {
+        if (other !== id && WORLD.props[other]?.hiddenUntil === pr.sets) {
+          note(`You can see ${WORLD.props[other].name} now.`, "gain");
+        }
+      }
       continue;
     }
 
@@ -517,7 +537,7 @@ CURRENT ROOM
 ${room.name} (${room.exposure ?? "indoors"}) — ${room.desc}
 Exits: ${exitsOf(room).map(({ dir, to, locked }) => `${dir} to ${WORLD.rooms[to]?.name ?? to}${locked ? " (locked)" : ""}`).join("; ")}
 Lying here: ${here.length ? here.map(itemName).join(", ") : "nothing"}
-Fixed here: ${propsInRoom(state.player.room).map((id) => WORLD.props[id].name).join(", ") || "nothing"}
+Fixed here: ${propsInRoom(state, state.player.room).map((id) => WORLD.props[id].name).join(", ") || "nothing"}
 Present: ${present.length ? present.map((id) => WORLD.mobs[id].name).join(", ") : "nobody"}
 
 ${cards ? "CHARACTERS PRESENT\n" + cards + "\n" : ""}
@@ -642,11 +662,21 @@ function directCommand(state, input) {
      deciding who answers. */
   /* A prop answers to its own verb — pull, turn, wind — and to the general
      ones. Direct, because working a lever is as settled as taking a key. */
-  const workMatch = raw.match(/^(pull|push|turn|twist|wind|crank|flip|lift|lower|press|use|operate|work)\s+(.+)$/);
+  const workMatch = raw.match(
+    /^(pull|push|turn|twist|wind|crank|flip|lift|lower|press|use|operate|work|search|examine|inspect|look behind|look under|look inside|look at|look)\s+(?:at\s+|the\s+|behind\s+|under\s+|inside\s+)*(.+)$/);
   if (workMatch) {
-    const here = propsInRoom(state.player.room);
+    const looking = /^(search|examine|inspect|look)/.test(workMatch[1]);
+    const here = propsInRoom(state, state.player.room);
     const found = here.length ? resolveProp(workMatch[2], here) : null;
-    if (found) return { handled: true, effects: [{ work: found }] };
+
+    /* A prop that has already given up what it was hiding is just scenery,
+       so looking at it again should get a description rather than "already
+       worked". Working verbs still report that plainly. */
+    if (found) {
+      const done = Boolean(state.flags?.[WORLD.props[found].sets]);
+      if (looking && done) return { handled: false };
+      return { handled: true, effects: [{ work: found }] };
+    }
     // Not a prop: let the narrator make sense of it.
     return { handled: false };
   }
@@ -662,7 +692,7 @@ function directCommand(state, input) {
 
     // A prop by that name is worked, not narrated.
     if (!dir && rest) {
-      const prop = resolveProp(rest, propsInRoom(state.player.room));
+      const prop = resolveProp(rest, propsInRoom(state, state.player.room));
       if (prop) return { handled: true, effects: [{ work: prop }] };
     }
 
@@ -713,7 +743,7 @@ function directCommand(state, input) {
    rain, only playing it, or ignoring it entirely. */
 const exposureOf = (s) => WORLD.rooms?.[s?.player?.room]?.exposure ?? "indoors";
 
-return { WORLD, freshState, reconcile, itemName, propName, mobsInRoom, propsInRoom, exitOf, exposureOf, applyEffects, buildPrompt, directCommand };
+return { WORLD, freshState, reconcile, itemName, propName, mobsInRoom, propsInRoom, propVisible, exitOf, exposureOf, applyEffects, buildPrompt, directCommand };
 }
 
 /* ============================================================
@@ -2936,7 +2966,7 @@ function PlayLoader({ worldId, char, save, onSave, onExit, onHome }) {
 function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
   // One engine per world. Every rule below is the world's, not the app's.
   const E = useMemo(() => makeEngine(world), [world]);
-  const { WORLD, freshState, reconcile, itemName, propName, mobsInRoom, propsInRoom, applyEffects, buildPrompt, directCommand } = E;
+  const { WORLD, freshState, reconcile, itemName, propName, mobsInRoom, propsInRoom, propVisible, applyEffects, buildPrompt, directCommand } = E;
 
   /* Pinned by default: the picture stays put and the text below it starts
      fresh in each room, which reads like being somewhere rather than like
@@ -2969,7 +2999,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
       });
     }
 
-    const fixtures = propsInRoom(roomKey);
+    const fixtures = propsInRoom(st, roomKey);
     if (fixtures.length) {
       entries.push({
         kind: "items",
@@ -3414,7 +3444,7 @@ function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
 
                     <div style={{ position: "absolute", right: 8, bottom: 8, display: "flex",
                       flexDirection: "column-reverse", gap: 6 }}>
-                      {propsInRoom(state.player.room).map((id) => {
+                      {propsInRoom(state, state.player.room).map((id) => {
                         const url = art.prop?.[id];
                         if (!url) return null;
                         const pr = WORLD.props[id];
