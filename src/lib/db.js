@@ -571,11 +571,15 @@ export async function loadArtConfig(worldId) {
 
 export async function saveArtConfig(worldId, config) {
   // Store only what differs from the defaults, so a later change to the
-  // defaults reaches worlds that never customised anything.
+  // defaults reaches worlds that never customised anything. An empty box is
+  // only dropped when the default is empty too — otherwise clearing one
+  // would silently restore the default rather than clearing it.
   const trimmed = {}
   for (const [k, v] of Object.entries(config)) {
     const value = (v ?? '').trim()
-    if (value && value !== DEFAULT_ART[k]) trimmed[k] = value
+    const fallback = (DEFAULT_ART[k] ?? '').trim()
+    if (value === fallback) continue
+    trimmed[k] = value
   }
   const { error } = await supabase.from('worlds').update({ art_config: trimmed }).eq('id', worldId)
   if (error) throw error

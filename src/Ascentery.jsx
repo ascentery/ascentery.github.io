@@ -713,7 +713,7 @@ function directCommand(state, input) {
    rain, only playing it, or ignoring it entirely. */
 const exposureOf = (s) => WORLD.rooms?.[s?.player?.room]?.exposure ?? "indoors";
 
-return { WORLD, freshState, reconcile, itemName, mobsInRoom, exitOf, exposureOf, applyEffects, buildPrompt, directCommand };
+return { WORLD, freshState, reconcile, itemName, propName, mobsInRoom, propsInRoom, exitOf, exposureOf, applyEffects, buildPrompt, directCommand };
 }
 
 /* ============================================================
@@ -2354,6 +2354,10 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
   const [config, setConfig] = useState(null);
   const [showStyle, setShowStyle] = useState(false);
   const [saved, setSaved] = useState(false);
+  /* The prompt boxes are uncontrolled, so React will not repaint them when
+     the config changes underneath. Bumping this remounts them, which is how
+     a reset becomes visible rather than only being saved. */
+  const [revision, setRevision] = useState(0);
   const [drawing, setDrawing] = useState(null);
   const [queue, setQueue] = useState([]);
   const [error, setError] = useState(null);
@@ -2368,8 +2372,9 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
     return () => { cancelled = true; };
   }, [worldId]);
 
-  const writeConfig = async (next) => {
+  const writeConfig = async (next, repaint = false) => {
     setConfig(next);
+    if (repaint) setRevision((n) => n + 1);
     try {
       await saveArtConfig(worldId, next);
       setSaved(true);
@@ -2497,7 +2502,7 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
             <textarea
               defaultValue={config[styleKey] ?? ""}
               rows={4}
-              key={styleKey}
+              key={`${styleKey}:${revision}`}
               onBlur={(e) => writeConfig({ ...config, [styleKey]: e.target.value })}
               style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
           </Field>
@@ -2510,7 +2515,7 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
             <textarea
               defaultValue={config[kind] ?? ""}
               rows={3}
-              key={kind}
+              key={`${kind}:${revision}`}
               onBlur={(e) => writeConfig({ ...config, [kind]: e.target.value })}
               placeholder={kind === "cover" ? "e.g. dramatic key art, one figure against a landscape," : undefined}
               style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
@@ -2522,6 +2527,7 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
               hint="Sent as the negative prompt on every picture in this world.">
               <textarea
                 defaultValue={config.neg ?? ""}
+                key={`neg:${revision}`}
                 rows={2}
                 onBlur={(e) => writeConfig({ ...config, neg: e.target.value })}
                 style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
@@ -2535,7 +2541,7 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
               <textarea
                 defaultValue={config[`neg_${kind}`] ?? ""}
                 rows={3}
-                key={`neg_${kind}`}
+                key={`neg_${kind}:${revision}`}
                 onBlur={(e) => writeConfig({ ...config, [`neg_${kind}`]: e.target.value })}
                 style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
             </Field>
@@ -2546,11 +2552,11 @@ function ArtTab({ entries, setEntries, me, setMe, worldId }) {
             onClick={() => writeConfig({
               ...config,
               [styleKey]: DEFAULT_ART[styleKey],
-              [kind]: DEFAULT_ART[kind],
+              [kind]: DEFAULT_ART[kind] ?? "",
               ...(engine === "pixel"
-                ? { neg: DEFAULT_ART.neg, [`neg_${kind}`]: DEFAULT_ART[`neg_${kind}`] }
+                ? { neg: DEFAULT_ART.neg, [`neg_${kind}`]: DEFAULT_ART[`neg_${kind}`] ?? "" }
                 : {}),
-            })}>
+            }, true)}>
             reset to defaults
           </Btn>
         </div>
@@ -2930,7 +2936,7 @@ function PlayLoader({ worldId, char, save, onSave, onExit, onHome }) {
 function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
   // One engine per world. Every rule below is the world's, not the app's.
   const E = useMemo(() => makeEngine(world), [world]);
-  const { WORLD, freshState, reconcile, itemName, mobsInRoom, applyEffects, buildPrompt, directCommand } = E;
+  const { WORLD, freshState, reconcile, itemName, propName, mobsInRoom, propsInRoom, applyEffects, buildPrompt, directCommand } = E;
 
   /* Walking into a room is a sequence: the place, then who is in it, then
      what is lying about. Each part is skipped if there is nothing to show. */
