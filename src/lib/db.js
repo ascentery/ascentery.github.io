@@ -167,9 +167,7 @@ export function sortWorlds(worlds, key) {
 export async function loadWorlds(userId) {
   const { data, error } = await supabase
     .from('worlds')
-    .select(`id, owner_id, title, blurb, status, published, plays, room_count, mob_count, 
-             cover_path, failure_note, created_at, updated_at, difficulty, 
-             story_body, story_conclusion, design_treatment, gen_stage`)
+    .select('id, owner_id, title, blurb, status, published, plays, room_count, mob_count, cover_path, failure_note, created_at, updated_at')
     .or(`published.eq.true,owner_id.eq.${userId}`)
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -214,12 +212,6 @@ export async function loadWorlds(userId) {
       : (byId[w.owner_id]?.display_name ?? 'Someone'),
     tag: byId[w.owner_id]?.gamer_tag ?? '',
     playable: w.status === 'ready',
-    // NEW FIELDS
-    difficulty: w.difficulty || 'easy',
-    storyBody: w.story_body || '',
-    storyConclusion: w.story_conclusion || '',
-    designTreatment: w.design_treatment || null,
-    genStage: w.gen_stage || null,
   }))
 }
 
@@ -244,15 +236,7 @@ export const ROOM_CHOICES = [
     note: 'A lighthouse gets five or six rooms; a city gets more. Costs whatever it turns out to need.' },
   { key: 'small', label: 'Small', min: 4, max: 6, note: 'One building, or a handful of places.' },
   { key: 'medium', label: 'Medium', min: 7, max: 10, note: 'A neighbourhood, a large house, a stretch of road.' },
-  { key: 'large', label: 'Large', min: 11, max: 14, note: 'Districts, a wilderness, somewhere you travel through.' },
-]
-
-/** Three generation stages for progress tracking */
-export const GEN_STAGES = [
-  { key: 'map', label: 'Building the map... (rooms & exits)' },
-  { key: 'plot', label: 'Writing the story... (items, characters, quests)' },
-  { key: 'prose', label: 'Filling in the details... (descriptions & voices)' },
-  { key: 'done', label: '✨ World ready!' },
+  { key: 'large', label: 'Large', min: 11, max: 16, note: 'Districts, a wilderness, somewhere you travel through.' },
 ]
 
 export async function saveWorldDetails(worldId, { title, brief }) {
@@ -294,18 +278,12 @@ export function watchGeneration(worldId, onStage) {
   return () => { stopped = true }
 }
 
-export async function createWorld({ userId, title, brief, roomMin = null, roomMax = null, difficulty = 'easy' }) {
+export async function createWorld({ userId, title, brief, roomMin = null, roomMax = null }) {
   const { data, error } = await supabase
     .from('worlds')
     .insert({
-      owner_id: userId, 
-      title, 
-      brief, 
-      status: 'generating',
-      room_min: roomMin, 
-      room_max: roomMax,
-      difficulty: difficulty,
-      gen_stage: null,
+      owner_id: userId, title, brief, status: 'generating',
+      room_min: roomMin, room_max: roomMax,
     })
     .select('id')
     .single()
