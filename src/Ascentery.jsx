@@ -373,57 +373,83 @@ function applyEffects(prev, effects) {
   for (const e of (effects || []).slice(0, 4)) {
     const room = WORLD.rooms[s.player.room];
 
+    // ---- MOVE ----
     if (e.move) {
       const dir = String(e.move).toLowerCase();
       const ex = exitOf(room, dir);
       if (!ex?.to || !WORLD.rooms[ex.to]) { 
         note(`There is no way ${e.move} from here.`); 
+        advanceQuests(s, note);  // ← Check quests even on failed actions
         continue; 
       }
 
       const check = canPass(s, s.player.room, dir, ex);
       if (!check.pass) {
         note(`The way ${dir} is ${check.reason}.`);
+        advanceQuests(s, note);  // ← Check quests even on failed actions
         continue;
       }
 
       if (ex.needs && !s.flags?.[ex.needs]) {
         note(`The way ${dir} will not open. Something has to change first.`);
+        advanceQuests(s, note);  // ← Check quests even on failed actions
         continue;
       }
 
       const dest = ex.to;
       s.player.room = dest;
       for (const id of mobsInRoom(s, dest)) s.mobs[id].met = true;
+      advanceQuests(s, note);  // ← Check quests after successful move
       continue;
     }
 
+    // ---- TAKE ----
     if (e.take) {
       const id = resolveItem(e.take, itemsInRoom(s, s.player.room));
-      if (!id) { note(`There is no ${e.take} here to take.`); continue; }
+      if (!id) { 
+        note(`There is no ${e.take} here to take.`); 
+        advanceQuests(s, note);
+        continue; 
+      }
       s.roomItems[s.player.room] = s.roomItems[s.player.room].filter((x) => x !== id);
       s.player.inventory.push(id);
       note(`Taken: ${itemName(id)}.`, "gain");
+      advanceQuests(s, note);  // ← Check quests after taking
       continue;
     }
 
+    // ---- DROP ----
     if (e.drop) {
       const id = resolveItem(e.drop, s.player.inventory);
-      if (!id) { note(`You are not carrying ${e.drop}.`); continue; }
+      if (!id) { 
+        note(`You are not carrying ${e.drop}.`); 
+        advanceQuests(s, note);
+        continue; 
+      }
       s.player.inventory = s.player.inventory.filter((x) => x !== id);
       (s.roomItems[s.player.room] ??= []).push(id);
       note(`Dropped: ${itemName(id)}.`);
+      advanceQuests(s, note);  // ← Check quests after dropping
       continue;
     }
 
+    // ---- GIVE ----
     if (e.give) {
       const g = e.give;
       const item = typeof g === "string" ? g : (g.item ?? g.what ?? g.object);
       const to = (typeof g === "string" ? e.to : (g.to ?? g.target ?? g.who)) ?? e.to;
       const mobId = resolveMob(to, mobsInRoom(s, s.player.room));
-      if (!mobId) { note(`There is nobody here called ${to}.`); continue; }
+      if (!mobId) { 
+        note(`There is nobody here called ${to}.`); 
+        advanceQuests(s, note);
+        continue; 
+      }
       const itemId = resolveItem(item, s.player.inventory);
-      if (!itemId) { note(`You are not carrying ${item}.`); continue; }
+      if (!itemId) { 
+        note(`You are not carrying ${item}.`); 
+        advanceQuests(s, note);
+        continue; 
+      }
       const def = WORLD.mobs[mobId];
       const trade = (def.trades ?? []).find((t) => t.wants === itemId && s.mobs[mobId].inventory.includes(t.gives));
       s.player.inventory = s.player.inventory.filter((x) => x !== itemId);
@@ -432,61 +458,39 @@ function applyEffects(prev, effects) {
       if (trade) {
         s.mobs[mobId].inventory = s.mobs[mobId].inventory.filter((x) => x !== trade.gives);
         s.player.inventory.push(trade.gives);
-        // Handle NPC leaving after trade
         if (trade.then_leave && trade.destination_room && WORLD.rooms[trade.destination_room]) {
           s.mobs[mobId].room = trade.destination_room;
           note(`${def.name} leaves for ${WORLD.rooms[trade.destination_room].name}.`);
         }
         note(`Received: ${itemName(trade.gives)}.`, "gain");
       }
+      advanceQuests(s, note);  // ← Check quests after giving
       continue;
     }
 
-    if (e.attack || e.kill || e.fight) {
-      note("Nothing here can be fought.");
-      continue;
-    }
-
-    if (false) {
-      const target = e.attack ?? e.kill ?? e.fight;
-      const mobId = resolveMob(target, mobsInRoom(s, s.player.room));
-      if (!mobId) { note(`There is nothing here called ${target} to fight.`); continue; }
-      const def = WORLD.mobs[mobId];
-      if (def.essential) { note(`${def.name} cannot be harmed. Nothing about the world changes.`); continue; }
-      const w = playerWeapon(s);
-      const dmg = roll(w.damage);
-      s.mobs[mobId].hp -= dmg;
-      note(`You hit ${def.name}${w.id ? ` with the ${itemName(w.id)}` : ""} for ${dmg}. ` +
-        (s.mobs[mobId].hp > 0 ? `It has ${s.mobs[mobId].hp} left.` : "It goes down."), "hit");
-      if (s.mobs[mobId].hp <= 0) {
-        s.mobs[mobId].alive = false;
-        const drops = s.mobs[mobId].inventory;
-        if (drops.length) {
-          (s.roomItems[s.player.room] ??= []).push(...drops);
-          note(`It leaves behind: ${drops.map(itemName).join(", ")}.`);
-          s.mobs[mobId].inventory = [];
-        }
-      } else {
-        const back = roll([1, 3]); s.player.hp -= back;
-        note(`It comes back at you. −${back} health.`, "hit");
-      }
-      continue;
-    }
-
+    // ---- WORK (props) ----
     if (e.work) {
       const id = resolveProp(e.work, propsInRoom(s, s.player.room));
-      if (!id) { note(`There is nothing here called ${e.work}.`); continue; }
+      if (!id) { 
+        note(`There is nothing here called ${e.work}.`); 
+        advanceQuests(s, note);
+        continue; 
+      }
       const pr = WORLD.props[id];
 
-      if (s.flags?.[pr.sets]) { note(`The ${pr.name} has already been worked.`); continue; }
+      if (s.flags?.[pr.sets]) { 
+        note(`The ${pr.name} has already been worked.`); 
+        advanceQuests(s, note);
+        continue; 
+      }
       if (pr.requires && !s.player.inventory.includes(pr.requires)) {
         note(`The ${pr.name} will not move. It needs the ${itemName(pr.requires)}.`);
+        advanceQuests(s, note);
         continue;
       }
 
       (s.flags ??= {})[pr.sets] = true;
 
-      // Remove required item if it should be consumed
       if (pr.requires && s.player.inventory.includes(pr.requires)) {
         s.player.inventory = s.player.inventory.filter((x) => x !== pr.requires);
         note(`You use the ${itemName(pr.requires)}.`, "gain");
@@ -506,21 +510,23 @@ function applyEffects(prev, effects) {
         note(`You can see ${found.join(" and ")} now.`, "gain");
       }
 
-      // Advance quests immediately after working a prop
-      advanceQuests(s, note);
+      advanceQuests(s, note);  // ← Check quests after working a prop
       continue;
     }
 
+    // ---- OPEN / CLOSE DOOR ----
     if (e.open || e.close) {
       const closing = Boolean(e.close);
       const dir = String(e.open ?? e.close).toLowerCase();
       const ex = exitOf(room, dir);
       if (!ex?.to) { 
         note(`There is nothing ${dir} of here to open.`); 
+        advanceQuests(s, note);
         continue; 
       }
       if (!ex.locked) {
         note(closing ? `The way ${dir} has no lock on it.` : `The way ${dir} is already open.`);
+        advanceQuests(s, note);
         continue;
       }
 
@@ -529,31 +535,40 @@ function applyEffects(prev, effects) {
       if (closing) {
         if (!s.opened?.[doorKey]) { 
           note(`The way ${dir} is already shut.`); 
+          advanceQuests(s, note);
           continue; 
         }
         delete s.opened[doorKey];
         note(`You shut the way ${dir}. It locks behind you.`);
+        advanceQuests(s, note);
         continue;
       }
 
       if (s.opened?.[doorKey]) { 
         note(`The way ${dir} is already open.`); 
+        advanceQuests(s, note);
         continue; 
       }
       if (!s.player.inventory.includes(ex.locked)) {
         note(`It will not open. It needs the ${itemName(ex.locked)}.`);
+        advanceQuests(s, note);
         continue;
       }
       s.opened[doorKey] = true;
       note(`The ${itemName(ex.locked)} turns. The way ${dir} is open.`, "gain");
+      advanceQuests(s, note);  // ← Check quests after opening a door
       continue;
     }
 
+    // ---- UNRECOGNISED ----
     console.warn("unrecognised effect", JSON.stringify(e));
     note("Nothing about the world actually changed.");
+    advanceQuests(s, note);  // ← Check quests even on unrecognised actions
   }
 
+  // Final quest check (safety net)
   advanceQuests(s, note);
+  
   if (s.player.hp <= 0) { s.player.hp = 0; s.over = "dead"; note("You do not get up.", "hit"); }
   s.turn = prev.turn + 1;
   return { state: s, log };
