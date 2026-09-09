@@ -291,9 +291,44 @@ function questProgress(s) {
   for (const [qid, q] of Object.entries(WORLD.quests ?? {})) {
     const stages = stagesOf(q);
     if (!stages.length) continue;
-    const raw = s.quests?.[qid];
-    const at = raw === true ? stages.length : (Number(raw) || 0);
-    out.push({ qid, quest: q, stages, at, done: at >= stages.length });
+    
+    const progress = s.quests?.[qid];
+    let completed = [];
+    let done = false;
+    
+    if (progress === true) {
+      done = true;
+      completed = stages.map((_, i) => i); // All stages complete
+    } else if (Array.isArray(progress)) {
+      completed = progress;
+      done = completed.length === stages.length;
+    } else {
+      completed = [];
+      done = false;
+    }
+    
+    // Find the first incomplete stage (for the "next goal" display)
+    let nextStage = null;
+    let nextIndex = -1;
+    for (let i = 0; i < stages.length; i++) {
+      if (!completed.includes(i)) {
+        nextStage = stages[i];
+        nextIndex = i;
+        break;
+      }
+    }
+    
+    out.push({ 
+      qid, 
+      quest: q, 
+      stages, 
+      completed, 
+      nextStage,
+      nextIndex,
+      done, 
+      total: stages.length,
+      completedCount: completed.length
+    });
   }
   return out;
 }
@@ -303,24 +338,30 @@ function advanceQuests(s, note) {
     const stages = stagesOf(quest);
     if (!stages.length) continue;
     
-    // If quest is already marked complete, skip
-    if (s.quests?.[qid] === true) continue;
+    // Get existing completed stages (default to empty array)
+    const completed = s.quests?.[qid] && Array.isArray(s.quests[qid]) 
+      ? s.quests[qid] 
+      : [];
     
-    // Count how many stages are COMPLETELY satisfied
-    let completedCount = 0;
+    // Check each stage and add to completed if not already there
+    let changed = false;
     for (let i = 0; i < stages.length; i++) {
-      if (stageMet(s, stages[i].when)) {
-        completedCount++;
+      if (stageMet(s, stages[i].when) && !completed.includes(i)) {
+        completed.push(i);
+        changed = true;
       }
     }
     
-    // If ALL stages are satisfied, mark quest as complete
-    if (completedCount === stages.length) {
+    // If all stages are complete, store 'true' instead of array
+    if (completed.length === stages.length) {
       s.quests[qid] = true;
       note(`Quest complete: ${quest.name}.`, "quest");
-    } else if (completedCount > 0 && s.quests?.[qid] !== completedCount) {
-      // Update progress with the number of completed stages
-      s.quests[qid] = completedCount;
+    } else if (changed) {
+      // Sort the array for consistent display
+      completed.sort((a, b) => a - b);
+      s.quests[qid] = completed;
+      // Show progress
+      note(`${quest.name} — ${completed.length}/${stages.length} stages complete`, "quest");
     }
   }
 }
