@@ -303,12 +303,10 @@ function advanceQuests(s, note) {
     const stages = stagesOf(quest);
     if (!stages.length) continue;
     
-    let currentProgress = s.quests?.[qid];
+    // If quest is already marked complete, skip
+    if (s.quests?.[qid] === true) continue;
     
-    // If quest is already complete, skip
-    if (currentProgress === true) continue;
-    
-    // Count how many stages are satisfied
+    // Count how many stages are COMPLETELY satisfied
     let completedCount = 0;
     for (let i = 0; i < stages.length; i++) {
       if (stageMet(s, stages[i].when)) {
@@ -316,12 +314,12 @@ function advanceQuests(s, note) {
       }
     }
     
-    // If ALL stages are complete, mark quest as done
+    // If ALL stages are satisfied, mark quest as complete
     if (completedCount === stages.length) {
       s.quests[qid] = true;
       note(`Quest complete: ${quest.name}.`, "quest");
-    } else if (completedCount > 0) {
-      // Store the number of completed stages (for progress display)
+    } else if (completedCount > 0 && s.quests?.[qid] !== completedCount) {
+      // Update progress with the number of completed stages
       s.quests[qid] = completedCount;
     }
   }
