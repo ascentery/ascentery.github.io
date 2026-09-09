@@ -298,16 +298,20 @@ function questProgress(s) {
     
     if (progress === true) {
       done = true;
-      completed = stages.map((_, i) => i); // All stages complete
+      completed = stages.map((_, i) => i);
     } else if (Array.isArray(progress)) {
       completed = progress;
       done = completed.length === stages.length;
+    } else if (typeof progress === 'number' && progress > 0) {
+      // Legacy: treat number as "first N stages complete"
+      completed = Array.from({ length: Math.min(progress, stages.length) }, (_, i) => i);
+      done = progress >= stages.length;
     } else {
       completed = [];
       done = false;
     }
     
-    // Find the first incomplete stage (for the "next goal" display)
+    // Find the first incomplete stage
     let nextStage = null;
     let nextIndex = -1;
     for (let i = 0; i < stages.length; i++) {
@@ -318,14 +322,14 @@ function questProgress(s) {
       }
     }
     
-    out.push({ 
-      qid, 
-      quest: q, 
-      stages, 
-      completed, 
+    out.push({
+      qid,
+      quest: q,
+      stages,
+      completed,
       nextStage,
       nextIndex,
-      done, 
+      done,
       total: stages.length,
       completedCount: completed.length
     });
@@ -339,29 +343,33 @@ function advanceQuests(s, note) {
     if (!stages.length) continue;
     
     // Get existing completed stages (default to empty array)
-    const completed = s.quests?.[qid] && Array.isArray(s.quests[qid]) 
-      ? s.quests[qid] 
-      : [];
+    let completed = [];
+    const current = s.quests?.[qid];
     
-    // Check each stage and add to completed if not already there
+    // Handle different possible formats
+    if (current === true) {
+      continue;  // Already complete, skip
+    } else if (Array.isArray(current)) {
+      completed = [...current];  // ← READ ARRAY FROM SAVE
+    } else if (typeof current === 'number') {
+      completed = [];  // Legacy: convert to empty array
+    }
+    
+    // Check each stage and add to completed if condition is met
     let changed = false;
     for (let i = 0; i < stages.length; i++) {
       if (stageMet(s, stages[i].when) && !completed.includes(i)) {
-        completed.push(i);
+        completed.push(i);  // ← ADD STAGE INDEX TO ARRAY
         changed = true;
       }
     }
     
-    // If all stages are complete, store 'true' instead of array
+    // If all stages are complete, store 'true'
     if (completed.length === stages.length) {
       s.quests[qid] = true;
-      note(`Quest complete: ${quest.name}.`, "quest");
     } else if (changed) {
-      // Sort the array for consistent display
       completed.sort((a, b) => a - b);
-      s.quests[qid] = completed;
-      // Show progress
-      note(`${quest.name} — ${completed.length}/${stages.length} stages complete`, "quest");
+      s.quests[qid] = completed;  // ← STORE ARRAY IN SAVE!
     }
   }
 }
