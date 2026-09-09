@@ -342,34 +342,34 @@ function advanceQuests(s, note) {
     const stages = stagesOf(quest);
     if (!stages.length) continue;
     
-    // Get existing completed stages (default to empty array)
+    // Get existing completed stages
     let completed = [];
     const current = s.quests?.[qid];
     
-    // Handle different possible formats
     if (current === true) {
-      continue;  // Already complete, skip
+      continue;  // Already complete
     } else if (Array.isArray(current)) {
-      completed = [...current];  // ← READ ARRAY FROM SAVE
+      completed = [...current];
     } else if (typeof current === 'number') {
-      completed = [];  // Legacy: convert to empty array
+      // Legacy: convert to empty array (will be rebuilt)
+      completed = [];
     }
     
-    // Check each stage and add to completed if condition is met
+    // Check each stage
     let changed = false;
     for (let i = 0; i < stages.length; i++) {
       if (stageMet(s, stages[i].when) && !completed.includes(i)) {
-        completed.push(i);  // ← ADD STAGE INDEX TO ARRAY
+        completed.push(i);
         changed = true;
       }
     }
     
-    // If all stages are complete, store 'true'
     if (completed.length === stages.length) {
       s.quests[qid] = true;
+      note(`Quest complete: ${quest.name}.`, "quest");
     } else if (changed) {
       completed.sort((a, b) => a - b);
-      s.quests[qid] = completed;  // ← STORE ARRAY IN SAVE!
+      s.quests[qid] = completed;  // ← STORE ARRAY HERE
     }
   }
 }
