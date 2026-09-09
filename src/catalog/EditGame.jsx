@@ -3,11 +3,12 @@ import {
   deleteWorld,
   isFullyIllustrated,
   loadArt,
+  loadWorldData,
   saveWorldDetails,
   setPublished,
 } from "../lib/db";
+import { buildWalkthrough } from "../engine/engine";
 import { ArtTab } from "./ArtTab";
-import { Browse } from "./Browse";
 import { WorldTab } from "./WorldTab";
 import { T, inputStyle } from "../theme";
 import { Btn, Chip, Empty, Field } from "../ui/primitives";
@@ -69,7 +70,7 @@ export function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
       )}
 
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24, flexWrap: "wrap" }}>
-        {[["art", "Pictures"], ["world", "World"], ["details", "Details"], ["settings", "Settings"]].map(([k, label]) => (
+        {[["art", "Pictures"], ["world", "World"], ["details", "Details"], ["walkthrough", "Walkthrough"], ["settings", "Settings"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className="pf-btn"
             style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px", fontFamily: T.mono, fontSize: 12,
               color: tab === k ? T.bone : T.boneDim, boxShadow: tab === k ? "inset 0 -2px 0 " + T.ochre : "none" }}>
@@ -93,6 +94,12 @@ export function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
       )}
 
       {tab === "details" && <DetailsTab game={game} refreshWorlds={refreshWorlds} />}
+
+      {tab === "walkthrough" && (
+        game.status === "ready"
+          ? <WalkthroughTab worldId={game.id} />
+          : <Empty title="Nothing to walk through yet." line="This world has not finished building." />
+      )}
 
       {tab === "settings" && (
         <div style={{ maxWidth: 480 }}>
@@ -169,6 +176,72 @@ export function DetailsTab({ game, refreshWorlds }) {
       <div style={{ fontFamily: T.mono, fontSize: 11, color: saved ? T.moss : T.clay, minHeight: 16 }}>
         {saved ? "saved" : error || "\u00a0"}
       </div>
+    </div>
+  );
+}
+
+function WalkthroughTab({ worldId }) {
+  const [world, setWorld] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadWorldData(worldId)
+      .then(({ data }) => { if (!cancelled) setWorld(data); })
+      .catch((e) => { if (!cancelled) setError(e.message); });
+    return () => { cancelled = true; };
+  }, [worldId]);
+
+  if (error) {
+    return <p style={{ fontFamily: T.mono, fontSize: 12, color: T.clay }}>{error}</p>;
+  }
+  if (!world) {
+    return <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>;
+  }
+
+  const steps = buildWalkthrough(world);
+  if (!steps.length) {
+    return <Empty title="No quests in this world." line="There is nothing to walk through yet." />;
+  }
+
+  const DIR_ARROW = { north: "\u2191", south: "\u2193", east: "\u2192", west: "\u2190", up: "\u2197", down: "\u2199" };
+
+  return (
+    <div style={{ maxWidth: 640 }}>
+      <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 20px" }}>
+        Computed directly from the world itself, the same way the reachability check is — not
+        written by a model, so it cannot describe a step that does not actually work. If the world
+        changes, so does this.
+      </p>
+
+      {steps.map((s, i) => (
+        <div key={i} style={{ border: "1px solid " + T.edge, borderRadius: 2, padding: "12px 16px", marginBottom: 10 }}>
+          <div style={{ fontFamily: T.mono, fontSize: 10.5, color: T.ochre, marginBottom: 4 }}>
+            {s.quest}
+          </div>
+          <div style={{ fontFamily: T.serif, fontSize: 15.5, marginBottom: 8 }}>
+            {i + 1}. {s.goal}
+          </div>
+
+          {s.already ? (
+            <div style={{ fontFamily: T.mono, fontSize: 11.5, color: T.boneDim }}>
+              {"already true \u2014 "}{s.action}
+            </div>
+          ) : s.note ? (
+            <div style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay }}>{s.note}</div>
+          ) : (
+            <div style={{ fontFamily: T.mono, fontSize: 11.5, color: T.boneDim, lineHeight: 1.9 }}>
+              <div>{"\ud83d\udccd "}{s.roomName}</div>
+              <div>
+                {"\ud83d\udeb6 "}{s.path.length
+                  ? s.path.map((d) => `${DIR_ARROW[d] ?? d} ${d}`).join("  ")
+                  : "already there"}
+              </div>
+              <div>{"\u26a1 "}{s.action}</div>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

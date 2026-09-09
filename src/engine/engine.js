@@ -6,6 +6,193 @@
    depend on how it is drawn. */
 
 
+/* A walkthrough, computed rather than written. It plays the world the same
+   way a real playthrough would — one quest stage at a time, tracking
+   inventory, raised flags and opened doors exactly as the engine does —
+   and records the shortest path and the action taken at each step. Nothing
+   here is asked of a model: it cannot hallucinate a step that does not
+   match the world, because it IS the world's own rules run forward.
+
+   Each returned step corresponds to one quest stage, in quest order:
+     { quest, goal, room, roomName, path, action, note, already }
+   `path` is a list of exit directions from wherever the previous step left
+   off. `action` is a short mechanical description ("take golden_apple",
+   "give golden_apple to imam_rashid", "pull the lever"). `already` marks a
+   stage that was satisfied as a side effect of an earlier one — most often
+   an item a trade already placed in the player's hands. */
+export function buildWalkthrough(WORLD) {
+  const rooms = WORLD.rooms ?? {};
+  const mobs = WORLD.mobs ?? {};
+  const items = WORLD.items ?? {};
+  const props = WORLD.props ?? {};
+
+  const itemLabel = (id) => items[id]?.short ?? items[id]?.name ?? id;
+  const mobLabel = (id) => mobs[id]?.name ?? id;
+  const roomLabel = (id) => rooms[id]?.name ?? id;
+
+  const inv = new Set();
+  const flags = new Set();
+  const opened = new Set();                 // "room:dir", mirrors state.opened
+  const roomItems = {};
+  for (const [rk, list] of Object.entries(WORLD.roomItems ?? {})) roomItems[rk] = new Set(list ?? []);
+  const mobInv = {};
+  for (const [mk, m] of Object.entries(mobs)) mobInv[mk] = new Set(m.inventory ?? []);
+
+  let here = WORLD.startRoom;
+  const steps = [];
+
+  /* Shortest path from `here` to `to`, honouring only what has actually
+     been unlocked so far in this walkthrough — the same constraint a real
+     player is under. */
+  const pathTo = (to) => {
+    if (here === to) return [];
+    const seen = new Set([here]);
+    const queue = [[here, []]];
+    while (queue.length) {
+      const [cur, path] = queue.shift();
+      for (const [dir, ex] of Object.entries(rooms[cur]?.exits ?? {})) {
+        const dest = typeof ex === "string" ? ex : ex?.to;
+        if (!dest || !rooms[dest] || seen.has(dest)) continue;
+        const lock = typeof ex === "object" ? ex.locked : null;
+        const need = typeof ex === "object" ? ex.needs : null;
+        if (lock && !(inv.has(lock) && opened.has(`${cur}:${dir}`))) continue;
+        if (need && !flags.has(need)) continue;
+        seen.add(dest);
+        const nextPath = [...path, dir];
+        if (dest === to) return nextPath;
+        queue.push([dest, nextPath]);
+      }
+    }
+    return null;   // unreachable given what has been unlocked so far
+  };
+
+  /* Rooms reachable right now, for finding where an item can currently be
+     picked up or which mob can currently make a trade. */
+  const reachableNow = () => {
+    const seen = new Set([here]);
+    const queue = [here];
+    while (queue.length) {
+      const cur = queue.shift();
+      for (const [dir, ex] of Object.entries(rooms[cur]?.exits ?? {})) {
+        const dest = typeof ex === "string" ? ex : ex?.to;
+        if (!dest || !rooms[dest] || seen.has(dest)) continue;
+        const lock = typeof ex === "object" ? ex.locked : null;
+        const need = typeof ex === "object" ? ex.needs : null;
+        if (lock && !(inv.has(lock) && opened.has(`${cur}:${dir}`))) continue;
+        if (need && !flags.has(need)) continue;
+        seen.add(dest);
+        queue.push(dest);
+      }
+    }
+    return seen;
+  };
+
+  // Move `here` to `to`, opening any locked door along the way, recording
+  // one step of the walkthrough for the journey.
+  // Returns the path taken (an empty array if already there), or null if
+  // no path could be found given what has been unlocked so far.
+  const travel = (to) => {
+    if (here === to) return [];
+    const path = pathTo(to);
+    if (!path) return null;
+    let cur = here;
+    for (const dir of path) {
+      const ex = rooms[cur].exits[dir];
+      const lock = typeof ex === "object" ? ex.locked : null;
+      if (lock && !opened.has(`${cur}:${dir}`)) opened.add(`${cur}:${dir}`);
+      cur = typeof ex === "string" ? ex : ex.to;
+    }
+    here = to;
+    return path;
+  };
+
+  for (const [qk, q] of Object.entries(WORLD.quests ?? {})) {
+    for (const stage of q.stages ?? []) {
+      const when = stage.when ?? {};
+      let entry = { quest: q.name, goal: stage.goal, room: null, roomName: null,
+        path: [], action: "", note: "", already: false };
+
+      if (when.playerHas) {
+        const item = when.playerHas;
+        if (inv.has(item)) {
+          entry.already = true;
+          entry.action = `have the ${itemLabel(item)}`;
+        } else {
+          const open = reachableNow();
+          // lying in a room already open to us
+          let source = Object.entries(roomItems).find(([rk, set]) => open.has(rk) && set.has(item))?.[0];
+          if (source) {
+            const path = travel(source);
+            if (path) {
+              inv.add(item);
+              roomItems[source]?.delete(item);
+              entry = { ...entry, room: source, roomName: roomLabel(source), path,
+                action: `take ${itemLabel(item)}` };
+            }
+          } else {
+            // offered in a trade we can currently afford
+            const seller = Object.entries(mobs).find(([mk, m]) =>
+              open.has(m.room) && (m.trades ?? []).some((t) => t.gives === item && inv.has(t.wants)));
+            if (seller) {
+              const [mk, m] = seller;
+              const trade = m.trades.find((t) => t.gives === item && inv.has(t.wants));
+              const path = travel(m.room);
+              if (path) {
+                inv.delete(trade.wants);
+                mobInv[mk]?.add(trade.wants);
+                mobInv[mk]?.delete(item);
+                inv.add(item);
+                entry = { ...entry, room: m.room, roomName: roomLabel(m.room), path,
+                  action: `trade ${itemLabel(trade.wants)} to ${mobLabel(mk)} for ${itemLabel(item)}` };
+              }
+            } else {
+              entry.note = "could not be resolved automatically — check this stage by hand";
+            }
+          }
+        }
+      } else if (when.mobHas) {
+        const { mob, item } = when.mobHas;
+        const path = travel(mobs[mob]?.room);
+        if (path === null) {
+          entry.note = `${mobLabel(mob)} could not be reached — check this stage by hand`;
+        } else {
+          if (inv.has(item)) inv.delete(item);
+          mobInv[mob]?.add(item);
+          entry = { ...entry, room: mobs[mob]?.room, roomName: roomLabel(mobs[mob]?.room), path,
+            action: `give ${itemLabel(item)} to ${mobLabel(mob)}` };
+        }
+      } else if (when.inRoom) {
+        const path = travel(when.inRoom);
+        if (path === null) {
+          entry.note = "that room could not be reached — check this stage by hand";
+        } else {
+          entry = { ...entry, room: when.inRoom, roomName: roomLabel(when.inRoom), path,
+            action: "go there" };
+        }
+      } else if (when.flag) {
+        const prop = Object.entries(props).find(([, pr]) => pr?.sets === when.flag);
+        if (!prop) {
+          entry.note = "no prop sets this flag — check this stage by hand";
+        } else {
+          const [pk, pr] = prop;
+          const path = travel(pr.room);
+          if (path === null) {
+            entry.note = `${pr.name} could not be reached — check this stage by hand`;
+          } else {
+            flags.add(when.flag);
+            entry = { ...entry, room: pr.room, roomName: roomLabel(pr.room), path,
+              action: `${pr.verb ?? "use"} the ${pr.name}` };
+          }
+        }
+      }
+
+      steps.push(entry);
+    }
+  }
+
+  return steps;
+}
+
 export function makeEngine(WORLD) {
 
 const freshState = () => ({
