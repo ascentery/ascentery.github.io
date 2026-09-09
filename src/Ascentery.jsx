@@ -299,17 +299,30 @@ function questProgress(s) {
 }
 
 function advanceQuests(s, note) {
-  for (const { qid, quest, stages, at, done } of questProgress(s)) {
-    if (done) continue;
-    let i = at;
-    while (i < stages.length && stageMet(s, stages[i].when)) i++;
-    if (i === at) continue;
-
-    s.quests[qid] = i;
-    if (i >= stages.length) {
+  for (const [qid, quest] of Object.entries(WORLD.quests ?? {})) {
+    const stages = stagesOf(quest);
+    if (!stages.length) continue;
+    
+    let currentProgress = s.quests?.[qid];
+    
+    // If quest is already complete, skip
+    if (currentProgress === true) continue;
+    
+    // Count how many stages are satisfied
+    let completedCount = 0;
+    for (let i = 0; i < stages.length; i++) {
+      if (stageMet(s, stages[i].when)) {
+        completedCount++;
+      }
+    }
+    
+    // If ALL stages are complete, mark quest as done
+    if (completedCount === stages.length) {
+      s.quests[qid] = true;
       note(`Quest complete: ${quest.name}.`, "quest");
-    } else {
-      note(`${quest.name} — ${stages[i].goal}`, "quest");
+    } else if (completedCount > 0) {
+      // Store the number of completed stages (for progress display)
+      s.quests[qid] = completedCount;
     }
   }
 }
