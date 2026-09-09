@@ -467,6 +467,8 @@ export async function generateWorld(worldId, opts = {}) {
     const err = new Error(body.error || `Generation failed (${res.status})`)
     err.needsFunds = Boolean(body.needs_funds)
     err.failedAt = body.failed_at
+    err.raw = body.raw ?? null           // the model's own output, for admin troubleshooting
+    err.rawLength = body.raw_length ?? null
     throw err
   }
   return body    // { status, stats, warnings, title, blurb, cost_cents, balance_cents }
@@ -556,6 +558,29 @@ export async function generateBriefFromPreset(presetId = null) {
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(body.error || `Could not generate a brief (${res.status})`)
   return body   // { title, brief, preset_label }
+}
+
+/** Step 2 of Create. Three modes:
+      full    -> { gameDetails, titles }   the initial call after step 1
+      details -> { gameDetails }           admin only, free
+      titles  -> { titles }                1 cent, anyone
+    presetId is honoured only for admins, same as generateBriefFromPreset. */
+export async function generateGameDetails({ mode, title, brief, gameDetails, presetId }) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-details`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ mode, title, brief, gameDetails, ...(presetId ? { presetId } : {}) }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error(body.error || `Could not generate (${res.status})`)
+    err.needsFunds = Boolean(body.needs_funds)
+    throw err
+  }
+  return body
 }
 
 /* ---------- platform settings (admin) ---------- */
