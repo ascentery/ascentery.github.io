@@ -487,6 +487,44 @@ export async function setPublished(worldId, published) {
   }
 }
 
+/* ---------- brief presets (admin-curated, everyone can use) ---------- */
+
+export async function loadBriefPresets() {
+  const { data, error } = await supabase
+    .from('brief_presets')
+    .select('id, label, title, prompt, sort')
+    .order('sort', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function saveBriefPreset({ id, label, title, prompt, sort }) {
+  const row = { label: label.trim(), title: (title ?? '').trim(), prompt: prompt.trim(), sort: sort ?? 0 }
+  if (!row.label) throw new Error('A preset needs a label.')
+  if (!row.prompt) throw new Error('A preset needs a brief to fill in.')
+
+  if (id) {
+    const { error } = await supabase.from('brief_presets').update(row).eq('id', id)
+    if (error) throw error
+    return id
+  }
+
+  // Labels are how an admin tells presets apart in the list, so duplicates
+  // are worth catching rather than silently allowing.
+  const { data: existing } = await supabase
+    .from('brief_presets').select('id').ilike('label', row.label).limit(1)
+  if (existing?.length) throw new Error('A preset with that label already exists.')
+
+  const { data, error } = await supabase.from('brief_presets').insert(row).select('id').single()
+  if (error) throw error
+  return data.id
+}
+
+export async function deleteBriefPreset(id) {
+  const { error } = await supabase.from('brief_presets').delete().eq('id', id)
+  if (error) throw error
+}
+
 /* ---------- platform settings (admin) ---------- */
 
 export const PROVIDERS = [

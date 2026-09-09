@@ -6,6 +6,7 @@ import {
   createWorld,
   genCost,
   generateWorld,
+  loadBriefPresets,
   money,
   setPublished,
   watchGeneration,
@@ -30,6 +31,10 @@ export function Create({ me, refreshWorlds, go }) {
   const [size, setSize] = useState("auto");
   const [needsFunds, setNeedsFunds] = useState(false);
   const [stage, setStage] = useState(null);   // map | plot | prose | done, while building
+  const [presets, setPresets] = useState([]);
+  const [presetId, setPresetId] = useState(null);
+
+  useEffect(() => { loadBriefPresets().then(setPresets).catch(() => setPresets([])); }, []);
 
   const build = async () => {
     setPhase("building"); setStep(3); setError(null); setStage(null);
@@ -99,12 +104,33 @@ export function Create({ me, refreshWorlds, go }) {
       </div>
 
       {step === 1 && (<>
+        {presets.length > 0 && (
+          <Field label="Start from a preset" hint="Fills the title and brief below. Edit either before continuing.">
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {presets.map((p) => (
+                <button key={p.id} className="pf-btn"
+                  onClick={() => {
+                    setPresetId(p.id);
+                    setTitle(p.title || "");
+                    setDesc(p.prompt);
+                  }}
+                  style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer",
+                    background: "transparent", fontFamily: T.mono, fontSize: 12,
+                    color: presetId === p.id ? T.bone : T.boneDim,
+                    border: "1px solid " + (presetId === p.id ? T.ochre : T.edge) }}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+        )}
+
         <Field label="Title">
           <input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="The Lamp Room" />
         </Field>
         <Field label="Describe the world"
           hint="Places, who is in them, what they want, and above all what cannot be talked around. The rules you write here are the ones the game will enforce.">
-          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={10}
+          <textarea value={desc} onChange={(e) => { setDesc(e.target.value); setPresetId(null); }} rows={10}
             placeholder="Somewhere real enough to walk around in"
             style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
         </Field>

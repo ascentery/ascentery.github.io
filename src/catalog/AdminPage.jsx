@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from "react";
 import {
   PROVIDERS,
+  deleteBriefPreset,
+  loadBriefPresets,
   loadReports,
   loadSetting,
   resolveReport,
+  saveBriefPreset,
   saveSetting,
   unpublishWorld,
 } from "../lib/db";
@@ -11,6 +14,7 @@ import { T, inputStyle } from "../theme";
 import { Btn, Empty, Field, H1 } from "../ui/primitives";
 
 export function AdminPage({ me, go }) {
+  const [tab, setTab] = useState("settings");
   const [setting, setSetting] = useState(null);
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
@@ -45,7 +49,20 @@ export function AdminPage({ me, go }) {
         Admin
       </H1>
 
-      {!setting ? (
+      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24 }}>
+        {[["settings", "Settings"], ["presets", "Brief presets"]].map(([k, label]) => (
+          <button key={k} onClick={() => setTab(k)} className="pf-btn"
+            style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px",
+              fontFamily: T.mono, fontSize: 12, color: tab === k ? T.bone : T.boneDim,
+              boxShadow: tab === k ? "inset 0 -2px 0 " + T.ochre : "none" }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "presets" && <BriefPresetsTab />}
+
+      {tab === "settings" && (!setting ? (
         <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
       ) : (
         <>
@@ -98,16 +115,128 @@ export function AdminPage({ me, go }) {
             </p>
           </div>
         </>
-      )}
+      ))}
 
-      {error && (
+      {tab === "settings" && error && (
         <p style={{ fontFamily: T.mono, fontSize: 12, color: T.clay, lineHeight: 1.7,
           border: "1px solid " + T.clay + "44", padding: 12, borderRadius: 2, marginTop: 18 }}>
           {error}
         </p>
       )}
 
-      <ReportQueue me={me} />
+      {tab === "settings" && <ReportQueue me={me} />}
+    </div>
+  );
+}
+
+function BriefPresetsTab() {
+  const [rows, setRows] = useState(null);
+  const [editing, setEditing] = useState(null);   // null = new, or a row
+  const [label, setLabel] = useState("");
+  const [title, setTitle] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const refresh = () => loadBriefPresets().then(setRows).catch((e) => setError(e.message));
+  useEffect(() => { refresh(); }, []);
+
+  const edit = (row) => {
+    setEditing(row);
+    setLabel(row?.label ?? "");
+    setTitle(row?.title ?? "");
+    setPrompt(row?.prompt ?? "");
+    setError(null);
+  };
+
+  const save = async () => {
+    setBusy(true); setError(null);
+    try {
+      await saveBriefPreset({ id: editing?.id, label, title, prompt, sort: editing?.sort ?? (rows?.length ?? 0) });
+      await refresh();
+      edit(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (row) => {
+    setBusy(true); setError(null);
+    try {
+      await deleteBriefPreset(row.id);
+      await refresh();
+      if (editing?.id === row.id) edit(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 20px" }}>
+        Presets appear as a starting point in Create step 1. Picking one fills the title and brief;
+        the creator can still edit either before building.
+      </p>
+
+      {rows === null ? (
+        <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
+      ) : (
+        <div style={{ marginBottom: 24 }}>
+          {rows.map((r) => (
+            <div key={r.id} style={{ border: "1px solid " + T.edge, borderRadius: 2,
+              padding: "10px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: T.serif, fontSize: 15 }}>{r.label}</div>
+                <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {r.prompt}
+                </div>
+              </div>
+              <Btn kind="ghost" onClick={() => edit(r)}>edit</Btn>
+              <Btn kind="danger" disabled={busy} onClick={() => remove(r)}>delete</Btn>
+            </div>
+          ))}
+          {!rows.length && (
+            <p style={{ fontFamily: T.mono, fontSize: 12, color: T.boneDim }}>No presets yet.</p>
+          )}
+        </div>
+      )}
+
+      <div style={{ borderTop: "1px solid " + T.edge, paddingTop: 18 }}>
+        <div style={{ fontFamily: T.serif, fontSize: 16, marginBottom: 12 }}>
+          {editing ? `Editing "${editing.label}"` : "New preset"}
+        </div>
+
+        <Field label="Preset label" hint="Shown in the picker. Short and distinctive.">
+          <input style={inputStyle} value={label} onChange={(e) => setLabel(e.target.value)}
+            placeholder="Lighthouse mystery" />
+        </Field>
+
+        <Field label="Starting title" hint="Optional. Filled into the Title field when this preset is picked.">
+          <input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)}
+            placeholder="The Lamp Room" />
+        </Field>
+
+        <Field label="Preset brief" hint="The full text that fills the brief field. Write it the way you would want a creator to write their own.">
+          <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={8}
+            style={{ ...inputStyle, lineHeight: 1.6, resize: "vertical" }} />
+        </Field>
+
+        {error && (
+          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, marginBottom: 12 }}>{error}</p>
+        )}
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <Btn kind="solid" disabled={busy || !label.trim() || !prompt.trim()} onClick={save}>
+            {editing ? "Save" : "Add"}
+          </Btn>
+          {editing && <Btn kind="ghost" onClick={() => edit(null)}>Cancel</Btn>}
+        </div>
+      </div>
     </div>
   );
 }
