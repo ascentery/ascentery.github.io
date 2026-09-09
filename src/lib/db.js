@@ -505,6 +505,8 @@ export async function savePreset({ id, type, label, prompt, sortOrder }) {
   const row = { type, label: label.trim(), prompt: prompt.trim(), sort_order: sortOrder ?? 0 }
   if (!row.label) throw new Error('A preset needs a label.')
   if (row.prompt.length < 20) throw new Error('The prompt needs at least twenty characters.')
+  // No upper bound: a preset is an instruction the admin writes once and
+  // should be able to make as thorough as they want.
 
   if (id) {
     const { error } = await supabase.from('world_building_presets').update(row).eq('id', id)
@@ -525,14 +527,18 @@ export async function deletePreset(id) {
   if (error) throw error
 }
 
-/** Which preset generate-brief should use when nobody names one. Stored in
-    app_settings, same pattern as the model picker. */
-export async function loadDefaultBriefPreset() {
-  const v = await loadSetting('brief_preset_default')
+/** Which preset to use by default for a given preset type, when nobody
+    names one explicitly. Stored in app_settings, same pattern as the model
+    picker. One key per type, so brief and details defaults are independent
+    even though only the brief one is consumed by anything yet. */
+const DEFAULT_KEY = { game_brief: 'brief_preset_default', game_details: 'details_preset_default' }
+
+export async function loadDefaultPreset(type) {
+  const v = await loadSetting(DEFAULT_KEY[type])
   return v?.id ?? null
 }
-export async function saveDefaultBriefPreset(id) {
-  await saveSetting('brief_preset_default', { id })
+export async function saveDefaultPreset(type, id) {
+  await saveSetting(DEFAULT_KEY[type], { id })
 }
 
 /** Calls the edge function that writes a fresh brief from a preset.

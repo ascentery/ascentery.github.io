@@ -2,12 +2,12 @@ import React, { useState, useEffect } from "react";
 import {
   PROVIDERS,
   deletePreset,
-  loadDefaultBriefPreset,
+  loadDefaultPreset,
   loadPresets,
   loadReports,
   loadSetting,
   resolveReport,
-  saveDefaultBriefPreset,
+  saveDefaultPreset,
   savePreset,
   saveSetting,
   unpublishWorld,
@@ -162,7 +162,7 @@ function PresetList({ type }) {
 
   const refresh = () => {
     loadPresets(type).then(setRows).catch((e) => setError(e.message));
-    if (type === "game_brief") loadDefaultBriefPreset().then(setDefaultId).catch(() => {});
+    loadDefaultPreset(type).then(setDefaultId).catch(() => {});
   };
   useEffect(() => { refresh(); edit(null); }, [type]);
 
@@ -202,7 +202,7 @@ function PresetList({ type }) {
   const makeDefault = async (row) => {
     setBusy(true);
     try {
-      await saveDefaultBriefPreset(row.id);
+      await saveDefaultPreset(type, row.id);
       setDefaultId(row.id);
     } catch (e) {
       setError(e.message);
@@ -216,13 +216,18 @@ function PresetList({ type }) {
       "Create step 1 is admin-only; a creator who is not an admin gets the platform default, marked " +
       "below, or a random one if no default is set."
     : "Stored for the story-fleshing stage. Not consumed by anything yet \u2014 the current pipeline " +
-      "goes straight from a brief to a built world with no separate detailing step.";
+      "goes straight from a brief to a built world with no separate detailing step. A default can " +
+      "still be set here, ready for when that stage exists.";
 
   return (
     <div>
-      <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 20px" }}>
-        {purpose}
-      </p>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+        gap: 12, marginBottom: 20 }}>
+        <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: 0, flex: 1 }}>
+          {purpose}
+        </p>
+        <Btn kind="solid" onClick={() => edit(null)} style={{ flexShrink: 0 }}>+ New preset</Btn>
+      </div>
 
       {rows === null ? (
         <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
@@ -244,7 +249,7 @@ function PresetList({ type }) {
                   {r.prompt}
                 </div>
               </div>
-              {type === "game_brief" && defaultId !== r.id && (
+              {defaultId !== r.id && (
                 <Btn kind="ghost" disabled={busy} onClick={() => makeDefault(r)}>make default</Btn>
               )}
               <Btn kind="ghost" onClick={() => edit(r)}>edit</Btn>
@@ -271,7 +276,7 @@ function PresetList({ type }) {
           hint={type === "game_brief"
             ? "Instructions for the AI, not a finished brief. It writes a new one from this every time."
             : "Instructions for the detailing stage, once one exists."}>
-          <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={8} maxLength={2000}
+          <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={8}
             style={{ ...inputStyle, lineHeight: 1.6, resize: "vertical" }} />
         </Field>
 
