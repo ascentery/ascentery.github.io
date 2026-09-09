@@ -17,6 +17,7 @@ import {
   checkUsername, claimUsername, startCheckout, TOPUPS,
   loadSetting, saveSetting, PROVIDERS,
   signUp, signIn, signOut,
+  GEN_STAGES,
 } from "./lib/db";
 
 /* ============================================================
@@ -33,13 +34,11 @@ const T = {
   serif: "Newsreader, Georgia, serif",
   mono: "'IBM Plex Mono', ui-monospace, monospace",
 };
-/* the game runs on paper — stepping in is a change of light */
 const P = {
   paper: "#DCDFD7", paperDeep: "#CDD2C8",
   ink: "#232A1F", inkSoft: "#5A6353",
   ochre: "#9A7B18", rust: "#8C4A2F", moss: "#4A5D3F",
 };
-
 
 /* ============================================================
    ENGINE — hand-written once, world-agnostic
@@ -52,28 +51,61 @@ const freshState = () => ({
   mobs: Object.fromEntries(Object.entries(WORLD.mobs).map(([id, m]) => [id, { room: m.room, hp: m.hp, alive: true, met: false, inventory: [...m.inventory] }])),
   roomItems: JSON.parse(JSON.stringify(WORLD.roomItems)),
   quests: Object.fromEntries(Object.keys(WORLD.quests ?? {}).map((k) => [k, 0])),
-  /* Doors you have opened, keyed "room:direction". Having the key is not
-     the same as having used it: a locked door should be a moment, not a
-     silent tax on your inventory. */
   opened: {},
   flags: {}, over: null,
 });
 
 const roll = ([lo, hi]) => lo + Math.floor(Math.random() * (hi - lo + 1));
 const itemName = (id) => WORLD.items[id]?.short ?? id;
-/** Exits may be "room_key" or { to, locked }. One accessor, used everywhere,
-    so the rest of the engine never has to care which. */
+
+const OPPOSITE = {
+  north: "south", south: "north", east: "west", west: "east",
+  up: "down", down: "up"
+};
+
+/** Exit accessor — normalises string exits and object exits, including doorId and blocked_by */
 const exitOf = (room, dir) => {
   const ex = room?.exits?.[dir];
   if (!ex) return null;
-  return typeof ex === "string" ? { to: ex, locked: null } : { to: ex.to, locked: ex.locked ?? null };
+  if (typeof ex === "string") {
+    return { to: ex, locked: null, blocked_by: null, doorId: null, needs: null };
+  }
+  return {
+    to: ex.to,
+    locked: ex.locked ?? null,
+    blocked_by: ex.blocked_by ?? null,
+    doorId: ex.doorId ?? null,
+    needs: ex.needs ?? null,
+  };
 };
-const exitsOf = (room) => Object.keys(room?.exits ?? {}).map((d) => ({ dir: d, ...exitOf(room, d) }));
 
-/* Everything in the room, found or not. `propsInRoom` is the one to use
-   almost everywhere: a hidden prop is not in the room at all until whatever
-   conceals it has been dealt with — not shown, not mentioned to the
-   narrator, not workable. */
+const exitsOf = (room) =>
+  Object.keys(room?.exits ?? {}).map((d) => ({ dir: d, ...exitOf(room, d) }));
+
+/** Check whether an exit is passable (handles both locks and NPC blocks) */
+const canPass = (state, roomKey, direction, exit) => {
+  // 1. Check locked door
+  if (exit.locked) {
+    const keyHeld = state.inventory?.includes(exit.locked) || false;
+    const doorKey = exit.doorId || `${roomKey}:${direction}`;
+    const alreadyOpened = state.opened?.[doorKey] || false;
+    if (!keyHeld && !alreadyOpened) {
+      return { pass: false, reason: `locked with ${WORLD.items[exit.locked]?.name || exit.locked}` };
+    }
+  }
+
+  // 2. Check NPC blocking
+  if (exit.blocked_by) {
+    const mob = state.mobs?.[exit.blocked_by];
+    if (mob && mob.alive && mob.room === roomKey) {
+      const mobName = WORLD.mobs[exit.blocked_by]?.name || exit.blocked_by;
+      return { pass: false, reason: `blocked by ${mobName}` };
+    }
+  }
+
+  return { pass: true };
+};
+
 const allPropsInRoom = (room) =>
   Object.entries(WORLD.props ?? {}).filter(([, p]) => p?.room === room).map(([id]) => id);
 
@@ -85,9 +117,6 @@ const propVisible = (s, id) => {
 
 const propsInRoom = (s, room) => allPropsInRoom(room).filter((id) => propVisible(s, id));
 
-/* Items conceal the same way props do. Everything that reads the floor of a
-   room goes through this, so a letter behind a portrait is not listed, not
-   takeable and not mentioned until the portrait has been searched. */
 const itemVisible = (s, id) => {
   const until = WORLD.items?.[id]?.hiddenUntil;
   return !until || Boolean(s?.flags?.[until]);
@@ -95,9 +124,11 @@ const itemVisible = (s, id) => {
 
 const itemsInRoom = (s, room) => (s.roomItems?.[room] ?? []).filter((id) => itemVisible(s, id));
 
+const mobsInRoom = (s, room) =>
+  Object.entries(s.mobs).filter(([, m]) => m.alive && m.room === room).map(([id]) => id);
+
 const propName = (id) => WORLD.props?.[id]?.name ?? id;
 
-const mobsInRoom = (s, room) => Object.entries(s.mobs).filter(([, m]) => m.alive && m.room === room).map(([id]) => id);
 const playerWeapon = (s) => {
   const armed = s.player.inventory.find((i) => WORLD.items[i]?.damage);
   return armed ? { id: armed, damage: WORLD.items[armed].damage } : { id: null, damage: [2, 4] };
@@ -107,25 +138,35 @@ function affordances(s) {
   const room = WORLD.rooms[s.player.room];
   const L = [];
   const held = new Set(s.player.inventory);
-  L.push("- move " + exitsOf(room).map(({ dir, to, locked }) => {
+  L.push("- move " + exitsOf(room).map(({ dir, to, locked, blocked_by }) => {
     const dest = WORLD.rooms[to]?.name ?? to;
-    if (!locked) return `${dir} (to ${dest})`;
-    if (s.opened?.[`${s.player.room}:${dir}`]) return `${dir} (to ${dest}, unlocked earlier)`;
-    return held.has(locked)
-      ? `${dir} (to ${dest}, LOCKED. The player holds the ${itemName(locked)} but has not used it. ` +
-        `They must open it before they can pass; carrying the key is not the same as having opened the door)`
-      : `${dir} (to ${dest}, LOCKED — the player does not have the ${itemName(locked)} and cannot pass)`;
+    if (locked) {
+      const doorKey = `${s.player.room}:${dir}`;
+      if (s.opened?.[doorKey]) return `${dir} (to ${dest}, unlocked earlier)`;
+      return held.has(locked)
+        ? `${dir} (to ${dest}, LOCKED. The player holds the ${itemName(locked)} but has not used it. ` +
+          `They must open it before they can pass; carrying the key is not the same as having opened the door)`
+        : `${dir} (to ${dest}, LOCKED — the player does not have the ${itemName(locked)} and cannot pass)`;
+    }
+    if (blocked_by) {
+      const mob = s.mobs?.[blocked_by];
+      if (mob && mob.alive && mob.room === s.player.room) {
+        return `${dir} (to ${dest}, BLOCKED by ${WORLD.mobs[blocked_by]?.name || blocked_by})`;
+      }
+    }
+    return `${dir} (to ${dest})`;
   }).join(", "));
+
   const here = itemsInRoom(s, s.player.room);
   if (here.length) L.push("- take " + here.map(itemName).join(", "));
   if (s.player.inventory.length) L.push("- drop " + s.player.inventory.map(itemName).join(", "));
+
   for (const id of propsInRoom(s, s.player.room)) {
     const pr = WORLD.props[id];
     if (s.flags?.[pr.sets]) { L.push(`- the ${pr.name} has already been worked and will not do it twice`); continue; }
     L.push(pr.requires && !s.player.inventory.includes(pr.requires)
       ? `- the ${pr.name} is here but will not move without the ${itemName(pr.requires)}`
       : `- ${pr.verb ?? "use"} the ${pr.name} (this works, and changes something)`);
-    // Never hint at what is hidden. Finding it is the point.
   }
 
   for (const id of mobsInRoom(s, s.player.room)) {
@@ -143,6 +184,7 @@ function affordances(s) {
         : `- ${def.name} holds the ${itemName(t.gives)}. He will part with it for a ${itemName(t.wants)} and NOTHING ELSE. The player does not have one. No amount of talking, bargaining, bribing, threatening, pleading or cleverness will move him. Do not let him give it up.`);
     }
   }
+
   const active = questProgress(s).filter((p) => !p.done);
   if (active.length) {
     L.push("");
@@ -156,10 +198,6 @@ function affordances(s) {
   return L.join("\n");
 }
 
-/* Models write "the Golden Fleece"; the world calls it `golden_fleece` and
-   displays it as "golden fleece". Comparing raw strings makes underscores
-   and a leading article enough to lose a match, so everything is flattened
-   the same way before any of it is compared. */
 const norm = (str) =>
   String(str ?? "")
     .toLowerCase()
@@ -169,9 +207,6 @@ const norm = (str) =>
     .replace(/\s+/g, " ")
     .trim();
 
-/* Every item in `pool` that the phrase could plausibly mean, best tier
-   first. "golden" matches both the apples and the fleece; the caller asks
-   rather than guessing. */
 const matchItems = (input, pool) => {
   const q = norm(input);
   if (!q) return [];
@@ -194,9 +229,7 @@ const resolveItem = (input, pool) => {
 
   return (
     pool.find((id) => names(id).includes(q)) ??
-    // "give him the fleece" against "golden fleece", or the other way round
     pool.find((id) => names(id).some((n) => n && (n.includes(q) || q.includes(n)))) ??
-    // last resort: any shared word longer than three letters
     pool.find((id) => {
       const words = new Set(q.split(" ").filter((w) => w.length > 3));
       return names(id).some((n) => n && n.split(" ").some((w) => words.has(w)));
@@ -213,7 +246,7 @@ const resolveProp = (input, pool) => {
     pool.find((id) => names(id).some((n) => n.includes(q) || q.includes(n))) ??
     pool.find((id) => {
       const words = new Set(q.split(" ").filter((w) => w.length > 2));
-      return names(id).some((n) => n.split(" ").some((w) => words.has(w)));
+      return names(id).some((n) => n && n.split(" ").some((w) => words.has(w)));
     }) ?? null
   );
 };
@@ -226,7 +259,6 @@ const resolveMob = (input, pool) => {
   return (
     pool.find((id) => names(id).includes(q)) ??
     pool.find((id) => names(id).some((n) => n && (n.includes(q) || q.includes(n)))) ??
-    // "Chiron the Centaur" against "chiron"
     pool.find((id) => {
       const words = new Set(q.split(" ").filter((w) => w.length > 2));
       return names(id).some((n) => n && n.split(" ").some((w) => words.has(w)));
@@ -234,13 +266,8 @@ const resolveMob = (input, pool) => {
   );
 };
 
-/* Quest stages. A quest is an ordered chain; `s.quests[qid]` is the index of
-   the stage still to be done, and the quest is finished once that index runs
-   past the end. A stage can satisfy itself the moment the previous one does,
-   so this advances in a loop rather than one step per turn. */
 const stagesOf = (q) => (Array.isArray(q?.stages) && q.stages.length)
   ? q.stages
-  // A world written before chains existed: one condition, one stage.
   : (q?.completeWhen?.playerHas
       ? [{ goal: `Obtain the ${itemName(q.completeWhen.playerHas)}`, when: { playerHas: q.completeWhen.playerHas } }]
       : []);
@@ -254,6 +281,8 @@ function stageMet(s, when) {
     const m = s.mobs[when.mobHas.mob];
     return Boolean(m && (m.inventory ?? []).includes(when.mobHas.item));
   }
+  if (when.flag) return Boolean(s.flags?.[when.flag]);
+  if (when.workProp) return Boolean(s.flags?.[WORLD.props[when.workProp]?.sets]);
   return false;
 }
 
@@ -263,7 +292,6 @@ function questProgress(s) {
     const stages = stagesOf(q);
     if (!stages.length) continue;
     const raw = s.quests?.[qid];
-    // `true` is how a save from before chains recorded completion.
     const at = raw === true ? stages.length : (Number(raw) || 0);
     out.push({ qid, quest: q, stages, at, done: at >= stages.length });
   }
@@ -286,13 +314,6 @@ function advanceQuests(s, note) {
   }
 }
 
-/* A save is a snapshot of a world that may since have been edited: a
-   character added, an item retired, a room renamed. Rather than throwing the
-   playthrough away, bring it into line with what the world says now.
-
-   Anything the player is holding or has already done is left alone. Only
-   things that no longer exist are dropped, and things that did not exist
-   before are added where the world puts them. */
 function reconcile(state) {
   const s = JSON.parse(JSON.stringify(state));
   const changes = [];
@@ -305,7 +326,6 @@ function reconcile(state) {
   s.opened ??= {};
   s.flags ??= {};
 
-  // characters the world has gained
   for (const [id, def] of Object.entries(WORLD.mobs ?? {})) {
     if (s.mobs[id]) continue;
     s.mobs[id] = {
@@ -315,12 +335,10 @@ function reconcile(state) {
     changes.push(`${def.name} is here now.`);
   }
 
-  // and characters it has lost
   for (const id of Object.keys(s.mobs)) {
     if (!WORLD.mobs?.[id]) { delete s.mobs[id]; changes.push("Someone has gone."); }
   }
 
-  // items that no longer exist, wherever they are
   const known = (id) => Boolean(WORLD.items?.[id]);
   const dropped = s.player.inventory.filter((i) => !known(i));
   if (dropped.length) {
@@ -335,12 +353,10 @@ function reconcile(state) {
     m.inventory = (m.inventory ?? []).filter(known);
   }
 
-  // anything the world now places that no save has seen
   for (const [rk, list] of Object.entries(WORLD.roomItems ?? {})) {
     if (!s.roomItems[rk]) s.roomItems[rk] = [...list];
   }
 
-  // and a room that was renamed out from under the player
   if (!WORLD.rooms?.[s.player.room]) {
     s.player.room = WORLD.startRoom;
     changes.push("Where you were standing is gone. You are back at the beginning.");
@@ -360,22 +376,24 @@ function applyEffects(prev, effects) {
     if (e.move) {
       const dir = String(e.move).toLowerCase();
       const ex = exitOf(room, dir);
-      if (!ex?.to || !WORLD.rooms[ex.to]) { note(`There is no way ${e.move} from here.`); continue; }
+      if (!ex?.to || !WORLD.rooms[ex.to]) { 
+        note(`There is no way ${e.move} from here.`); 
+        continue; 
+      }
+
+      const check = canPass(s, s.player.room, dir, ex);
+      if (!check.pass) {
+        note(`The way ${dir} is ${check.reason}.`);
+        continue;
+      }
+
       if (ex.needs && !s.flags?.[ex.needs]) {
         note(`The way ${dir} will not open. Something has to change first.`);
         continue;
       }
-      if (ex.locked && !s.opened?.[`${s.player.room}:${dir}`]) {
-        note(s.player.inventory.includes(ex.locked)
-          ? `The way ${dir} is locked. You have the ${itemName(ex.locked)}; open it first.`
-          : `The way ${dir} is locked. It needs the ${itemName(ex.locked)}.`);
-        continue;
-      }
+
       const dest = ex.to;
       s.player.room = dest;
-      // Nobody ambushes anybody while fighting is shelved; meeting is
-      // still recorded, because characters greet a stranger differently
-      // from someone they have seen before.
       for (const id of mobsInRoom(s, dest)) s.mobs[id].met = true;
       continue;
     }
@@ -399,10 +417,6 @@ function applyEffects(prev, effects) {
     }
 
     if (e.give) {
-      /* The prompt asks for {"give":{"item","to"}}, but models drift toward
-         {"give":"logbook","to":"mara"} and {"give":{"what","target"}}.
-         All three mean the same thing, so accept all three rather than
-         drop a turn the player thought worked. */
       const g = e.give;
       const item = typeof g === "string" ? g : (g.item ?? g.what ?? g.object);
       const to = (typeof g === "string" ? e.to : (g.to ?? g.target ?? g.who)) ?? e.to;
@@ -418,14 +432,16 @@ function applyEffects(prev, effects) {
       if (trade) {
         s.mobs[mobId].inventory = s.mobs[mobId].inventory.filter((x) => x !== trade.gives);
         s.player.inventory.push(trade.gives);
+        // Handle NPC leaving after trade
+        if (trade.then_leave && trade.destination_room && WORLD.rooms[trade.destination_room]) {
+          s.mobs[mobId].room = trade.destination_room;
+          note(`${def.name} leaves for ${WORLD.rooms[trade.destination_room].name}.`);
+        }
         note(`Received: ${itemName(trade.gives)}.`, "gain");
       }
       continue;
     }
 
-    /* Fighting is shelved, not deleted. The resolution below still works
-       and can be switched back on by removing this guard; for now a world
-       that asks for it is told nothing happened, which is true. */
     if (e.attack || e.kill || e.fight) {
       note("Nothing here can be fought.");
       continue;
@@ -469,10 +485,15 @@ function applyEffects(prev, effects) {
       }
 
       (s.flags ??= {})[pr.sets] = true;
+
+      // Remove required item if it should be consumed
+      if (pr.requires && s.player.inventory.includes(pr.requires)) {
+        s.player.inventory = s.player.inventory.filter((x) => x !== pr.requires);
+        note(`You use the ${itemName(pr.requires)}.`, "gain");
+      }
+
       note(pr.result, "gain");
 
-      /* One search can uncover several things. Everything waiting on this
-         flag comes into view at once, props and items alike. */
       const found = [
         ...allPropsInRoom(s.player.room)
           .filter((o) => o !== id && WORLD.props[o]?.hiddenUntil === pr.sets)
@@ -484,6 +505,9 @@ function applyEffects(prev, effects) {
       if (found.length) {
         note(`You can see ${found.join(" and ")} now.`, "gain");
       }
+
+      // Advance quests immediately after working a prop
+      advanceQuests(s, note);
       continue;
     }
 
@@ -491,33 +515,40 @@ function applyEffects(prev, effects) {
       const closing = Boolean(e.close);
       const dir = String(e.open ?? e.close).toLowerCase();
       const ex = exitOf(room, dir);
-      if (!ex?.to) { note(`There is nothing ${dir} of here to open.`); continue; }
+      if (!ex?.to) { 
+        note(`There is nothing ${dir} of here to open.`); 
+        continue; 
+      }
       if (!ex.locked) {
         note(closing ? `The way ${dir} has no lock on it.` : `The way ${dir} is already open.`);
         continue;
       }
 
-      const key = `${s.player.room}:${dir}`;
+      const doorKey = ex.doorId || `${s.player.room}:${dir}`;
+
       if (closing) {
-        if (!s.opened[key]) { note(`The way ${dir} is already shut.`); continue; }
-        delete s.opened[key];
+        if (!s.opened?.[doorKey]) { 
+          note(`The way ${dir} is already shut.`); 
+          continue; 
+        }
+        delete s.opened[doorKey];
         note(`You shut the way ${dir}. It locks behind you.`);
         continue;
       }
 
-      if (s.opened[key]) { note(`The way ${dir} is already open.`); continue; }
+      if (s.opened?.[doorKey]) { 
+        note(`The way ${dir} is already open.`); 
+        continue; 
+      }
       if (!s.player.inventory.includes(ex.locked)) {
         note(`It will not open. It needs the ${itemName(ex.locked)}.`);
         continue;
       }
-      s.opened[key] = true;
+      s.opened[doorKey] = true;
       note(`The ${itemName(ex.locked)} turns. The way ${dir} is open.`, "gain");
       continue;
     }
 
-    /* Nothing matched. Silence here is how a player comes to believe a trade
-       happened: the prose says it did and the state disagrees. Say so, and
-       log the shape so it can be handled above. */
     console.warn("unrecognised effect", JSON.stringify(e));
     note("Nothing about the world actually changed.");
   }
@@ -554,7 +585,17 @@ They are called ${charName}. Characters may address them by name.
 
 CURRENT ROOM
 ${room.name} (${room.exposure ?? "indoors"}) — ${room.desc}
-Exits: ${exitsOf(room).map(({ dir, to, locked }) => `${dir} to ${WORLD.rooms[to]?.name ?? to}${locked ? " (locked)" : ""}`).join("; ")}
+Exits: ${exitsOf(room).map(({ dir, to, locked, blocked_by }) => {
+  let label = `${dir} to ${WORLD.rooms[to]?.name ?? to}`;
+  if (locked) label += " (locked)";
+  if (blocked_by) {
+    const mob = state.mobs?.[blocked_by];
+    if (mob && mob.alive && mob.room === state.player.room) {
+      label += ` (blocked by ${WORLD.mobs[blocked_by]?.name || blocked_by})`;
+    }
+  }
+  return label;
+}).join("; ")}
 Lying here: ${here.length ? here.map(itemName).join(", ") : "nothing"}
 Fixed here: ${propsInRoom(state, state.player.room).map((id) => WORLD.props[id].name).join(", ") || "nothing"}
 Present: ${present.length ? present.map((id) => WORLD.mobs[id].name).join(", ") : "nobody"}
@@ -593,10 +634,7 @@ Effects — use only these, at most two per turn, only for what the list above p
 Conversation, looking and examining need no effects. Use an empty array.`;
 }
 
-/* Commands the engine can answer by itself. Movement, looking and
-   checking your pockets are deterministic — sending them to a model is
-   slow, costs tokens, and risks prose that says you moved when you did
-   not. Anything with judgement in it still goes to the narrator. */
+/* Commands the engine can answer by itself. */
 const SHORT = {
   n: "north", s: "south", e: "east", w: "west",
   u: "up", d: "down", ne: null, nw: null, se: null, sw: null,
@@ -609,7 +647,7 @@ function directCommand(state, input) {
   const words = raw.split(/\s+/);
   const room = WORLD.rooms[state.player.room];
 
-  // "north", "n", "go north", "walk to the north", "head up"
+  // Movement
   const moveWords = ["go", "walk", "head", "move", "run", "climb", "travel"];
   let dirWord = null;
   if (words.length === 1) dirWord = words[0];
@@ -621,18 +659,20 @@ function directCommand(state, input) {
     if (!exitOf(room, dir)) {
       return { handled: true, entries: [{ kind: "system", text: `There is no way ${dir} from here.` }] };
     }
+    // Check if blocked before moving
+    const ex = exitOf(room, dir);
+    const check = canPass(state, state.player.room, dir, ex);
+    if (!check.pass) {
+      return { handled: true, entries: [{ kind: "system", text: `The way ${dir} is ${check.reason}.` }] };
+    }
     return { handled: true, effects: [{ move: dir }] };
   }
 
   if (raw === "look" || raw === "l" || raw === "look around") {
-    // Handled by the caller, which has the art maps. The engine only says
-    // that this is a look, not what a look renders.
     return { handled: true, look: true };
   }
 
-  /* Taking and dropping are as deterministic as walking, and just as
-     annoying to wait on. Handling them here means "take fleece" works as
-     well as "take the golden fleece", instantly and for nothing. */
+  // Taking
   const takeMatch = raw.match(/^(?:take|get|grab|pick up|pickup|pick)\s+(.+)$/);
   if (takeMatch) {
     const here = itemsInRoom(state, state.player.room);
@@ -651,6 +691,7 @@ function directCommand(state, input) {
     return { handled: true, effects: [{ take: found[0] }] };
   }
 
+  // Dropping
   const dropMatch = raw.match(/^(?:drop|put down|discard)\s+(.+)$/);
   if (dropMatch) {
     const inv = state.player.inventory;
@@ -675,66 +716,82 @@ function directCommand(state, input) {
       text: here.length ? `Take what? ${here.map(itemName).join(", ")}.` : "There is nothing here to pick up." }] };
   }
 
-  /* Opening is two different things wearing one word. A door is a direction
-     and the engine settles it; a chest, a book or a drawer is a thing, and
-     only the narrator knows what is inside. Work out which was meant before
-     deciding who answers. */
-  /* A prop answers to its own verb — pull, turn, wind — and to the general
-     ones. Direct, because working a lever is as settled as taking a key. */
+  // Working props
   const workMatch = raw.match(
-    /^(pull|push|turn|twist|wind|crank|flip|lift|lower|press|use|operate|work|search|examine|inspect|look behind|look under|look inside|look at|look)\s+(?:at\s+|the\s+|behind\s+|under\s+|inside\s+)*(.+)$/);
+    /^(pull|push|turn|twist|wind|crank|flip|lift|lower|press|use|operate|work|search|examine|inspect|look behind|look under|look inside|look at|look)\s+(?:at\s+|the\s+|behind\s+|under\s+|inside\s+)*(.+)$/
+  );
   if (workMatch) {
     const looking = /^(search|examine|inspect|look)/.test(workMatch[1]);
     const here = propsInRoom(state, state.player.room);
     const found = here.length ? resolveProp(workMatch[2], here) : null;
 
-    /* A prop that has already given up what it was hiding is just scenery,
-       so looking at it again should get a description rather than "already
-       worked". Working verbs still report that plainly. */
     if (found) {
       const done = Boolean(state.flags?.[WORLD.props[found].sets]);
       if (looking && done) return { handled: false };
       return { handled: true, effects: [{ work: found }] };
     }
-    // Not a prop: let the narrator make sense of it.
     return { handled: false };
   }
 
+  // Opening/Closing doors
   const doorMatch = raw.match(/^(open|unlock|close|lock|shut)\s*(.*)$/);
   if (doorMatch) {
     const closing = ["close", "lock", "shut"].includes(doorMatch[1]);
     const rest = doorMatch[2].replace(/^(the|a|an|my)\s+/, "").trim();
     const asDoor = rest.replace(/\b(door|gate|hatch|way|exit|passage)\b/g, "").trim();
 
-    const locked = exitsOf(room).filter((e) => e.locked);
+    const lockedExits = exitsOf(room).filter((e) => e.locked);
     let dir = SHORT[asDoor] ?? null;
 
-    // A prop by that name is worked, not narrated.
+    // Prop by that name -> work it
     if (!dir && rest) {
       const prop = resolveProp(rest, propsInRoom(state, state.player.room));
       if (prop) return { handled: true, effects: [{ work: prop }] };
     }
 
-    // Something here or in hand by that name: a thing, not a way out.
+    // Item by that name -> let narrator handle it
     const reachable = [...itemsInRoom(state, state.player.room), ...state.player.inventory];
     if (!dir && rest && matchItems(rest, reachable).length) {
-      return { handled: false };          // the narrator takes it
+      return { handled: false };
     }
 
-    // "open the door" is unambiguous when only one way out is locked.
-    if (!dir && asDoor === "" && locked.length === 1) dir = locked[0].dir;
+    if (!dir && asDoor === "" && lockedExits.length === 1) dir = lockedExits[0].dir;
 
     if (!dir) {
       if (!rest) {
-        return { handled: true, entries: [{ kind: "system", text: locked.length
-          ? `Which way? ${locked.map((e) => e.dir).join(", ")}.`
+        return { handled: true, entries: [{ kind: "system", text: lockedExits.length
+          ? `Which way? ${lockedExits.map((e) => e.dir).join(", ")}.`
           : "Open what?" }] };
       }
-      return { handled: false };          // not a door and not a thing we know: let it be narrated
+      return { handled: false };
     }
-    return { handled: true, effects: [closing ? { close: dir } : { open: dir }] };
+
+    const ex = exitOf(room, dir);
+    if (!ex?.locked) {
+      return { handled: true, entries: [{ kind: "system", text: `The way ${dir} has no lock on it.` }] };
+    }
+
+    const doorKey = ex.doorId || `${state.player.room}:${dir}`;
+
+    if (closing) {
+      if (!state.opened?.[doorKey]) {
+        return { handled: true, entries: [{ kind: "system", text: `The way ${dir} is already shut.` }] };
+      }
+      return { handled: true, effects: [{ close: dir }] };
+    }
+
+    if (state.opened?.[doorKey]) {
+      return { handled: true, entries: [{ kind: "system", text: `The way ${dir} is already open.` }] };
+    }
+
+    if (!state.player.inventory.includes(ex.locked)) {
+      return { handled: true, entries: [{ kind: "system", text: `It will not open. It needs the ${itemName(ex.locked)}.` }] };
+    }
+
+    return { handled: true, effects: [{ open: dir }] };
   }
 
+  // Quest journal
   if (["q", "quest", "quests", "journal"].includes(raw)) {
     const progress = questProgress(state);
     if (!progress.length) {
@@ -749,20 +806,81 @@ function directCommand(state, input) {
     return { handled: true, entries };
   }
 
+  // Inventory
   if (["i", "inv", "inventory"].includes(raw)) {
-    // Rendered by the caller, which has the pictures.
     return { handled: true, inventory: true };
   }
 
   return { handled: false };
 }
 
-/* exposureOf is here for the weather system to come: given the state it
-   returns one of the five tags, so the interface can decide between showing
-   rain, only playing it, or ignoring it entirely. */
+// Pathfinding with block/lock support
+function findPath(fromRoom, toRoom, rooms, state) {
+  if (fromRoom === toRoom) return [];
+
+  const queue = [{ room: fromRoom, path: [] }];
+  const visited = new Set([fromRoom]);
+
+  while (queue.length > 0) {
+    const { room, path } = queue.shift();
+    const roomData = rooms[room];
+    if (!roomData || !roomData.exits) continue;
+
+    for (const [direction, exit] of Object.entries(roomData.exits)) {
+      let targetRoom, locked, needs, blocked_by;
+
+      if (typeof exit === 'string') {
+        targetRoom = exit;
+        locked = null;
+        needs = null;
+        blocked_by = null;
+      } else {
+        targetRoom = exit.to;
+        locked = exit.locked || null;
+        needs = exit.needs || null;
+        blocked_by = exit.blocked_by || null;
+      }
+
+      if (!targetRoom || !rooms[targetRoom]) continue;
+      if (visited.has(targetRoom)) continue;
+
+      // Check locked door
+      if (locked) {
+        const keyHeld = state?.inventory?.includes(locked) || false;
+        const doorKey = exit.doorId || `${room}:${direction}`;
+        const alreadyOpened = state?.opened?.[doorKey] || false;
+        if (!keyHeld && !alreadyOpened) continue;
+      }
+
+      // Check NPC blocking
+      if (blocked_by) {
+        const mob = state?.mobs?.[blocked_by];
+        if (mob && mob.alive && mob.room === room) continue;
+      }
+
+      // Check needs flag
+      if (needs) {
+        const flagSet = state?.flags?.[needs] || false;
+        if (!flagSet) continue;
+      }
+
+      const newPath = [...path, { from: room, to: targetRoom, direction, locked, needs }];
+
+      if (targetRoom === toRoom) {
+        return newPath;
+      }
+
+      visited.add(targetRoom);
+      queue.push({ room: targetRoom, path: newPath });
+    }
+  }
+
+  return null;
+}
+
 const exposureOf = (s) => WORLD.rooms?.[s?.player?.room]?.exposure ?? "indoors";
 
-return { WORLD, freshState, reconcile, itemName, propName, mobsInRoom, propsInRoom, itemsInRoom, propVisible, exitOf, exposureOf, applyEffects, buildPrompt, directCommand };
+return { WORLD, freshState, reconcile, itemName, propName, mobsInRoom, propsInRoom, itemsInRoom, propVisible, exitOf, exposureOf, applyEffects, buildPrompt, directCommand, findPath, canPass };
 }
 
 /* ============================================================
