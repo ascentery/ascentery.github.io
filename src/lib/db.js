@@ -487,42 +487,69 @@ export async function setPublished(worldId, published) {
   }
 }
 
-/* ---------- brief presets (admin-curated, everyone can use) ---------- */
+/* ---------- world building presets (admin only) ---------- */
 
-export async function loadBriefPresets() {
+/** Full CRUD, for the admin page. Ordinary creators never call these —
+    RLS on world_building_presets would refuse them anyway. */
+export async function loadPresets(type) {
   const { data, error } = await supabase
-    .from('brief_presets')
-    .select('id, label, title, prompt, sort')
-    .order('sort', { ascending: true })
+    .from('world_building_presets')
+    .select('id, label, prompt, sort_order')
+    .eq('type', type)
+    .order('sort_order', { ascending: true })
   if (error) throw error
   return data ?? []
 }
 
-export async function saveBriefPreset({ id, label, title, prompt, sort }) {
-  const row = { label: label.trim(), title: (title ?? '').trim(), prompt: prompt.trim(), sort: sort ?? 0 }
+export async function savePreset({ id, type, label, prompt, sortOrder }) {
+  const row = { type, label: label.trim(), prompt: prompt.trim(), sort_order: sortOrder ?? 0 }
   if (!row.label) throw new Error('A preset needs a label.')
-  if (!row.prompt) throw new Error('A preset needs a brief to fill in.')
+  if (row.prompt.length < 20) throw new Error('The prompt needs at least twenty characters.')
 
   if (id) {
-    const { error } = await supabase.from('brief_presets').update(row).eq('id', id)
+    const { error } = await supabase.from('world_building_presets').update(row).eq('id', id)
     if (error) throw error
     return id
   }
-
-  // Labels are how an admin tells presets apart in the list, so duplicates
-  // are worth catching rather than silently allowing.
   const { data: existing } = await supabase
-    .from('brief_presets').select('id').ilike('label', row.label).limit(1)
+    .from('world_building_presets').select('id').eq('type', type).ilike('label', row.label).limit(1)
   if (existing?.length) throw new Error('A preset with that label already exists.')
 
-  const { data, error } = await supabase.from('brief_presets').insert(row).select('id').single()
+  const { data, error } = await supabase.from('world_building_presets').insert(row).select('id').single()
   if (error) throw error
   return data.id
 }
 
-export async function deleteBriefPreset(id) {
-  const { error } = await supabase.from('brief_presets').delete().eq('id', id)
+export async function deletePreset(id) {
+  const { error } = await supabase.from('world_building_presets').delete().eq('id', id)
   if (error) throw error
+}
+
+/** Which preset generate-brief should use when nobody names one. Stored in
+    app_settings, same pattern as the model picker. */
+export async function loadDefaultBriefPreset() {
+  const v = await loadSetting('brief_preset_default')
+  return v?.id ?? null
+}
+export async function saveDefaultBriefPreset(id) {
+  await saveSetting('brief_preset_default', { id })
+}
+
+/** Calls the edge function that writes a fresh brief from a preset.
+    presetId is honoured only if the caller is an admin; anyone else gets
+    the platform default, or a random preset if none is set. Free. */
+export async function generateBriefFromPreset(presetId = null) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-brief`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify(presetId ? { presetId } : {}),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `Could not generate a brief (${res.status})`)
+  return body   // { title, brief, preset_label }
 }
 
 /* ---------- platform settings (admin) ---------- */

@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
 import {
   PROVIDERS,
-  deleteBriefPreset,
-  loadBriefPresets,
+  deletePreset,
+  loadDefaultBriefPreset,
+  loadPresets,
   loadReports,
   loadSetting,
   resolveReport,
-  saveBriefPreset,
+  saveDefaultBriefPreset,
+  savePreset,
   saveSetting,
   unpublishWorld,
 } from "../lib/db";
@@ -50,7 +52,7 @@ export function AdminPage({ me, go }) {
       </H1>
 
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24 }}>
-        {[["settings", "Settings"], ["presets", "Brief presets"]].map(([k, label]) => (
+        {[["settings", "Settings"], ["world_building", "World building"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className="pf-btn"
             style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px",
               fontFamily: T.mono, fontSize: 12, color: tab === k ? T.bone : T.boneDim,
@@ -60,7 +62,7 @@ export function AdminPage({ me, go }) {
         ))}
       </div>
 
-      {tab === "presets" && <BriefPresetsTab />}
+      {tab === "world_building" && <WorldBuildingTab />}
 
       {tab === "settings" && (!setting ? (
         <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
@@ -129,22 +131,44 @@ export function AdminPage({ me, go }) {
   );
 }
 
-function BriefPresetsTab() {
+function WorldBuildingTab() {
+  const [presetTab, setPresetTab] = useState("game_brief");
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
+        {[["game_brief", "Game brief presets"], ["game_details", "Game details presets"]].map(([k, label]) => (
+          <button key={k} onClick={() => setPresetTab(k)} className="pf-btn"
+            style={{ background: "none", border: "1px solid " + (presetTab === k ? T.ochre : T.edge),
+              borderRadius: 2, cursor: "pointer", padding: "7px 12px", fontFamily: T.mono, fontSize: 11.5,
+              color: presetTab === k ? T.bone : T.boneDim }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <PresetList type={presetTab} />
+    </div>
+  );
+}
+
+function PresetList({ type }) {
   const [rows, setRows] = useState(null);
-  const [editing, setEditing] = useState(null);   // null = new, or a row
+  const [editing, setEditing] = useState(null);
   const [label, setLabel] = useState("");
-  const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [defaultId, setDefaultId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const refresh = () => loadBriefPresets().then(setRows).catch((e) => setError(e.message));
-  useEffect(() => { refresh(); }, []);
+  const refresh = () => {
+    loadPresets(type).then(setRows).catch((e) => setError(e.message));
+    if (type === "game_brief") loadDefaultBriefPreset().then(setDefaultId).catch(() => {});
+  };
+  useEffect(() => { refresh(); edit(null); }, [type]);
 
   const edit = (row) => {
     setEditing(row);
     setLabel(row?.label ?? "");
-    setTitle(row?.title ?? "");
     setPrompt(row?.prompt ?? "");
     setError(null);
   };
@@ -152,8 +176,8 @@ function BriefPresetsTab() {
   const save = async () => {
     setBusy(true); setError(null);
     try {
-      await saveBriefPreset({ id: editing?.id, label, title, prompt, sort: editing?.sort ?? (rows?.length ?? 0) });
-      await refresh();
+      await savePreset({ id: editing?.id, type, label, prompt, sortOrder: editing?.sort_order ?? (rows?.length ?? 0) });
+      refresh();
       edit(null);
     } catch (e) {
       setError(e.message);
@@ -165,8 +189,8 @@ function BriefPresetsTab() {
   const remove = async (row) => {
     setBusy(true); setError(null);
     try {
-      await deleteBriefPreset(row.id);
-      await refresh();
+      await deletePreset(row.id);
+      refresh();
       if (editing?.id === row.id) edit(null);
     } catch (e) {
       setError(e.message);
@@ -175,11 +199,29 @@ function BriefPresetsTab() {
     }
   };
 
+  const makeDefault = async (row) => {
+    setBusy(true);
+    try {
+      await saveDefaultBriefPreset(row.id);
+      setDefaultId(row.id);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const purpose = type === "game_brief"
+    ? "Sent to the AI to write a fresh game brief every time this preset is used. The picker in " +
+      "Create step 1 is admin-only; a creator who is not an admin gets the platform default, marked " +
+      "below, or a random one if no default is set."
+    : "Stored for the story-fleshing stage. Not consumed by anything yet \u2014 the current pipeline " +
+      "goes straight from a brief to a built world with no separate detailing step.";
+
   return (
     <div>
       <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 20px" }}>
-        Presets appear as a starting point in Create step 1. Picking one fills the title and brief;
-        the creator can still edit either before building.
+        {purpose}
       </p>
 
       {rows === null ? (
@@ -187,15 +229,24 @@ function BriefPresetsTab() {
       ) : (
         <div style={{ marginBottom: 24 }}>
           {rows.map((r) => (
-            <div key={r.id} style={{ border: "1px solid " + T.edge, borderRadius: 2,
-              padding: "10px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}>
+            <div key={r.id} style={{ border: "1px solid " + (defaultId === r.id ? T.ochre : T.edge),
+              borderRadius: 2, padding: "10px 14px", marginBottom: 8,
+              display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: T.serif, fontSize: 15 }}>{r.label}</div>
+                <div style={{ fontFamily: T.serif, fontSize: 15, display: "flex", alignItems: "baseline", gap: 8 }}>
+                  {r.label}
+                  {defaultId === r.id && (
+                    <span style={{ fontFamily: T.mono, fontSize: 10, color: T.ochre }}>default</span>
+                  )}
+                </div>
                 <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {r.prompt}
                 </div>
               </div>
+              {type === "game_brief" && defaultId !== r.id && (
+                <Btn kind="ghost" disabled={busy} onClick={() => makeDefault(r)}>make default</Btn>
+              )}
               <Btn kind="ghost" onClick={() => edit(r)}>edit</Btn>
               <Btn kind="danger" disabled={busy} onClick={() => remove(r)}>delete</Btn>
             </div>
@@ -211,18 +262,16 @@ function BriefPresetsTab() {
           {editing ? `Editing "${editing.label}"` : "New preset"}
         </div>
 
-        <Field label="Preset label" hint="Shown in the picker. Short and distinctive.">
+        <Field label="Preset label" hint="Shown in the admin list and, for brief presets, in Create step 1.">
           <input style={inputStyle} value={label} onChange={(e) => setLabel(e.target.value)}
-            placeholder="Lighthouse mystery" />
+            placeholder="Lighthouse keeper" maxLength={100} />
         </Field>
 
-        <Field label="Starting title" hint="Optional. Filled into the Title field when this preset is picked.">
-          <input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)}
-            placeholder="The Lamp Room" />
-        </Field>
-
-        <Field label="Preset brief" hint="The full text that fills the brief field. Write it the way you would want a creator to write their own.">
-          <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={8}
+        <Field label="Preset prompt"
+          hint={type === "game_brief"
+            ? "Instructions for the AI, not a finished brief. It writes a new one from this every time."
+            : "Instructions for the detailing stage, once one exists."}>
+          <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={8} maxLength={2000}
             style={{ ...inputStyle, lineHeight: 1.6, resize: "vertical" }} />
         </Field>
 
@@ -231,7 +280,7 @@ function BriefPresetsTab() {
         )}
 
         <div style={{ display: "flex", gap: 10 }}>
-          <Btn kind="solid" disabled={busy || !label.trim() || !prompt.trim()} onClick={save}>
+          <Btn kind="solid" disabled={busy || !label.trim() || prompt.trim().length < 20} onClick={save}>
             {editing ? "Save" : "Add"}
           </Btn>
           {editing && <Btn kind="ghost" onClick={() => edit(null)}>Cancel</Btn>}

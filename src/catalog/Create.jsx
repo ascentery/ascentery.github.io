@@ -5,8 +5,9 @@ import {
   ROOM_CHOICES,
   createWorld,
   genCost,
+  generateBriefFromPreset,
   generateWorld,
-  loadBriefPresets,
+  loadPresets,
   money,
   setPublished,
   watchGeneration,
@@ -31,10 +32,29 @@ export function Create({ me, refreshWorlds, go }) {
   const [size, setSize] = useState("auto");
   const [needsFunds, setNeedsFunds] = useState(false);
   const [stage, setStage] = useState(null);   // map | plot | prose | done, while building
-  const [presets, setPresets] = useState([]);
-  const [presetId, setPresetId] = useState(null);
+  const [adminPresets, setAdminPresets] = useState([]);
+  const [chosenPresetId, setChosenPresetId] = useState("");
+  const [genBusy, setGenBusy] = useState(false);
+  const [genError, setGenError] = useState(null);
+  const [genFrom, setGenFrom] = useState(null);   // which preset label produced the current text
 
-  useEffect(() => { loadBriefPresets().then(setPresets).catch(() => setPresets([])); }, []);
+  useEffect(() => {
+    if (me?.isAdmin) loadPresets("game_brief").then(setAdminPresets).catch(() => setAdminPresets([]));
+  }, [me?.isAdmin]);
+
+  const generate = async (presetId) => {
+    setGenBusy(true); setGenError(null);
+    try {
+      const res = await generateBriefFromPreset(presetId || null);
+      setTitle(res.title || title);
+      setDesc(res.brief);
+      setGenFrom(res.preset_label ?? null);
+    } catch (e) {
+      setGenError(e.message);
+    } finally {
+      setGenBusy(false);
+    }
+  };
 
   const build = async () => {
     setPhase("building"); setStep(3); setError(null); setStage(null);
@@ -104,42 +124,48 @@ export function Create({ me, refreshWorlds, go }) {
       </div>
 
       {step === 1 && (<>
-        {presets.length > 0 && (
-          <Field label="Start from a preset" hint="Fills the title and brief below. Edit either before continuing.">
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {presets.map((p) => (
-                <button key={p.id} className="pf-btn"
-                  onClick={() => {
-                    setPresetId(p.id);
-                    setTitle(p.title || "");
-                    setDesc(p.prompt);
-                  }}
-                  style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer",
-                    background: "transparent", fontFamily: T.mono, fontSize: 12,
-                    color: presetId === p.id ? T.bone : T.boneDim,
-                    border: "1px solid " + (presetId === p.id ? T.ochre : T.edge) }}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </Field>
-        )}
-
         <Field label="Title">
           <input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="The Lamp Room" />
         </Field>
         <Field label="Describe the world"
           hint="Places, who is in them, what they want, and above all what cannot be talked around. The rules you write here are the ones the game will enforce.">
-          <textarea value={desc} onChange={(e) => { setDesc(e.target.value); setPresetId(null); }} rows={10}
+          <textarea value={desc} onChange={(e) => { setDesc(e.target.value); setGenFrom(null); }} rows={10}
             placeholder="Somewhere real enough to walk around in"
             style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
         </Field>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 24 }}>
-          <Btn kind="ghost" onClick={() => { setDesc(EXAMPLE); setTitle("The Lamp Room"); }}>use an example</Btn>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+          <Btn kind="ghost" disabled={genBusy} onClick={() => generate(chosenPresetId)}>
+            {genBusy ? "writing\u2026" : desc.trim() ? "generate another" : "generate an example"}
+          </Btn>
+          <Btn kind="ghost" onClick={() => { setDesc(EXAMPLE); setTitle("The Lamp Room"); setGenFrom(null); }}>
+            use a fixed example
+          </Btn>
           <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
             {desc.trim().split(/\s+/).filter(Boolean).length} words
           </span>
         </div>
+
+        {me?.isAdmin && adminPresets.length > 0 && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+            <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.boneDim }}>preset (admin):</span>
+            <select value={chosenPresetId} onChange={(e) => setChosenPresetId(e.target.value)}
+              style={{ ...inputStyle, width: "auto", fontSize: 11.5, padding: "5px 8px" }}>
+              <option value="">platform default</option>
+              {adminPresets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          </div>
+        )}
+
+        {genFrom && (
+          <p style={{ fontFamily: T.mono, fontSize: 10.5, color: T.boneDim, margin: "0 0 8px" }}>
+            written from "{genFrom}"
+          </p>
+        )}
+        {genError && (
+          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 8px" }}>{genError}</p>
+        )}
+
+        <div style={{ marginBottom: 24 }} />
         <Field label="How big" hint="Rooms are what a world costs, to build and to illustrate. You can leave this to the brief.">
           <div style={{ display: "grid", gap: 8 }}>
             {ROOM_CHOICES.map((c) => {
