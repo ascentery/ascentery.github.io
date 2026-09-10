@@ -240,6 +240,10 @@ export function Create({ me, refreshWorlds, go }) {
       </div>
 
       {step === 1 && (<>
+        {me?.isAdmin && briefPresets.length > 0 && (
+          <PresetPicker what="brief" presets={briefPresets} chosen={chosenBriefPreset} onChoose={setChosenBriefPreset} />
+        )}
+
         <Field label="Title">
           <input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="The Lamp Room" />
         </Field>
@@ -260,10 +264,6 @@ export function Create({ me, refreshWorlds, go }) {
             {desc.trim().split(/\s+/).filter(Boolean).length} words
           </span>
         </div>
-
-        {me?.isAdmin && briefPresets.length > 0 && (
-          <PresetPicker what="brief" presets={briefPresets} chosen={chosenBriefPreset} onChoose={setChosenBriefPreset} />
-        )}
 
         {genFrom && (
           <p style={{ fontFamily: T.mono, fontSize: 10.5, color: T.boneDim, margin: "0 0 8px" }}>

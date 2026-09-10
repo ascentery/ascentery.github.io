@@ -1,17 +1,24 @@
 import React, { useState, useEffect } from "react";
 import {
+  ENGINES,
   PROVIDERS,
+  deleteArtPreset,
   deletePreset,
+  loadArtPresets,
+  loadDefaultArtPreset,
   loadDefaultPreset,
   loadPresets,
   loadReports,
   loadSetting,
   resolveReport,
+  saveArtPreset,
+  saveDefaultArtPreset,
   saveDefaultPreset,
   savePreset,
   saveSetting,
   unpublishWorld,
 } from "../lib/db";
+import { KINDS, KIND_LABEL } from "./ArtTab";
 import { T, inputStyle } from "../theme";
 import { Btn, Empty, Field, H1 } from "../ui/primitives";
 
@@ -52,7 +59,7 @@ export function AdminPage({ me, go }) {
       </H1>
 
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24 }}>
-        {[["settings", "Settings"], ["world_building", "World building"]].map(([k, label]) => (
+        {[["settings", "Settings"], ["world_building", "World building"], ["image_generation", "Image generation"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className="pf-btn"
             style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px",
               fontFamily: T.mono, fontSize: 12, color: tab === k ? T.bone : T.boneDim,
@@ -63,6 +70,8 @@ export function AdminPage({ me, go }) {
       </div>
 
       {tab === "world_building" && <WorldBuildingTab />}
+
+      {tab === "image_generation" && <ImageGenerationTab />}
 
       {tab === "settings" && (!setting ? (
         <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
@@ -372,3 +381,182 @@ export function ReportQueue({ me }) {
 }
 
 /* ---------- admin ---------- */
+
+function ImageGenerationTab() {
+  const [engine, setEngine] = useState("pixel");
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
+        {ENGINES.map((e) => (
+          <button key={e.key} onClick={() => setEngine(e.key)} className="pf-btn"
+            style={{ background: "none", border: "1px solid " + (engine === e.key ? T.ochre : T.edge),
+              borderRadius: 2, cursor: "pointer", padding: "7px 12px", fontFamily: T.mono, fontSize: 11.5,
+              color: engine === e.key ? T.bone : T.boneDim }}>
+            {e.label}
+          </button>
+        ))}
+      </div>
+      <ArtPresetList engine={engine} />
+    </div>
+  );
+}
+
+function ArtPresetList({ engine }) {
+  const [rows, setRows] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [label, setLabel] = useState("");
+  const [config, setConfig] = useState({});
+  const [kind, setKind] = useState("room");
+  const [defaultId, setDefaultId] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const refresh = () => {
+    loadArtPresets(engine).then(setRows).catch((e) => setError(e.message));
+    loadDefaultArtPreset(engine).then(setDefaultId).catch(() => {});
+  };
+  useEffect(() => { refresh(); edit(null); }, [engine]);
+
+  const edit = (row) => {
+    setEditing(row);
+    setLabel(row?.label ?? "");
+    setConfig(row?.config ?? {});
+    setKind("room");
+    setError(null);
+  };
+
+  const save = async () => {
+    setBusy(true); setError(null);
+    try {
+      await saveArtPreset({ id: editing?.id, engine, label, config, sortOrder: editing?.sort_order ?? (rows?.length ?? 0) });
+      refresh();
+      edit(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (row) => {
+    setBusy(true); setError(null);
+    try {
+      await deleteArtPreset(row.id);
+      refresh();
+      if (editing?.id === row.id) edit(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const makeDefault = async (row) => {
+    setBusy(true);
+    try {
+      await saveDefaultArtPreset(engine, row.id);
+      setDefaultId(row.id);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const field = (key, patch) => setConfig((c) => ({ ...c, [key]: patch }));
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+        gap: 12, marginBottom: 20 }}>
+        <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: 0, flex: 1 }}>
+          A preset a creator can attach in the Pictures tab. Picking one there does not fill their own
+          boxes — it lays this text underneath whatever they type, so their words and this preset's
+          both reach the picture.
+        </p>
+        <Btn kind="solid" onClick={() => edit(null)} style={{ flexShrink: 0 }}>+ New preset</Btn>
+      </div>
+
+      {rows === null ? (
+        <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
+      ) : (
+        <div style={{ marginBottom: 24 }}>
+          {rows.map((r) => (
+            <div key={r.id} style={{ border: "1px solid " + (defaultId === r.id ? T.ochre : T.edge),
+              borderRadius: 2, padding: "10px 14px", marginBottom: 8,
+              display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ fontFamily: T.serif, fontSize: 15, flex: 1, display: "flex", alignItems: "baseline", gap: 8 }}>
+                {r.label}
+                {defaultId === r.id && (
+                  <span style={{ fontFamily: T.mono, fontSize: 10, color: T.ochre }}>default</span>
+                )}
+              </div>
+              {defaultId !== r.id && (
+                <Btn kind="ghost" disabled={busy} onClick={() => makeDefault(r)}>make default</Btn>
+              )}
+              <Btn kind="ghost" onClick={() => edit(r)}>edit</Btn>
+              <Btn kind="danger" disabled={busy} onClick={() => remove(r)}>delete</Btn>
+            </div>
+          ))}
+          {!rows.length && (
+            <p style={{ fontFamily: T.mono, fontSize: 12, color: T.boneDim }}>No presets yet.</p>
+          )}
+        </div>
+      )}
+
+      <div style={{ borderTop: "1px solid " + T.edge, paddingTop: 18 }}>
+        <div style={{ fontFamily: T.serif, fontSize: 16, marginBottom: 12 }}>
+          {editing ? `Editing "${editing.label}"` : "New preset"}
+        </div>
+
+        <Field label="Preset label" hint="Shown to creators when they pick a preset in the Pictures tab.">
+          <input style={inputStyle} value={label} onChange={(e) => setLabel(e.target.value)}
+            placeholder="Warm and painterly" />
+        </Field>
+
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+          {KINDS.map((k) => (
+            <button key={k.key} onClick={() => setKind(k.key)} className="pf-btn"
+              style={{ background: "transparent", cursor: "pointer", padding: "7px 12px", borderRadius: 2,
+                fontFamily: T.mono, fontSize: 12,
+                color: kind === k.key ? T.bone : T.boneDim,
+                border: "1px solid " + (kind === k.key ? T.ochre : T.edge) }}>
+              {k.label}
+            </button>
+          ))}
+        </div>
+
+        <Field label="Art style" hint="Shared across every kind this preset touches.">
+          <textarea value={config.style ?? ""} onChange={(e) => field("style", e.target.value)} rows={4}
+            style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
+        </Field>
+
+        <Field label={kind === "cover" ? "Framing for the splash screen" : `Framing for ${KIND_LABEL[kind] ?? kind}`}>
+          <textarea value={config[kind] ?? ""} onChange={(e) => field(kind, e.target.value)} rows={3}
+            style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
+        </Field>
+
+        <Field label="Avoid, everywhere" hint="Laid under whatever the creator's own global negative says.">
+          <textarea value={config.neg ?? ""} onChange={(e) => field("neg", e.target.value)} rows={2}
+            style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
+        </Field>
+
+        <Field label={`Avoid, ${(KIND_LABEL[kind] ?? kind).toLowerCase()} only`}>
+          <textarea value={config[`neg_${kind}`] ?? ""} onChange={(e) => field(`neg_${kind}`, e.target.value)} rows={3}
+            style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
+        </Field>
+
+        {error && (
+          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, marginBottom: 12 }}>{error}</p>
+        )}
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <Btn kind="solid" disabled={busy || !label.trim()} onClick={save}>
+            {editing ? "Save" : "Add"}
+          </Btn>
+          {editing && <Btn kind="ghost" onClick={() => edit(null)}>Cancel</Btn>}
+        </div>
+      </div>
+    </div>
+  );
+}

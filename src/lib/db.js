@@ -766,15 +766,60 @@ export const DEFAULT_ART = {
   item: 'one single isolated object, studio product shot, centred, filling the frame, ' +
         'flat plain dark background, nothing else in the picture,',
   cover: '',
+  prop: 'a single fixed mechanism in place, close view, mounted or set into its surroundings, no hands, no people,',
 
   // what to avoid
   neg: '3d render, realistic, photo, blurry, sketch, text, watermark, signature, lettering',
   neg_room: 'people, faces, figures, portrait, character',
   neg_mob: 'landscape, wide shot, crowd, multiple people, full body',
   neg_cover: '',
+  neg_prop: 'hands, people, floating object, product shot on white, spritesheet, grid, multiple objects',
   neg_item: 'spritesheet, sprite sheet, tileset, grid, multiple objects, collection, set of items, ' +
             'inventory screen, user interface, HUD, menu, panel, frame, border, shelf, rack, ' +
             'chest of drawers, room, scenery, background detail, duplicate',
+}
+
+/* ---------- art-direction presets (readable by anyone, writable by admins) ---------- */
+
+export async function loadArtPresets(engine) {
+  const { data, error } = await supabase
+    .from('art_presets')
+    .select('id, label, config, sort_order')
+    .eq('engine', engine)
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function saveArtPreset({ id, engine, label, config, sortOrder }) {
+  const row = { engine, label: label.trim(), config: config ?? {}, sort_order: sortOrder ?? 0 }
+  if (!row.label) throw new Error('A preset needs a label.')
+
+  if (id) {
+    const { error } = await supabase.from('art_presets').update(row).eq('id', id)
+    if (error) throw error
+    return id
+  }
+  const { data: existing } = await supabase
+    .from('art_presets').select('id').eq('engine', engine).ilike('label', row.label).limit(1)
+  if (existing?.length) throw new Error('A preset with that label already exists for this engine.')
+
+  const { data, error } = await supabase.from('art_presets').insert(row).select('id').single()
+  if (error) throw error
+  return data.id
+}
+
+export async function deleteArtPreset(id) {
+  const { error } = await supabase.from('art_presets').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function loadDefaultArtPreset(engine) {
+  const v = await loadSetting(`art_preset_default_${engine}`)
+  return v?.id ?? null
+}
+export async function saveDefaultArtPreset(engine, id) {
+  await saveSetting(`art_preset_default_${engine}`, { id })
 }
 
 export async function loadArtConfig(worldId) {

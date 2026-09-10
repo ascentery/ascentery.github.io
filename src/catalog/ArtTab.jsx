@@ -6,6 +6,7 @@ import {
   deleteArt,
   drawArt,
   loadArtConfig,
+  loadArtPresets,
   money,
   saveArtConfig,
   setArtLock,
@@ -44,6 +45,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
   const [queue, setQueue] = useState([]);
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(null);   // artId whose prompt is open
+  const [artPresets, setArtPresets] = useState([]);
 
   useEffect(() => {
     if (!worldId) return;
@@ -67,6 +69,35 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
   const engine = ENGINE_LOCKED[kind] ?? (config?.[`engine_${kind}`] ?? "pixel");
   const COST = PRICE_CENTS[engine] ?? 5;      // cents
   const styleKey = engine === "flux" ? "style_flux" : "style_pixel";
+
+  // Presets are per engine, not per kind: one preset supplies framing and
+  // negatives for every kind at once, the same way a world's own art style
+  // is shared across kinds. Switching kinds within one engine keeps the
+  // same preset selected; switching engines shows that engine's own list.
+  useEffect(() => {
+    let cancelled = false;
+    loadArtPresets(engine).then((rs) => { if (!cancelled) setArtPresets(rs); }).catch(() => setArtPresets([]));
+    return () => { cancelled = true; };
+  }, [engine]);
+
+  const presetKey = `preset_${engine}`;
+  const selectedPreset = config?.[presetKey] ?? null;
+
+  const choosePreset = (id) => writeConfig({ ...config, [presetKey]: id });
+
+  /* Custom clears only what is on screen right now — the shared style, this
+     kind's framing, and (on the pixel engine) the two negative boxes — not
+     every kind's text at once, which would be an odd thing to do from a
+     tab you cannot currently see. Picking a preset never touches these
+     boxes; it only marks which preset gets attached underneath them when
+     the picture is actually drawn. */
+  const clearCustom = () => writeConfig({
+    ...config,
+    [presetKey]: null,
+    [styleKey]: "",
+    [kind]: "",
+    ...(engine === "pixel" ? { neg: "", [`neg_${kind}`]: "" } : {}),
+  }, true);
   const shown = kind === "orphan"
     ? entries.filter((e) => e.orphaned)
     : entries.filter((e) => e.kind === kind && !e.orphaned);
@@ -183,6 +214,28 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
             </div>
           </Field>
 
+          {artPresets.length > 0 && (
+            <Field label={`Preset for ${ENGINES.find((x) => x.key === engine)?.label ?? engine}`}
+              hint="Attached underneath whatever you type below, not shown in the boxes themselves. Custom sends only your own words.">
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button className="pf-btn" onClick={clearCustom}
+                  style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer", background: "transparent",
+                    fontFamily: T.mono, fontSize: 12, color: !selectedPreset ? T.bone : T.boneDim,
+                    border: `1px solid ${!selectedPreset ? T.ochre : T.edge}` }}>
+                  Custom
+                </button>
+                {artPresets.map((p) => (
+                  <button key={p.id} className="pf-btn" onClick={() => choosePreset(p.id)}
+                    style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer", background: "transparent",
+                      fontFamily: T.mono, fontSize: 12, color: selectedPreset === p.id ? T.bone : T.boneDim,
+                      border: `1px solid ${selectedPreset === p.id ? T.ochre : T.edge}` }}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
+
           <Field
             label="Art style"
             hint={engine === "flux"
@@ -240,6 +293,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
           <Btn kind="ghost"
             onClick={() => writeConfig({
               ...config,
+              [presetKey]: null,
               [styleKey]: DEFAULT_ART[styleKey],
               [kind]: DEFAULT_ART[kind] ?? "",
               ...(engine === "pixel"
