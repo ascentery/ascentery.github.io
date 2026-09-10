@@ -13,6 +13,7 @@ import {
   saveArtConfig,
   setArtLock,
   setArtPrompt,
+  swapArtVersions,
 } from "../lib/db";
 import { readable } from "../play/chrome";
 import { T, inputStyle } from "../theme";
@@ -146,17 +147,18 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
      default and avoids a database write for something this cosmetic. */
   const [viewing, setViewingState] = useState({});
   const isViewingPrev = (id) => viewing[id] === "previous";
+  const [swapping, setSwapping] = useState(null);
 
   const draw = async (entry) => {
     if (entry.locked || drawing) return;
     setDrawing(entry.id);
     setError(null);
-    const wasViewing = isViewingPrev(entry.id) ? "previous" : "current";
     try {
-      const { url, prev_url, balance_cents } = await drawArt(entry.id, wasViewing);
-      setEntries((es) => es.map((e) => e.id === entry.id ? { ...e, url, prevUrl: prev_url, art: true } : e));
-      // Redrawing always lands on the fresh result, whichever slot was
-      // being looked at beforehand.
+      const { url, balance_cents } = await drawArt(entry.id);
+      // A redraw always pushes whatever was current down into previous,
+      // so the "Undo" state is back to its starting point regardless of
+      // what it was showing beforehand.
+      setEntries((es) => es.map((e) => e.id === entry.id ? { ...e, prevUrl: e.url, url, art: true } : e));
       setViewingState((v) => ({ ...v, [entry.id]: "current" }));
       if (typeof balance_cents === "number") setMe((m) => ({ ...m, balance: balance_cents }));
       onDrawn?.();
@@ -169,12 +171,24 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
     }
   };
 
-  /* Undo/redo. Free — no draw, no charge, just which of the two already-
-     paid-for images is on screen. Works even on a locked entry, since
-     nothing is being generated or overwritten. */
-  const toggleViewing = (entry) => {
-    if (!entry.prevUrl) return;
-    setViewingState((v) => ({ ...v, [entry.id]: isViewingPrev(entry.id) ? "current" : "previous" }));
+  /* Undo/redo. A real, persisted swap — not just what this tab happens to
+     display — so the actual splash or portrait shown everywhere else in
+     the app changes too, including the catalog cover for a splash screen.
+     Free, instant. Works even on a locked entry: nothing is generated or
+     spent, just which of two already-paid-for images is the current one. */
+  const toggleViewing = async (entry) => {
+    if (!entry.prevUrl || swapping) return;
+    setSwapping(entry.id);
+    setError(null);
+    try {
+      const { url, prev_url } = await swapArtVersions(entry.id);
+      setEntries((es) => es.map((e) => e.id === entry.id ? { ...e, url, prevUrl: prev_url } : e));
+      setViewingState((v) => ({ ...v, [entry.id]: isViewingPrev(entry.id) ? "current" : "previous" }));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSwapping(null);
+    }
   };
 
   // Serial on purpose: the provider is slower under parallel load, and one
@@ -431,7 +445,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
       {shown.map((e) => (
         <div key={e.id}>
           <div style={{ position: "relative" }}>
-            <Splash seed={e.key} src={isViewingPrev(e.id) ? e.prevUrl : e.url} pending={drawing === e.id} ratio={ratio} />
+            <Splash seed={e.key} src={e.url} pending={drawing === e.id || swapping === e.id} ratio={ratio} />
             <button onClick={() => toggleLock(e)}
               title={e.locked ? "Unlock to allow redraws" : "Lock to protect from redraws"} className="pf-btn"
               style={{ position: "absolute", top: 7, right: 7, width: 27, height: 27, borderRadius: 2, cursor: "pointer",
@@ -457,7 +471,6 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
               </button>
             ) : (
             <button onClick={() => draw(e)} disabled={e.locked || busy || me.balance < COST} className="pf-btn"
-              title={isViewingPrev(e.id) ? "Replaces the current version. The one you are looking at now is unaffected." : undefined}
               style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
                 color: e.locked ? T.edge : T.boneDim, cursor: (e.locked || busy) ? "not-allowed" : "pointer" }}>
               {drawing === e.id ? "drawing" : (e.art ? "redraw \u00b7 " : "draw \u00b7 ") + money(COST)}
@@ -473,10 +486,10 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
             </button>
 
             {e.prevUrl && kind !== "orphan" && (
-              <button onClick={() => toggleViewing(e)} className="pf-btn"
+              <button onClick={() => toggleViewing(e)} disabled={swapping === e.id} className="pf-btn"
                 style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 10.5,
-                  color: T.ochre, cursor: "pointer" }}>
-                {isViewingPrev(e.id) ? "Redo" : "Undo"}
+                  color: T.ochre, cursor: swapping === e.id ? "default" : "pointer" }}>
+                {swapping === e.id ? "\u2026" : isViewingPrev(e.id) ? "Redo" : "Undo"}
               </button>
             )}
           </div>

@@ -715,11 +715,12 @@ export async function loadArt(worldId) {
 }
 
 /** Draws one entry. 20-60 seconds, and costs real money.
-    `viewing` tells the server which of the two slots (current/previous)
-    was on screen when redraw was pressed, since that decides whether the
-    old current gets pushed down into previous or discarded outright.
-    Returns { url, prev_url, balance_cents, cost_cents, engine }. */
-export async function drawArt(artId, viewing = 'current') {
+    Always pushes whatever is currently showing down into "previous" —
+    undo/redo (swapArtVersions) is a real, persisted swap now, so by the
+    time a redraw happens image_path already is whatever is genuinely on
+    screen, and there is nothing left for this call to decide.
+    Returns { url, balance_cents, cost_cents, engine }. */
+export async function drawArt(artId) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Not signed in')
 
@@ -729,7 +730,7 @@ export async function drawArt(artId, viewing = 'current') {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${session.access_token}`,
     },
-    body: JSON.stringify({ artId, viewing }),
+    body: JSON.stringify({ artId }),
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {
@@ -737,7 +738,28 @@ export async function drawArt(artId, viewing = 'current') {
     err.balanceCents = body.balance_cents
     throw err
   }
-  return body   // { url, prev_url, balance_cents, cost_cents, engine }
+  return body   // { url, balance_cents, cost_cents, engine }
+}
+
+/** Undo and Redo are the same call: swaps current and previous for real,
+    including the world's cover_path if this is the splash — so what
+    swaps is what actually shows everywhere, not just this tab's preview.
+    Free, instant. Throws if there is no previous version yet. */
+export async function swapArtVersions(artId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/art-swap`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ artId }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `Could not switch pictures (${res.status})`)
+  return body   // { url, prev_url }
 }
 
 export async function setArtLock(artId, locked) {
