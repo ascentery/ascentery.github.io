@@ -450,7 +450,14 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
       </p>
     )}
 
-    <div style={layout === "grid"
+    {/* The splash screen is the one entry that matters most — a single
+        tile lost in a 200px grid column reads as an afterthought. It gets
+        a hero-sized box of its own, roughly half the panel, regardless of
+        the grid/list toggle above, which only makes sense once there is
+        more than one thing to lay out. */}
+    <div style={kind === "cover"
+      ? { maxWidth: "min(50%, 640px)", minWidth: 280 }
+      : layout === "grid"
       ? { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 18 }
       : { display: "flex", flexDirection: "column", gap: 12 }}>
       {shown.map((e) => {
@@ -522,11 +529,21 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
           // Image on the left, everything else stacked to its right — the
           // prompt is always visible here rather than gated behind a
           // toggle, since a list is for reviewing many at once.
+          //
+          // Splash normally sizes itself from width alone (paddingTop as a
+          // percentage of it), which is why a 16:9 room at 160px wide came
+          // out barely 90px tall — visibly smaller than the row itself,
+          // whatever ratio the kind uses. Overriding paddingTop with a
+          // fixed height here, and letting object-fit: cover handle the
+          // crop, makes every kind read as a substantial image regardless
+          // of its own aspect ratio, rather than leaving empty space next
+          // to a five-line textarea.
           return (
             <div key={e.id} style={{ display: "flex", gap: 14, background: "transparent",
               border: "1px solid " + T.edge, borderRadius: 2, padding: 10 }}>
-              <div style={{ position: "relative", width: 160, flexShrink: 0, alignSelf: "flex-start" }}>
-                <Splash seed={e.key} src={e.url} pending={drawing === e.id || swapping === e.id} ratio={ratio} />
+              <div style={{ position: "relative", width: 240, flexShrink: 0, alignSelf: "flex-start" }}>
+                <Splash seed={e.key} src={e.url} pending={drawing === e.id || swapping === e.id}
+                  ratio={ratio} style={{ paddingTop: 0, height: 220 }} />
                 {lockButton}
               </div>
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>

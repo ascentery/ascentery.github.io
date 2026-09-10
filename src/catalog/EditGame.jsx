@@ -4,6 +4,8 @@ import {
   isFullyIllustrated,
   loadArt,
   loadWorldData,
+  money,
+  repairWorld,
   saveWorldDetails,
   setPublished,
 } from "../lib/db";
@@ -70,7 +72,7 @@ export function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
       )}
 
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24, flexWrap: "wrap" }}>
-        {[["art", "Pictures"], ["world", "World"], ["details", "Details"], ["walkthrough", "Walkthrough"], ["settings", "Settings"]].map(([k, label]) => (
+        {[["art", "Pictures"], ["world", "World"], ["details", "Details"], ["walkthrough", "Walkthrough"], ["repair", "Repair"], ["settings", "Settings"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className="pf-btn"
             style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px", fontFamily: T.mono, fontSize: 12,
               color: tab === k ? T.bone : T.boneDim, boxShadow: tab === k ? "inset 0 -2px 0 " + T.ochre : "none" }}>
@@ -99,6 +101,12 @@ export function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
         game.status === "ready"
           ? <WalkthroughTab worldId={game.id} />
           : <Empty title="Nothing to walk through yet." line="This world has not finished building." />
+      )}
+
+      {tab === "repair" && (
+        game.status === "ready"
+          ? <RepairTab worldId={game.id} title={game.title} isAdmin={me?.isAdmin} />
+          : <Empty title="Nothing to repair yet." line="This world has not finished building." />
       )}
 
       {tab === "settings" && (
@@ -242,6 +250,149 @@ function WalkthroughTab({ worldId }) {
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+function RepairTab({ worldId, title, isAdmin }) {
+  const [world, setWorld] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [needsFunds, setNeedsFunds] = useState(false);
+  const [result, setResult] = useState(null);       // { status, reply, cost_cents }
+  const [copied, setCopied] = useState(false);
+  const [checkWalkthrough, setCheckWalkthrough] = useState(false);
+
+  const refresh = () => {
+    loadWorldData(worldId)
+      .then(({ data }) => setWorld(data))
+      .catch((e) => setLoadError(e.message));
+  };
+  useEffect(() => { refresh(); }, [worldId]);
+
+  const send = async () => {
+    if (!query.trim() || busy) return;
+    setBusy(true); setError(null); setNeedsFunds(false); setCheckWalkthrough(false);
+    try {
+      const res = await repairWorld(worldId, query.trim());
+      setResult(res);
+      setWorld(res.world);
+      setQuery("");
+    } catch (e) {
+      setError(e.message);
+      setNeedsFunds(Boolean(e.needsFunds));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyJson = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(world, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setError("Could not copy — your browser may be blocking clipboard access.");
+    }
+  };
+
+  const walkthrough = checkWalkthrough && world ? buildWalkthrough(world) : null;
+
+  return (
+    <div style={{ maxWidth: 720 }}>
+      <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 20px" }}>
+        Describe what is going wrong, in plain words — "once inside the room there is no exit and
+        the door is locked." The model reads the whole world and tries a fix, but nothing is ever
+        applied unless it passes the same check every generated world already has to pass, so a
+        proposed fix that breaks something else is refused rather than saved. Costs {money(10)}
+        whether or not anything actually changes, since the attempt happens either way. Every
+        change here is undoable from the World tab, the same as any other amendment.
+      </p>
+
+      {isAdmin && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
+              World JSON (admin only)
+            </div>
+            <Btn kind="ghost" onClick={copyJson} disabled={!world}>
+              {copied ? "copied" : "copy to clipboard"}
+            </Btn>
+          </div>
+          {loadError ? (
+            <p style={{ fontFamily: T.mono, fontSize: 12, color: T.clay }}>{loadError}</p>
+          ) : (
+            <textarea readOnly value={world ? JSON.stringify(world, null, 2) : "loading"} rows={14}
+              style={{ ...inputStyle, fontFamily: T.mono, fontSize: 11, lineHeight: 1.5, resize: "vertical" }} />
+          )}
+        </div>
+      )}
+
+      <div style={{ borderTop: "1px solid " + T.edge, paddingTop: 18, marginBottom: 18 }}>
+        <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginBottom: 8 }}>
+          Response
+        </div>
+        {result ? (
+          <div style={{ border: "1px solid " + (result.status === "modified" ? T.moss : T.edge) + "88",
+            borderRadius: 2, padding: "12px 14px" }}>
+            <div style={{ fontFamily: T.mono, fontSize: 10.5, color: result.status === "modified" ? T.moss : T.boneDim,
+              marginBottom: 8 }}>
+              {result.status === "modified" ? "repaired \u2014 the world was changed" : "unchanged"}
+            </div>
+            <p style={{ fontFamily: T.serif, fontSize: 15, lineHeight: 1.6, margin: 0 }}>{result.reply}</p>
+          </div>
+        ) : (
+          <p style={{ fontFamily: T.mono, fontSize: 12, color: T.boneDim }}>Nothing asked yet.</p>
+        )}
+      </div>
+
+      {result && (
+        <div style={{ marginBottom: 18 }}>
+          {!checkWalkthrough ? (
+            <Btn kind="ghost" onClick={() => setCheckWalkthrough(true)}>
+              Check the walkthrough
+            </Btn>
+          ) : (
+            <>
+              <p style={{ fontFamily: T.mono, fontSize: 10.5, color: T.boneDim, lineHeight: 1.7, margin: "0 0 12px" }}>
+                Computed directly from the world as it stands right now \u2014 not a second AI call,
+                which could describe a step that does not actually work. This is the same
+                deterministic check the Walkthrough tab uses, so if it completes cleanly here, the
+                problem is genuinely solved.
+              </p>
+              {walkthrough && !walkthrough.length && (
+                <p style={{ fontFamily: T.mono, fontSize: 12, color: T.boneDim }}>No quests in this world.</p>
+              )}
+              {walkthrough && walkthrough.map((s, i) => (
+                <div key={i} style={{ fontFamily: T.mono, fontSize: 11.5, lineHeight: 1.9, color: T.boneDim,
+                  borderBottom: "1px solid " + T.edge + "55", padding: "6px 0" }}>
+                  <span style={{ color: s.note ? T.clay : T.boneDim }}>{i + 1}. {s.goal}</span>
+                  {s.note && <span style={{ color: T.clay }}> \u2014 {s.note}</span>}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      <Field label="What's going wrong">
+        <textarea value={query} onChange={(e) => setQuery(e.target.value)} rows={4}
+          placeholder="Once inside the room there is no exit and the door is locked."
+          style={{ ...inputStyle, lineHeight: 1.6, resize: "vertical" }} />
+      </Field>
+
+      {error && (
+        <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "-8px 0 14px" }}>
+          {error}
+          {needsFunds && <Btn kind="ghost" style={{ marginLeft: 10 }}>Add funds</Btn>}
+        </p>
+      )}
+
+      <Btn kind="solid" disabled={busy || !query.trim()} onClick={send}>
+        {busy ? "looking\u2026" : `Ask \u00b7 ${money(10)}`}
+      </Btn>
     </div>
   );
 }

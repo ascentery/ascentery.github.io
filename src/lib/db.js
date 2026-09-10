@@ -887,6 +887,31 @@ export async function loadArtPresets(engine) {
   return data ?? []
 }
 
+/** Describe a problem in plain words; the model reads the world's own
+    JSON, tries a fix, and it is only ever applied if it passes the same
+    validator a freshly generated world has to pass. Costs a flat fee
+    whether or not anything actually changed, since the model call happens
+    either way. Returns { status: 'modified'|'unchanged', reply, world,
+    cost_cents, balance_cents } — `world` is always the current data,
+    whichever way it went, so the caller never needs a second fetch. */
+export async function repairWorld(worldId, query) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/repair-world`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ worldId, query }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error(body.error || `Could not repair (${res.status})`)
+    err.needsFunds = Boolean(body.needs_funds)
+    throw err
+  }
+  return body
+}
+
 /** id + label only, never config. Works for anyone signed in — this is
     what the Pictures tab's preset picker uses to build its button list,
     admin or not. The content itself is resolved server-side at draw time,
