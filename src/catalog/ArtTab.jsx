@@ -465,19 +465,21 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
             )}
           </div>
 
-          {e.prevUrl && kind !== "orphan" && (
-            <button onClick={() => toggleViewing(e)} className="pf-btn"
-              style={{ background: "none", border: "none", padding: "2px 0 0", fontFamily: T.mono, fontSize: 10.5,
-                color: T.ochre, cursor: "pointer", display: "block" }}>
-              {isViewingPrev(e.id) ? "Redo" : "Undo"}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 2 }}>
+            <button onClick={() => setEditing(editing === e.id ? null : e.id)} className="pf-btn"
+              style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 10.5,
+                color: T.edge, cursor: "pointer" }}>
+              {editing === e.id ? "hide prompt" : "edit prompt"}
             </button>
-          )}
 
-          <button onClick={() => setEditing(editing === e.id ? null : e.id)} className="pf-btn"
-            style={{ background: "none", border: "none", padding: "2px 0 0", fontFamily: T.mono, fontSize: 10.5,
-              color: T.edge, cursor: "pointer" }}>
-            {editing === e.id ? "hide prompt" : "edit prompt"}
-          </button>
+            {e.prevUrl && kind !== "orphan" && (
+              <button onClick={() => toggleViewing(e)} className="pf-btn"
+                style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 10.5,
+                  color: T.ochre, cursor: "pointer" }}>
+                {isViewingPrev(e.id) ? "Redo" : "Undo"}
+              </button>
+            )}
+          </div>
 
           {editing === e.id && (
             <textarea
