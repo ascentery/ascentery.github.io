@@ -8,6 +8,7 @@ import {
   loadArtConfig,
   loadArtPresetContent,
   loadArtPresetLabels,
+  loadDefaultArtPreset,
   money,
   saveArtConfig,
   setArtLock,
@@ -89,48 +90,43 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
   const presetKey = `preset_${engine}`;
   const selectedPreset = config?.[presetKey] ?? null;
 
-  /* Picking a named preset clears the boxes currently on screen — the
-     shared style, this kind's framing, and (on the pixel engine) the two
-     negative boxes — to empty. The preset now supplies that layer on its
-     own; anything typed afterward is additional, laid on top of it at draw
-     time, not a replacement for it. Only the current kind's boxes are
-     touched, not every kind at once, since that would change tabs the
-     creator cannot currently see. */
-  const choosePreset = (id) => {
-    writeConfig({
-      ...config,
-      [presetKey]: id,
-      [styleKey]: "",
-      [kind]: "",
-      ...(engine === "pixel" ? { neg: "", [`neg_${kind}`]: "" } : {}),
-    }, true);
+  /* Three states, not two. "Custom" is a genuine opt-out: nothing is laid
+     underneath, and a blank box sends a blank fragment — no fallback to
+     the platform's own wording at all. "Default" is the dynamic one: it
+     resolves at draw time to whichever preset the admin has marked
+     default for this engine, or to the platform's original wording if
+     nobody has. A named preset is unchanged from before. Only Custom
+     leaves the boxes as they are; Default and a named preset both clear
+     them, the same way, because both supply their own separate layer. */
+  const clearBoxes = (extra) => writeConfig({
+    ...config,
+    ...extra,
+    [styleKey]: "",
+    [kind]: "",
+    ...(engine === "pixel" ? { neg: "", [`neg_${kind}`]: "" } : {}),
+  }, true);
 
-    // The boxes above stay exactly as built — empty, ready for the
-    // creator's own words. This is separate: a read-only look at what the
-    // preset itself says, and it exists only for an admin's own eyes.
-    // Nobody else's browser ever asks for this.
+  const chooseCustom = () => {
+    writeConfig({ ...config, [presetKey]: "custom" });
+    setPreview(null);
+  };
+
+  const chooseDefaultOption = () => {
+    clearBoxes({ [presetKey]: null });
+    if (!isAdmin) { setPreview(null); return; }
+    loadDefaultArtPreset(engine)
+      .then((id) => id ? loadArtPresetContent(id).then((cfg2) => setPreview({ id, config: cfg2, isPlatform: false })) : setPreview({ config: DEFAULT_ART, isPlatform: true }))
+      .catch(() => setPreview({ config: DEFAULT_ART, isPlatform: true }));
+  };
+
+  const choosePreset = (id) => {
+    clearBoxes({ [presetKey]: id });
     if (isAdmin) {
       setPreview(null);
-      loadArtPresetContent(id).then((cfg2) => setPreview({ id, config: cfg2 })).catch(() => setPreview(null));
+      loadArtPresetContent(id).then((cfg2) => setPreview({ id, config: cfg2, isPlatform: false })).catch(() => setPreview(null));
     }
   };
 
-  /* Custom is the opposite move: no preset attached, and the boxes show
-     the platform's own original wording again — the same thing a brand
-     new world starts with — rather than being left empty. This is the
-     same effect as "reset to defaults" below; both go through one place
-     so they cannot drift apart. */
-  const clearPresetSelection = () => setPreview(null);
-
-  const restoreDefaults = () => writeConfig({
-    ...config,
-    [presetKey]: null,
-    [styleKey]: DEFAULT_ART[styleKey],
-    [kind]: DEFAULT_ART[kind] ?? "",
-    ...(engine === "pixel"
-      ? { neg: DEFAULT_ART.neg, [`neg_${kind}`]: DEFAULT_ART[`neg_${kind}`] ?? "" }
-      : {}),
-  }, true);
   const shown = kind === "orphan"
     ? entries.filter((e) => e.orphaned)
     : entries.filter((e) => e.kind === kind && !e.orphaned);
@@ -247,33 +243,41 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
             </div>
           </Field>
 
-          {artPresets.length > 0 && (
-            <Field label={`Preset for ${ENGINES.find((x) => x.key === engine)?.label ?? engine}`}
-              hint="Attached underneath whatever you type below, not shown in the boxes themselves. Custom sends only your own words.">
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <button className="pf-btn" onClick={() => { clearPresetSelection(); restoreDefaults(); }}
+          <Field label={`Preset for ${ENGINES.find((x) => x.key === engine)?.label ?? engine}`}
+            hint="Default and a named preset both clear the boxes below and attach their own text underneath instead; Custom leaves your boxes exactly as they are and adds nothing beneath them — a blank box sends a blank fragment.">
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button className="pf-btn" onClick={chooseCustom}
+                title="Nothing else is added. A blank box sends nothing for that field."
+                style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer", background: "transparent",
+                  fontFamily: T.mono, fontSize: 12, color: selectedPreset === "custom" ? T.bone : T.boneDim,
+                  border: `1px solid ${selectedPreset === "custom" ? T.ochre : T.edge}` }}>
+                Custom
+              </button>
+              <button className="pf-btn" onClick={chooseDefaultOption}
+                title="Whichever preset the admin has marked default for this engine, or the platform's original wording if none is set."
+                style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer", background: "transparent",
+                  fontFamily: T.mono, fontSize: 12, color: !selectedPreset ? T.bone : T.boneDim,
+                  border: `1px solid ${!selectedPreset ? T.ochre : T.edge}` }}>
+                Default
+              </button>
+              {artPresets.map((p) => (
+                <button key={p.id} className="pf-btn" onClick={() => choosePreset(p.id)}
                   style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer", background: "transparent",
-                    fontFamily: T.mono, fontSize: 12, color: !selectedPreset ? T.bone : T.boneDim,
-                    border: `1px solid ${!selectedPreset ? T.ochre : T.edge}` }}>
-                  Custom
+                    fontFamily: T.mono, fontSize: 12, color: selectedPreset === p.id ? T.bone : T.boneDim,
+                    border: `1px solid ${selectedPreset === p.id ? T.ochre : T.edge}` }}>
+                  {p.label}
                 </button>
-                {artPresets.map((p) => (
-                  <button key={p.id} className="pf-btn" onClick={() => choosePreset(p.id)}
-                    style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer", background: "transparent",
-                      fontFamily: T.mono, fontSize: 12, color: selectedPreset === p.id ? T.bone : T.boneDim,
-                      border: `1px solid ${selectedPreset === p.id ? T.ochre : T.edge}` }}>
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </Field>
-          )}
+              ))}
+            </div>
+          </Field>
 
           {isAdmin && preview && (
             <div style={{ border: "1px solid " + T.ochre + "66", borderRadius: 2, padding: "12px 14px", marginBottom: 18,
               fontFamily: T.mono, fontSize: 11.5, lineHeight: 1.9, color: T.boneDim }}>
               <div style={{ color: T.ochre, marginBottom: 6 }}>
-                Preset content (admin only — nobody else ever downloads this)
+                {preview.isPlatform
+                  ? "Platform original wording (admin only — no default preset is set for this engine)"
+                  : "Preset content (admin only — nobody else ever downloads this)"}
               </div>
               <div><b style={{ color: T.bone }}>Art style:</b> {preview.config.style || "—"}</div>
               <div><b style={{ color: T.bone }}>Framing for {(KIND_LABEL[kind] ?? kind).toLowerCase()}:</b> {preview.config[kind] || "—"}</div>
@@ -336,7 +340,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
           </div>
           )}
 
-          <Btn kind="ghost" onClick={restoreDefaults}>
+          <Btn kind="ghost" onClick={chooseDefaultOption}>
             reset to defaults
           </Btn>
         </div>

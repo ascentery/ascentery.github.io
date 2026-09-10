@@ -263,7 +263,9 @@ function PresetList({ type }) {
                   {r.prompt}
                 </div>
               </div>
-              {defaultId !== r.id && (
+              {defaultId === r.id ? (
+                <Btn kind="ghost" disabled={busy} onClick={removeDefault}>remove default</Btn>
+              ) : (
                 <Btn kind="ghost" disabled={busy} onClick={() => makeDefault(r)}>make default</Btn>
               )}
               <Btn kind="ghost" onClick={() => edit(r)}>edit</Btn>
@@ -466,6 +468,22 @@ function ArtPresetList({ engine }) {
     }
   };
 
+  /* Clearing the default does not delete anything — it just means the
+     Pictures tab's own "Default" button falls back to the platform's
+     original wording again, the same as if no preset had ever been
+     marked default at all. */
+  const removeDefault = async () => {
+    setBusy(true);
+    try {
+      await saveDefaultArtPreset(engine, null);
+      setDefaultId(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const field = (key, patch) => setConfig((c) => ({ ...c, [key]: patch }));
 
   return (
@@ -494,7 +512,9 @@ function ArtPresetList({ engine }) {
                   <span style={{ fontFamily: T.mono, fontSize: 10, color: T.ochre }}>default</span>
                 )}
               </div>
-              {defaultId !== r.id && (
+              {defaultId === r.id ? (
+                <Btn kind="ghost" disabled={busy} onClick={removeDefault}>remove default</Btn>
+              ) : (
                 <Btn kind="ghost" disabled={busy} onClick={() => makeDefault(r)}>make default</Btn>
               )}
               <Btn kind="ghost" onClick={() => edit(r)}>edit</Btn>
