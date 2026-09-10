@@ -56,9 +56,15 @@ export const Field = ({ label, hint, children }) => (
   </label>
 );
 
-export const Chip = ({ status }) => {
-  const map = { ready: [T.moss, "published"], draft: [T.clay, "draft"], generating: [T.ochre, "building"], failed: [T.clay, "failed"] };
-  const [c, label] = map[status] ?? [T.boneDim, status];
+/* "ready" only ever meant "finished building, playable" — it said nothing
+   about whether anyone else can see it. Conflating the two showed a
+   "published" tag on every freshly-built draft. published is now read
+   separately, and only a ready world that is actually published gets that
+   label; a ready-but-unpublished one reads as a draft. */
+export const Chip = ({ status, published }) => {
+  const key = status === "ready" ? (published ? "published" : "draft") : status;
+  const map = { published: [T.moss, "published"], draft: [T.clay, "draft"], generating: [T.ochre, "building"], failed: [T.clay, "failed"] };
+  const [c, label] = map[key] ?? [T.boneDim, status];
   return <span style={{ fontFamily: T.mono, fontSize: 10, letterSpacing: ".04em", color: c,
     border: `1px solid ${c}55`, padding: "2px 7px", borderRadius: 2, whiteSpace: "nowrap" }}>{label}</span>;
 };

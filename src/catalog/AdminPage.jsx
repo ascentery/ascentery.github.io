@@ -136,8 +136,9 @@ function WorldBuildingTab() {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
-        {[["game_brief", "Game brief presets"], ["game_details", "Game details presets"]].map(([k, label]) => (
+      <div style={{ display: "flex", gap: 4, marginBottom: 20, flexWrap: "wrap" }}>
+        {[["game_brief", "Game brief presets"], ["story_details", "Story details presets"],
+          ["game_details", "Game details presets"]].map(([k, label]) => (
           <button key={k} onClick={() => setPresetTab(k)} className="pf-btn"
             style={{ background: "none", border: "1px solid " + (presetTab === k ? T.ochre : T.edge),
               borderRadius: 2, cursor: "pointer", padding: "7px 12px", fontFamily: T.mono, fontSize: 11.5,
@@ -215,9 +216,13 @@ function PresetList({ type }) {
     ? "Sent to the AI to write a fresh game brief every time this preset is used. The picker in " +
       "Create step 1 is admin-only; a creator who is not an admin gets the platform default, marked " +
       "below, or a random one if no default is set."
-    : "Stored for the story-fleshing stage. Not consumed by anything yet \u2014 the current pipeline " +
-      "goes straight from a brief to a built world with no separate detailing step. A default can " +
-      "still be set here, ready for when that stage exists.";
+    : type === "story_details"
+    ? "Used in Create step 2 to flesh the brief into a full arc \u2014 mission, obstacles, how it " +
+      "resolves \u2014 before Game Details turns that arc into concrete characters, wants and trades. " +
+      "Everyone gets the default marked below; only an admin can pick a different one or regenerate it directly."
+    : "Used in Create step 3 to turn the story arc into concrete game content: who wants what, who " +
+      "trades what, and what stands in the way. Everyone gets the default marked below; only an " +
+      "admin can pick a different one or regenerate it directly.";
 
   return (
     <div>

@@ -5,6 +5,7 @@ import {
   createWorld,
   generateBriefFromPreset,
   generateGameDetails,
+  generateStoryDetails,
   generateWorld,
   loadPresets,
   money,
@@ -20,6 +21,46 @@ export const EXAMPLE =
   "belongings, and a woman from the village who rows out every day and will not say why. She knows what's " +
   "in the cellar. She'll only tell me if I bring her the keeper's logbook, and nothing else will make her talk.";
 
+/* The same collapsible pattern the art-direction panel uses: a bordered bar
+   that expands into a row of choice buttons. Admin only, in every step that
+   has one — a normal creator always gets the platform default and never
+   sees this at all. */
+function PresetPicker({ what, presets, chosen, onChoose }) {
+  const [open, setOpen] = useState(false);
+  const current = presets.find((p) => p.id === chosen)?.label;
+
+  return (
+    <div style={{ border: "1px solid " + T.edge, borderRadius: 2, marginBottom: 18 }}>
+      <button className="pf-btn" onClick={() => setOpen((v) => !v)}
+        style={{ width: "100%", textAlign: "left", background: "transparent", border: "none", cursor: "pointer",
+          padding: "11px 14px", fontFamily: T.mono, fontSize: 11.5, color: T.boneDim,
+          display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ flex: 1 }}>{open ? "hide" : "show"} {what} preset (admin)</span>
+        <span style={{ color: T.ochre }}>{current ?? "platform default"}</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: "0 14px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="pf-btn" onClick={() => onChoose("")}
+            style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer", background: "transparent",
+              fontFamily: T.mono, fontSize: 12, color: chosen === "" ? T.bone : T.boneDim,
+              border: "1px solid " + (chosen === "" ? T.ochre : T.edge) }}>
+            platform default
+          </button>
+          {presets.map((p) => (
+            <button key={p.id} className="pf-btn" onClick={() => onChoose(p.id)}
+              style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer", background: "transparent",
+                fontFamily: T.mono, fontSize: 12, color: chosen === p.id ? T.bone : T.boneDim,
+                border: "1px solid " + (chosen === p.id ? T.ochre : T.edge) }}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Create({ me, refreshWorlds, go }) {
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState("");
@@ -31,15 +72,22 @@ export function Create({ me, refreshWorlds, go }) {
   const [stage, setStage] = useState(null);        // map | plot | prose | done, while building
   const [buildResult, setBuildResult] = useState(null);
 
-  // step 1: brief presets (admin-visible picker; everyone else gets the
-  // platform default when they press generate)
+  // step 1: brief
   const [briefPresets, setBriefPresets] = useState([]);
   const [chosenBriefPreset, setChosenBriefPreset] = useState("");
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState(null);
   const [genFrom, setGenFrom] = useState(null);
 
-  // step 2: game details
+  // step 2: story details — the arc, before Game Details turns it into
+  // concrete characters, wants and trades
+  const [storyDetails, setStoryDetails] = useState("");
+  const [storyPresets, setStoryPresets] = useState([]);
+  const [chosenStoryPreset, setChosenStoryPreset] = useState("");
+  const [storyBusy, setStoryBusy] = useState(false);
+  const [storyError, setStoryError] = useState(null);
+
+  // step 3: game details
   const [gameDetails, setGameDetails] = useState("");
   const [titles, setTitles] = useState([]);
   const [detailPresets, setDetailPresets] = useState([]);
@@ -52,6 +100,7 @@ export function Create({ me, refreshWorlds, go }) {
   useEffect(() => {
     if (!me?.isAdmin) return;
     loadPresets("game_brief").then(setBriefPresets).catch(() => setBriefPresets([]));
+    loadPresets("story_details").then(setStoryPresets).catch(() => setStoryPresets([]));
     loadPresets("game_details").then(setDetailPresets).catch(() => setDetailPresets([]));
   }, [me?.isAdmin]);
 
@@ -69,17 +118,46 @@ export function Create({ me, refreshWorlds, go }) {
     }
   };
 
-  // Step 1 -> step 2: flesh the brief out and suggest titles in the same
-  // call, then move forward. The brief itself is untouched — gameDetails is
-  // what will actually become the world's brief once built, so the creator
-  // can read and edit the richer version before anything is generated.
+  // Step 1 -> step 2: flesh the brief into a story arc.
+  const advanceToStory = async () => {
+    setStoryBusy(true); setStoryError(null);
+    try {
+      const res = await generateStoryDetails({ mode: "full", title, brief: desc });
+      setStoryDetails(res.storyDetails ?? "");
+      setStep(2);
+    } catch (e) {
+      setStoryError(e.message);
+    } finally {
+      setStoryBusy(false);
+    }
+  };
+
+  const regenerateStory = async () => {
+    setStoryBusy(true); setStoryError(null);
+    try {
+      const res = await generateStoryDetails({
+        mode: "regenerate", title, brief: desc, presetId: chosenStoryPreset || undefined,
+      });
+      setStoryDetails(res.storyDetails ?? storyDetails);
+    } catch (e) {
+      setStoryError(e.message);
+    } finally {
+      setStoryBusy(false);
+    }
+  };
+
+  // Step 2 -> step 3: turn the arc into concrete game content and suggest
+  // titles in the same call. gameDetails, not the short step-1 brief and
+  // not the story arc on its own, is what actually becomes the world's
+  // brief once built — the creator can read and edit the richer version
+  // before anything is generated.
   const advanceToDetails = async () => {
     setDetailsBusy(true); setDetailsError(null);
     try {
-      const res = await generateGameDetails({ mode: "full", title, brief: desc });
+      const res = await generateGameDetails({ mode: "full", title, brief: desc, storyDetails });
       setGameDetails(res.gameDetails ?? "");
       setTitles(res.titles ?? []);
-      setStep(2);
+      setStep(3);
     } catch (e) {
       setDetailsError(e.message);
     } finally {
@@ -91,7 +169,7 @@ export function Create({ me, refreshWorlds, go }) {
     setDetailsBusy(true); setDetailsError(null);
     try {
       const res = await generateGameDetails({
-        mode: "details", title, brief: desc, presetId: chosenDetailPreset || undefined,
+        mode: "details", title, brief: desc, storyDetails, presetId: chosenDetailPreset || undefined,
       });
       setGameDetails(res.gameDetails ?? gameDetails);
     } catch (e) {
@@ -104,7 +182,7 @@ export function Create({ me, refreshWorlds, go }) {
   const regenerateTitles = async () => {
     setTitlesBusy(true); setTitlesError(null);
     try {
-      const res = await generateGameDetails({ mode: "titles", title, brief: desc, gameDetails });
+      const res = await generateGameDetails({ mode: "titles", title, brief: desc, storyDetails, gameDetails });
       setTitles(res.titles ?? titles);
     } catch (e) {
       setTitlesError(e.message);
@@ -115,25 +193,18 @@ export function Create({ me, refreshWorlds, go }) {
   };
 
   const build = async () => {
-    setPhase("building"); setStep(3); setError(null); setStage(null); setNeedsFunds(false); setBuildResult(null);
+    setPhase("building"); setStep(4); setError(null); setStage(null); setNeedsFunds(false); setBuildResult(null);
     let id = worldId;
     try {
-      // The room-size picker is gone: every world now lets the brief decide
-      // how big it should be.
       id = id ?? await createWorld({
         userId: me.id,
         title: title.trim() || "Untitled world",
-        // The fleshed-out details, not the short step-1 brief, are what the
-        // world actually gets built from. Falls back to the short brief if
-        // step 2 was somehow skipped.
-        brief: gameDetails.trim() || desc.trim(),
+        brief: gameDetails.trim() || storyDetails.trim() || desc.trim(),
         roomMin: null,
         roomMax: null,
       });
       setWorldId(id);
 
-      // Poll the real stage while the request is in flight, rather than
-      // guessing at progress with a timer.
       const stop = watchGeneration(id, (status, gs) => { if (status === "generating") setStage(gs); });
       let res;
       try {
@@ -154,7 +225,7 @@ export function Create({ me, refreshWorlds, go }) {
     }
   };
 
-  const steps = ["Game brief", "Game details", "World building"];
+  const steps = ["Game brief", "Story details", "Game details", "World building"];
 
   return (
     <div className="pf-in" style={{ maxWidth: 660 }}>
@@ -191,14 +262,7 @@ export function Create({ me, refreshWorlds, go }) {
         </div>
 
         {me?.isAdmin && briefPresets.length > 0 && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
-            <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.boneDim }}>preset (admin):</span>
-            <select value={chosenBriefPreset} onChange={(e) => setChosenBriefPreset(e.target.value)}
-              style={{ ...inputStyle, width: "auto", fontSize: 11.5, padding: "5px 8px" }}>
-              <option value="">platform default</option>
-              {briefPresets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </select>
-          </div>
+          <PresetPicker what="brief" presets={briefPresets} chosen={chosenBriefPreset} onChoose={setChosenBriefPreset} />
         )}
 
         {genFrom && (
@@ -209,26 +273,53 @@ export function Create({ me, refreshWorlds, go }) {
         {genError && (
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 8px" }}>{genError}</p>
         )}
-        {detailsError && (
-          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 8px" }}>{detailsError}</p>
+        {storyError && (
+          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 8px" }}>{storyError}</p>
         )}
 
         <div style={{ marginBottom: 20 }} />
-        <Btn kind="solid" disabled={desc.trim().length < 40 || !title.trim() || detailsBusy}
-          onClick={advanceToDetails}>
-          {detailsBusy ? "fleshing it out\u2026" : "Continue"}
+        <Btn kind="solid" disabled={desc.trim().length < 40 || !title.trim() || storyBusy}
+          onClick={advanceToStory}>
+          {storyBusy ? "fleshing it out\u2026" : "Continue"}
         </Btn>
       </>)}
 
       {step === 2 && (<>
+        {me?.isAdmin && storyPresets.length > 0 && (
+          <PresetPicker what="story" presets={storyPresets} chosen={chosenStoryPreset} onChoose={setChosenStoryPreset} />
+        )}
+
+        <Field label="Story details"
+          hint="The arc: what is being sought, what stands in the way, how it resolves. Game Details, next, turns this into concrete characters and trades — read this over and fix anything that is not the story you meant.">
+          <textarea value={storyDetails} onChange={(e) => setStoryDetails(e.target.value)} rows={10}
+            style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
+        </Field>
+
+        {me?.isAdmin && (
+          <div style={{ marginBottom: 8 }}>
+            <Btn kind="ghost" disabled={storyBusy} onClick={regenerateStory}>
+              {storyBusy ? "writing\u2026" : "Regenerate (admin)"}
+            </Btn>
+          </div>
+        )}
+        {storyError && (
+          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 12px" }}>{storyError}</p>
+        )}
+        {detailsError && (
+          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 12px" }}>{detailsError}</p>
+        )}
+
+        <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+          <Btn onClick={() => setStep(1)}>Back</Btn>
+          <Btn kind="solid" disabled={!storyDetails.trim() || detailsBusy} onClick={advanceToDetails}>
+            {detailsBusy ? "building the details\u2026" : "Continue"}
+          </Btn>
+        </div>
+      </>)}
+
+      {step === 3 && (<>
         {me?.isAdmin && detailPresets.length > 0 && (
-          <Field label="Details preset (admin)" hint="Used when you press Regenerate below.">
-            <select value={chosenDetailPreset} onChange={(e) => setChosenDetailPreset(e.target.value)}
-              style={{ ...inputStyle, width: "auto", fontSize: 11.5, padding: "7px 10px" }}>
-              <option value="">platform default</option>
-              {detailPresets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </select>
-          </Field>
+          <PresetPicker what="details" presets={detailPresets} chosen={chosenDetailPreset} onChoose={setChosenDetailPreset} />
         )}
 
         <Field label="Title">
@@ -268,7 +359,7 @@ export function Create({ me, refreshWorlds, go }) {
         )}
 
         <Field label="Game details"
-          hint="The fuller version of your brief. This, not the short brief from step 1, is what the world actually gets built from — read it over and edit anything that is not right.">
+          hint="The story turned into concrete content: who wants what, who trades what, and what stands in the way. This, not the brief or the story arc on their own, is what the world actually gets built from — read it over and edit anything that is not right.">
           <textarea value={gameDetails} onChange={(e) => setGameDetails(e.target.value)} rows={12}
             style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
         </Field>
@@ -290,16 +381,16 @@ export function Create({ me, refreshWorlds, go }) {
         </p>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <Btn onClick={() => setStep(1)}>Back</Btn>
+          <Btn onClick={() => setStep(2)}>Back</Btn>
           <Btn kind="solid" disabled={!gameDetails.trim() || !title.trim()} onClick={build}>
             Continue
           </Btn>
         </div>
       </>)}
 
-      {step === 3 && phase === "building" && <Building stage={stage} />}
+      {step === 4 && phase === "building" && <Building stage={stage} />}
 
-      {step === 3 && phase === "done" && buildResult && (<>
+      {step === 4 && phase === "done" && buildResult && (<>
         <div style={{ border: "1px solid " + T.moss + "55", padding: 18, borderRadius: 2, marginBottom: 22 }}>
           <div style={{ fontFamily: T.serif, fontSize: 19, marginBottom: 10 }}>The world is built</div>
           <div style={{ fontFamily: T.mono, fontSize: 12, lineHeight: 2, color: T.boneDim }}>
@@ -321,7 +412,7 @@ export function Create({ me, refreshWorlds, go }) {
         <Btn kind="solid" onClick={() => go("edit", { id: worldId })}>Go to Pictures</Btn>
       </>)}
 
-      {step === 3 && phase === "failed" && (<>
+      {step === 4 && phase === "failed" && (<>
         <div style={{ border: "1px solid " + T.clay + "55", padding: 18, borderRadius: 2, marginBottom: 22 }}>
           <div style={{ fontFamily: T.serif, fontSize: 18, marginBottom: 8 }}>It did not come together</div>
           <p style={{ fontFamily: T.mono, fontSize: 12, lineHeight: 1.7, color: T.clay, margin: 0 }}>{error}</p>
@@ -335,7 +426,7 @@ export function Create({ me, refreshWorlds, go }) {
           {needsFunds
             ? <Btn kind="solid" onClick={() => go("creator")}>Add funds</Btn>
             : <Btn kind="solid" onClick={build}>Try again</Btn>}
-          <Btn onClick={() => { setPhase("idle"); setStep(2); }}>Edit the details</Btn>
+          <Btn onClick={() => { setPhase("idle"); setStep(3); }}>Edit the details</Btn>
         </div>
 
         {me?.isAdmin && buildResult?.raw && (
@@ -409,5 +500,3 @@ export function Building({ stage }) {
     </div>
   );
 }
-
-/* ---------- game detail ---------- */

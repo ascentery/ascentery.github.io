@@ -42,7 +42,7 @@ export function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
         style={{ marginBottom: 14 }}>back</Btn>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
         <h1 style={{ fontFamily: T.serif, fontSize: 28, fontWeight: 400, margin: 0 }}>{game.title}</h1>
-        <Chip status={game.status} />
+        <Chip status={game.status} published={game.published} />
       </div>
       <div style={{ fontFamily: T.mono, fontSize: 11.5, color: T.boneDim, marginBottom: 18 }}>
         {game.rooms} rooms &middot; {game.mobs} characters &middot; {game.plays.toLocaleString()} plays

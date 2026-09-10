@@ -534,7 +534,11 @@ export async function deletePreset(id) {
     names one explicitly. Stored in app_settings, same pattern as the model
     picker. One key per type, so brief and details defaults are independent
     even though only the brief one is consumed by anything yet. */
-const DEFAULT_KEY = { game_brief: 'brief_preset_default', game_details: 'details_preset_default' }
+const DEFAULT_KEY = {
+  game_brief: 'brief_preset_default',
+  story_details: 'story_preset_default',
+  game_details: 'details_preset_default',
+}
 
 export async function loadDefaultPreset(type) {
   const v = await loadSetting(DEFAULT_KEY[type])
@@ -561,19 +565,39 @@ export async function generateBriefFromPreset(presetId = null) {
   return body   // { title, brief, preset_label }
 }
 
-/** Step 2 of Create. Three modes:
-      full    -> { gameDetails, titles }   the initial call after step 1
+/** Step 2 of Create: flesh the brief out into a story arc. Two modes:
+      full       -> { storyDetails }   the initial call after step 1
+      regenerate -> { storyDetails }   admin only, free
+    presetId is honoured only for admins. */
+export async function generateStoryDetails({ mode, title, brief, storyDetails, presetId }) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-story`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ mode, title, brief, storyDetails, ...(presetId ? { presetId } : {}) }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `Could not generate (${res.status})`)
+  return body
+}
+
+/** Step 3 of Create. Three modes:
+      full    -> { gameDetails, titles }   the initial call after step 2
       details -> { gameDetails }           admin only, free
       titles  -> { titles }                1 cent, anyone
-    presetId is honoured only for admins, same as generateBriefFromPreset. */
-export async function generateGameDetails({ mode, title, brief, gameDetails, presetId }) {
+    presetId is honoured only for admins, same as generateBriefFromPreset.
+    storyDetails, once step 2 exists, is the richer context this reads from
+    instead of the short step-1 brief. */
+export async function generateGameDetails({ mode, title, brief, storyDetails, gameDetails, presetId }) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Not signed in')
 
   const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-details`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-    body: JSON.stringify({ mode, title, brief, gameDetails, ...(presetId ? { presetId } : {}) }),
+    body: JSON.stringify({ mode, title, brief, storyDetails, gameDetails, ...(presetId ? { presetId } : {}) }),
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {

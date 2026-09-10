@@ -80,7 +80,7 @@ export function GameCard({ g, onClick, showStatus, meta }) {
       <div style={{ padding: "10px 2px 0" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <div className="pf-title" style={{ fontFamily: T.serif, fontSize: 18, flex: 1, lineHeight: 1.25 }}>{g.title}</div>
-          {showStatus && <Chip status={g.status} />}
+          {showStatus && <Chip status={g.status} published={g.published} />}
         </div>
         <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginTop: 5 }}>
           {g.author} · {meta ?? `${g.plays.toLocaleString()} plays`}
