@@ -430,7 +430,10 @@ function ArtPresetList({ engine }) {
     try {
       await saveArtPreset({ id: editing?.id, engine, label, config, sortOrder: editing?.sort_order ?? (rows?.length ?? 0) });
       refresh();
-      edit(null);
+      // Back to "New preset" mode, but the fields stay exactly as they are:
+      // a saved preset is a reasonable starting point for the next one.
+      // Only the explicit "+ New preset" button clears the form.
+      setEditing(null);
     } catch (e) {
       setError(e.message);
     } finally {

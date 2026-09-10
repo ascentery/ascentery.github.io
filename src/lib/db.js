@@ -765,7 +765,7 @@ export const DEFAULT_ART = {
   mob: 'character portrait, single figure, head and shoulders, plain dark background,',
   item: 'one single isolated object, studio product shot, centred, filling the frame, ' +
         'flat plain dark background, nothing else in the picture,',
-  cover: '',
+  cover: 'dramatic key art, cinematic composition, one striking image representing the game,',
   prop: 'a single fixed mechanism in place, close view, mounted or set into its surroundings, no hands, no people,',
 
   // what to avoid

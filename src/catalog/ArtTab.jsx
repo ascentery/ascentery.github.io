@@ -83,20 +83,34 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
   const presetKey = `preset_${engine}`;
   const selectedPreset = config?.[presetKey] ?? null;
 
-  const choosePreset = (id) => writeConfig({ ...config, [presetKey]: id });
-
-  /* Custom clears only what is on screen right now — the shared style, this
-     kind's framing, and (on the pixel engine) the two negative boxes — not
-     every kind's text at once, which would be an odd thing to do from a
-     tab you cannot currently see. Picking a preset never touches these
-     boxes; it only marks which preset gets attached underneath them when
-     the picture is actually drawn. */
-  const clearCustom = () => writeConfig({
+  /* Picking a named preset clears the boxes currently on screen — the
+     shared style, this kind's framing, and (on the pixel engine) the two
+     negative boxes — to empty. The preset now supplies that layer on its
+     own; anything typed afterward is additional, laid on top of it at draw
+     time, not a replacement for it. Only the current kind's boxes are
+     touched, not every kind at once, since that would change tabs the
+     creator cannot currently see. */
+  const choosePreset = (id) => writeConfig({
     ...config,
-    [presetKey]: null,
+    [presetKey]: id,
     [styleKey]: "",
     [kind]: "",
     ...(engine === "pixel" ? { neg: "", [`neg_${kind}`]: "" } : {}),
+  }, true);
+
+  /* Custom is the opposite move: no preset attached, and the boxes show
+     the platform's own original wording again — the same thing a brand
+     new world starts with — rather than being left empty. This is the
+     same effect as "reset to defaults" below; both go through one place
+     so they cannot drift apart. */
+  const restoreDefaults = () => writeConfig({
+    ...config,
+    [presetKey]: null,
+    [styleKey]: DEFAULT_ART[styleKey],
+    [kind]: DEFAULT_ART[kind] ?? "",
+    ...(engine === "pixel"
+      ? { neg: DEFAULT_ART.neg, [`neg_${kind}`]: DEFAULT_ART[`neg_${kind}`] ?? "" }
+      : {}),
   }, true);
   const shown = kind === "orphan"
     ? entries.filter((e) => e.orphaned)
@@ -218,7 +232,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
             <Field label={`Preset for ${ENGINES.find((x) => x.key === engine)?.label ?? engine}`}
               hint="Attached underneath whatever you type below, not shown in the boxes themselves. Custom sends only your own words.">
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <button className="pf-btn" onClick={clearCustom}
+                <button className="pf-btn" onClick={restoreDefaults}
                   style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer", background: "transparent",
                     fontFamily: T.mono, fontSize: 12, color: !selectedPreset ? T.bone : T.boneDim,
                     border: `1px solid ${!selectedPreset ? T.ochre : T.edge}` }}>
@@ -290,16 +304,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
           </div>
           )}
 
-          <Btn kind="ghost"
-            onClick={() => writeConfig({
-              ...config,
-              [presetKey]: null,
-              [styleKey]: DEFAULT_ART[styleKey],
-              [kind]: DEFAULT_ART[kind] ?? "",
-              ...(engine === "pixel"
-                ? { neg: DEFAULT_ART.neg, [`neg_${kind}`]: DEFAULT_ART[`neg_${kind}`] ?? "" }
-                : {}),
-            }, true)}>
+          <Btn kind="ghost" onClick={restoreDefaults}>
             reset to defaults
           </Btn>
         </div>
