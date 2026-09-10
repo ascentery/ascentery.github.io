@@ -263,9 +263,7 @@ function PresetList({ type }) {
                   {r.prompt}
                 </div>
               </div>
-              {defaultId === r.id ? (
-                <Btn kind="ghost" disabled={busy} onClick={removeDefault}>remove default</Btn>
-              ) : (
+              {defaultId !== r.id && (
                 <Btn kind="ghost" disabled={busy} onClick={() => makeDefault(r)}>make default</Btn>
               )}
               <Btn kind="ghost" onClick={() => edit(r)}>edit</Btn>
