@@ -6,7 +6,8 @@ import {
   deleteArt,
   drawArt,
   loadArtConfig,
-  loadArtPresets,
+  loadArtPresetContent,
+  loadArtPresetLabels,
   money,
   saveArtConfig,
   setArtLock,
@@ -33,6 +34,7 @@ export const ENGINE_LOCKED = { item: "flux", prop: "flux", cover: "flux" };
 export const KIND_LABEL = { cover: "the splash screen", room: "rooms", mob: "characters", prop: "props", item: "items" };
 
 export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
+  const isAdmin = Boolean(me?.isAdmin);
   const [kind, setKind] = useState("room");
   const [config, setConfig] = useState(null);
   const [showStyle, setShowStyle] = useState(false);
@@ -45,7 +47,8 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
   const [queue, setQueue] = useState([]);
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(null);   // artId whose prompt is open
-  const [artPresets, setArtPresets] = useState([]);
+  const [artPresets, setArtPresets] = useState([]);          // { id, label, sort_order } — no content, ever, for non-admins
+  const [preview, setPreview] = useState(null);               // { id, config } — admin-only, read-only
 
   useEffect(() => {
     if (!worldId) return;
@@ -76,7 +79,10 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
   // same preset selected; switching engines shows that engine's own list.
   useEffect(() => {
     let cancelled = false;
-    loadArtPresets(engine).then((rs) => { if (!cancelled) setArtPresets(rs); }).catch(() => setArtPresets([]));
+    // Labels only, for everyone — this is what a non-admin's browser is
+    // ever allowed to know about a preset's existence.
+    loadArtPresetLabels(engine).then((rs) => { if (!cancelled) setArtPresets(rs); }).catch(() => setArtPresets([]));
+    setPreview(null);
     return () => { cancelled = true; };
   }, [engine]);
 
@@ -90,19 +96,32 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
      time, not a replacement for it. Only the current kind's boxes are
      touched, not every kind at once, since that would change tabs the
      creator cannot currently see. */
-  const choosePreset = (id) => writeConfig({
-    ...config,
-    [presetKey]: id,
-    [styleKey]: "",
-    [kind]: "",
-    ...(engine === "pixel" ? { neg: "", [`neg_${kind}`]: "" } : {}),
-  }, true);
+  const choosePreset = (id) => {
+    writeConfig({
+      ...config,
+      [presetKey]: id,
+      [styleKey]: "",
+      [kind]: "",
+      ...(engine === "pixel" ? { neg: "", [`neg_${kind}`]: "" } : {}),
+    }, true);
+
+    // The boxes above stay exactly as built — empty, ready for the
+    // creator's own words. This is separate: a read-only look at what the
+    // preset itself says, and it exists only for an admin's own eyes.
+    // Nobody else's browser ever asks for this.
+    if (isAdmin) {
+      setPreview(null);
+      loadArtPresetContent(id).then((cfg2) => setPreview({ id, config: cfg2 })).catch(() => setPreview(null));
+    }
+  };
 
   /* Custom is the opposite move: no preset attached, and the boxes show
      the platform's own original wording again — the same thing a brand
      new world starts with — rather than being left empty. This is the
      same effect as "reset to defaults" below; both go through one place
      so they cannot drift apart. */
+  const clearPresetSelection = () => setPreview(null);
+
   const restoreDefaults = () => writeConfig({
     ...config,
     [presetKey]: null,
@@ -232,7 +251,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
             <Field label={`Preset for ${ENGINES.find((x) => x.key === engine)?.label ?? engine}`}
               hint="Attached underneath whatever you type below, not shown in the boxes themselves. Custom sends only your own words.">
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <button className="pf-btn" onClick={restoreDefaults}
+                <button className="pf-btn" onClick={() => { clearPresetSelection(); restoreDefaults(); }}
                   style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer", background: "transparent",
                     fontFamily: T.mono, fontSize: 12, color: !selectedPreset ? T.bone : T.boneDim,
                     border: `1px solid ${!selectedPreset ? T.ochre : T.edge}` }}>
@@ -248,6 +267,19 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
                 ))}
               </div>
             </Field>
+          )}
+
+          {isAdmin && preview && (
+            <div style={{ border: "1px solid " + T.ochre + "66", borderRadius: 2, padding: "12px 14px", marginBottom: 18,
+              fontFamily: T.mono, fontSize: 11.5, lineHeight: 1.9, color: T.boneDim }}>
+              <div style={{ color: T.ochre, marginBottom: 6 }}>
+                Preset content (admin only — nobody else ever downloads this)
+              </div>
+              <div><b style={{ color: T.bone }}>Art style:</b> {preview.config.style || "—"}</div>
+              <div><b style={{ color: T.bone }}>Framing for {(KIND_LABEL[kind] ?? kind).toLowerCase()}:</b> {preview.config[kind] || "—"}</div>
+              <div><b style={{ color: T.bone }}>Avoid, everywhere:</b> {preview.config.neg || "—"}</div>
+              <div><b style={{ color: T.bone }}>Avoid, {(KIND_LABEL[kind] ?? kind).toLowerCase()} only:</b> {preview.config[`neg_${kind}`] || "—"}</div>
+            </div>
           )}
 
           <Field

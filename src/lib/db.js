@@ -781,6 +781,10 @@ export const DEFAULT_ART = {
 
 /* ---------- art-direction presets (readable by anyone, writable by admins) ---------- */
 
+/** Full content. Only an admin's row can actually read this — RLS blocks
+    everyone else outright. Used by the admin preset editor, and by the
+    admin-only preview when an admin clicks a preset in their own Pictures
+    tab. Never call this for a non-admin creator; it will simply fail. */
 export async function loadArtPresets(engine) {
   const { data, error } = await supabase
     .from('art_presets')
@@ -789,6 +793,25 @@ export async function loadArtPresets(engine) {
     .order('sort_order', { ascending: true })
   if (error) throw error
   return data ?? []
+}
+
+/** id + label only, never config. Works for anyone signed in — this is
+    what the Pictures tab's preset picker uses to build its button list,
+    admin or not. The content itself is resolved server-side at draw time,
+    with the service role, so a non-admin's browser never receives it. */
+export async function loadArtPresetLabels(engine) {
+  const { data, error } = await supabase.rpc('art_preset_labels', { p_engine: engine })
+  if (error) throw error
+  return data ?? []
+}
+
+/** One preset's full content, by id. Admin only — RLS refuses anyone
+    else. Used for the read-only preview when an admin clicks a preset. */
+export async function loadArtPresetContent(id) {
+  const { data, error } = await supabase
+    .from('art_presets').select('config').eq('id', id).single()
+  if (error) throw error
+  return data?.config ?? {}
 }
 
 export async function saveArtPreset({ id, engine, label, config, sortOrder }) {
