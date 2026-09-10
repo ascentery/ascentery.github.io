@@ -439,31 +439,6 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
                 color: e.locked ? "#221D0C" : T.bone, fontSize: 12, lineHeight: 1 }}>
               {e.locked ? "\ud83d\udd12" : "\ud83d\udd13"}
             </button>
-            {e.prevUrl && (
-              <div style={{ position: "absolute", bottom: 7, left: 7, display: "flex", gap: 4 }}>
-                <button onClick={() => toggleViewing(e)} disabled={isViewingPrev(e.id)}
-                  title="Show the previous version"
-                  style={{ width: 27, height: 27, borderRadius: 2, cursor: isViewingPrev(e.id) ? "default" : "pointer",
-                    background: "rgba(20,22,17,.72)", border: "1px solid " + T.edge,
-                    color: isViewingPrev(e.id) ? T.edge : T.bone, fontSize: 12, lineHeight: 1 }}>
-                  ↶
-                </button>
-                <button onClick={() => toggleViewing(e)} disabled={!isViewingPrev(e.id)}
-                  title="Show the most recently drawn version"
-                  style={{ width: 27, height: 27, borderRadius: 2, cursor: !isViewingPrev(e.id) ? "default" : "pointer",
-                    background: "rgba(20,22,17,.72)", border: "1px solid " + T.edge,
-                    color: !isViewingPrev(e.id) ? T.edge : T.bone, fontSize: 12, lineHeight: 1 }}>
-                  ↷
-                </button>
-              </div>
-            )}
-            {isViewingPrev(e.id) && (
-              <div style={{ position: "absolute", top: 7, left: 7, background: "rgba(20,22,17,.72)",
-                border: "1px solid " + T.ochre, borderRadius: 2, padding: "2px 7px",
-                fontFamily: T.mono, fontSize: 9.5, color: T.ochre }}>
-                previous
-              </div>
-            )}
           </div>
 
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
@@ -489,6 +464,14 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
             </button>
             )}
           </div>
+
+          {e.prevUrl && kind !== "orphan" && (
+            <button onClick={() => toggleViewing(e)} className="pf-btn"
+              style={{ background: "none", border: "none", padding: "2px 0 0", fontFamily: T.mono, fontSize: 10.5,
+                color: T.ochre, cursor: "pointer", display: "block" }}>
+              {isViewingPrev(e.id) ? "Redo" : "Undo"}
+            </button>
+          )}
 
           <button onClick={() => setEditing(editing === e.id ? null : e.id)} className="pf-btn"
             style={{ background: "none", border: "none", padding: "2px 0 0", fontFamily: T.mono, fontSize: 10.5,
