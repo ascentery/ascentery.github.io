@@ -83,7 +83,7 @@ export function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
         art === null
           ? <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
           : art.length
-            ? <ArtTab entries={art} setEntries={setArt} me={me} setMe={setMe} worldId={game.id} onDrawn={checkIllustrated} />
+            ? <ArtTab entries={art} setEntries={setArt} me={me} setMe={setMe} worldId={game.id} onDrawn={checkIllustrated} title={game.title} />
             : <Empty title="Nothing to draw yet." line="Pictures appear once the world has been built." />
       )}
 

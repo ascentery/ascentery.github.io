@@ -695,7 +695,7 @@ export const artUrl = (path, bucket = 'art') =>
 export async function loadArt(worldId) {
   const { data, error } = await supabase
     .from('world_art')
-    .select('id, kind, entity_key, name, image_prompt, image_path, bucket, locked, sort, orphaned_at')
+    .select('id, kind, entity_key, name, image_prompt, image_path, prev_image_path, bucket, locked, sort, orphaned_at')
     .eq('world_id', worldId)
     .order('kind')
     .order('sort')
@@ -707,6 +707,7 @@ export async function loadArt(worldId) {
     name: r.name,
     prompt: r.image_prompt ?? '',
     url: artUrl(r.image_path, r.bucket ?? 'art'),
+    prevUrl: artUrl(r.prev_image_path, r.bucket ?? 'art'),
     art: Boolean(r.image_path),
     locked: r.locked,
     orphaned: Boolean(r.orphaned_at),
@@ -714,8 +715,11 @@ export async function loadArt(worldId) {
 }
 
 /** Draws one entry. 20-60 seconds, and costs real money.
-    Returns { url, balance_cents, cost_cents, engine }. */
-export async function drawArt(artId) {
+    `viewing` tells the server which of the two slots (current/previous)
+    was on screen when redraw was pressed, since that decides whether the
+    old current gets pushed down into previous or discarded outright.
+    Returns { url, prev_url, balance_cents, cost_cents, engine }. */
+export async function drawArt(artId, viewing = 'current') {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Not signed in')
 
@@ -725,7 +729,7 @@ export async function drawArt(artId) {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${session.access_token}`,
     },
-    body: JSON.stringify({ artId }),
+    body: JSON.stringify({ artId, viewing }),
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {
@@ -733,7 +737,7 @@ export async function drawArt(artId) {
     err.balanceCents = body.balance_cents
     throw err
   }
-  return body   // { url, balance_cents, cost_cents, engine }
+  return body   // { url, prev_url, balance_cents, cost_cents, engine }
 }
 
 export async function setArtLock(artId, locked) {

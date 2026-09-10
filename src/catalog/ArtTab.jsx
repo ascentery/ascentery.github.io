@@ -34,7 +34,7 @@ export const ENGINE_LOCKED = { item: "flux", prop: "flux", cover: "flux" };
 
 export const KIND_LABEL = { cover: "the splash screen", room: "rooms", mob: "characters", prop: "props", item: "items" };
 
-export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
+export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title }) {
   const isAdmin = Boolean(me?.isAdmin);
   const [kind, setKind] = useState("room");
   const [config, setConfig] = useState(null);
@@ -141,13 +141,23 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
   const missing = kind === "orphan" ? [] : shown.filter((e) => !e.art && !e.locked);
   const affordable = Math.floor(me.balance / COST);
 
+  /* Which of the two slots (current/previous) each tile is showing. Not
+     persisted — a reload always opens on "current", which is the natural
+     default and avoids a database write for something this cosmetic. */
+  const [viewing, setViewingState] = useState({});
+  const isViewingPrev = (id) => viewing[id] === "previous";
+
   const draw = async (entry) => {
     if (entry.locked || drawing) return;
     setDrawing(entry.id);
     setError(null);
+    const wasViewing = isViewingPrev(entry.id) ? "previous" : "current";
     try {
-      const { url, balance_cents } = await drawArt(entry.id);
-      setEntries((es) => es.map((e) => e.id === entry.id ? { ...e, url, art: true } : e));
+      const { url, prev_url, balance_cents } = await drawArt(entry.id, wasViewing);
+      setEntries((es) => es.map((e) => e.id === entry.id ? { ...e, url, prevUrl: prev_url, art: true } : e));
+      // Redrawing always lands on the fresh result, whichever slot was
+      // being looked at beforehand.
+      setViewingState((v) => ({ ...v, [entry.id]: "current" }));
       if (typeof balance_cents === "number") setMe((m) => ({ ...m, balance: balance_cents }));
       onDrawn?.();
     } catch (e) {
@@ -157,6 +167,14 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
     } finally {
       setDrawing(null);
     }
+  };
+
+  /* Undo/redo. Free — no draw, no charge, just which of the two already-
+     paid-for images is on screen. Works even on a locked entry, since
+     nothing is being generated or overwritten. */
+  const toggleViewing = (entry) => {
+    if (!entry.prevUrl) return;
+    setViewingState((v) => ({ ...v, [entry.id]: isViewingPrev(entry.id) ? "current" : "previous" }));
   };
 
   // Serial on purpose: the provider is slower under parallel load, and one
@@ -306,10 +324,37 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
               style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
           </Field>
 
+          {kind === "cover" && (
+            <Field label="Title and byline"
+              hint="Always the world's real title and your real account name — never free text — so a rename or a name change carries through without a redraw. Turning the byline off still keeps the title.">
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: T.mono, fontSize: 12, color: T.boneDim, cursor: "pointer" }}>
+                  <input type="checkbox"
+                    checked={config.cover_byline !== "false"}
+                    onChange={(e) => writeConfig({
+                      ...config,
+                      // Stored as a string like every other config field —
+                      // saveArtConfig calls .trim() on every value, which
+                      // would throw on a real boolean. Checked (the
+                      // default) is stored as "" so it drops out entirely
+                      // rather than taking up a key for nothing.
+                      cover_byline: e.target.checked ? "" : "false",
+                    })} />
+                  Include "by {me.name || "you"}"
+                </label>
+              </div>
+              <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, fontStyle: "italic" }}>
+                {(config.cover_byline === "false" || config.cover_byline === false)
+                  ? `splash screen of a game with the title '${title || "…"}'`
+                  : `splash screen of a game with the title '${title || "…"}' by '${me.name || "…"}'`}
+              </div>
+            </Field>
+          )}
+
           <Field
             label={kind === "cover" ? "Framing for the splash screen" : `Framing for ${KIND_LABEL[kind] ?? kind}`}
             hint={kind === "cover"
-              ? "Every splash begins with 'splash screen of a game with the title …, by …', built from the world's own title and your username so a rename carries through. Anything here is added after that."
+              ? "Added after the title and byline above. This is where the actual visual direction goes — composition, mood, what the scene shows."
               : "How this kind is composed. Rooms are wide views, characters are portraits, items are single objects."}>
             <textarea
               defaultValue={config[kind] ?? ""}
@@ -386,7 +431,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
       {shown.map((e) => (
         <div key={e.id}>
           <div style={{ position: "relative" }}>
-            <Splash seed={e.key} src={e.url} pending={drawing === e.id} ratio={ratio} />
+            <Splash seed={e.key} src={isViewingPrev(e.id) ? e.prevUrl : e.url} pending={drawing === e.id} ratio={ratio} />
             <button onClick={() => toggleLock(e)}
               title={e.locked ? "Unlock to allow redraws" : "Lock to protect from redraws"} className="pf-btn"
               style={{ position: "absolute", top: 7, right: 7, width: 27, height: 27, borderRadius: 2, cursor: "pointer",
@@ -394,6 +439,31 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
                 color: e.locked ? "#221D0C" : T.bone, fontSize: 12, lineHeight: 1 }}>
               {e.locked ? "\ud83d\udd12" : "\ud83d\udd13"}
             </button>
+            {e.prevUrl && (
+              <div style={{ position: "absolute", bottom: 7, left: 7, display: "flex", gap: 4 }}>
+                <button onClick={() => toggleViewing(e)} disabled={isViewingPrev(e.id)}
+                  title="Show the previous version"
+                  style={{ width: 27, height: 27, borderRadius: 2, cursor: isViewingPrev(e.id) ? "default" : "pointer",
+                    background: "rgba(20,22,17,.72)", border: "1px solid " + T.edge,
+                    color: isViewingPrev(e.id) ? T.edge : T.bone, fontSize: 12, lineHeight: 1 }}>
+                  ↶
+                </button>
+                <button onClick={() => toggleViewing(e)} disabled={!isViewingPrev(e.id)}
+                  title="Show the most recently drawn version"
+                  style={{ width: 27, height: 27, borderRadius: 2, cursor: !isViewingPrev(e.id) ? "default" : "pointer",
+                    background: "rgba(20,22,17,.72)", border: "1px solid " + T.edge,
+                    color: !isViewingPrev(e.id) ? T.edge : T.bone, fontSize: 12, lineHeight: 1 }}>
+                  ↷
+                </button>
+              </div>
+            )}
+            {isViewingPrev(e.id) && (
+              <div style={{ position: "absolute", top: 7, left: 7, background: "rgba(20,22,17,.72)",
+                border: "1px solid " + T.ochre, borderRadius: 2, padding: "2px 7px",
+                fontFamily: T.mono, fontSize: 9.5, color: T.ochre }}>
+                previous
+              </div>
+            )}
           </div>
 
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
@@ -412,6 +482,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
               </button>
             ) : (
             <button onClick={() => draw(e)} disabled={e.locked || busy || me.balance < COST} className="pf-btn"
+              title={isViewingPrev(e.id) ? "Replaces the current version. The one you are looking at now is unaffected." : undefined}
               style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
                 color: e.locked ? T.edge : T.boneDim, cursor: (e.locked || busy) ? "not-allowed" : "pointer" }}>
               {drawing === e.id ? "drawing" : (e.art ? "redraw \u00b7 " : "draw \u00b7 ") + money(COST)}
