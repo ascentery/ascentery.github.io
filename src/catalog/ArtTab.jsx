@@ -114,9 +114,16 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn }) {
   const chooseDefaultOption = () => {
     clearBoxes({ [presetKey]: null });
     if (!isAdmin) { setPreview(null); return; }
+    // A real preset row stores one "style" field, since it already belongs
+    // to one engine. The platform's own defaults keep the historical
+    // style_pixel/style_flux split, so the fallback preview needs the
+    // right one folded in under the same "style" key the render reads —
+    // otherwise it always shows blank here regardless of engine, even
+    // though the actual draw uses the correct text.
+    const platformDefaults = { config: { ...DEFAULT_ART, style: DEFAULT_ART[styleKey] }, isPlatform: true };
     loadDefaultArtPreset(engine)
-      .then((id) => id ? loadArtPresetContent(id).then((cfg2) => setPreview({ id, config: cfg2, isPlatform: false })) : setPreview({ config: DEFAULT_ART, isPlatform: true }))
-      .catch(() => setPreview({ config: DEFAULT_ART, isPlatform: true }));
+      .then((id) => id ? loadArtPresetContent(id).then((cfg2) => setPreview({ id, config: cfg2, isPlatform: false })) : setPreview(platformDefaults))
+      .catch(() => setPreview(platformDefaults));
   };
 
   const choosePreset = (id) => {
