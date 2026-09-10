@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "./lib/supabase";
 import {
+  applyDefaultTheme,
   loadCharacters,
   loadMe,
   loadSaves,
@@ -20,10 +21,23 @@ import { Profile } from "./catalog/Profile";
 import { Auth, Shell, Splash1, TopBar } from "./catalog/Shell";
 import { UsernamePage } from "./catalog/UsernamePage";
 import { PlayLoader } from "./play/Play";
-import { T } from "./theme";
+import { T, P } from "./theme";
 import { Btn } from "./ui/primitives";
 
 export default function Ascentery() {
+  /* T and P are mutated in place by applyDefaultTheme, not replaced — every
+     component reads T.bone/P.ink as a plain property access at render
+     time, so nothing needs to re-import them. This gate just makes sure
+     that mutation has already happened before the first real render, on
+     every screen including Auth, rather than flashing the built-in colours
+     first and jumping to a theme a moment later. */
+  const [themeReady, setThemeReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    applyDefaultTheme(T, P).finally(() => { if (!cancelled) setThemeReady(true); });
+    return () => { cancelled = true; };
+  }, []);
+
   const [session, setSession] = useState(null);
   const [booting, setBooting] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -97,6 +111,7 @@ export default function Ascentery() {
     return () => { cancelled = true; };
   }, [session]);
 
+  if (!themeReady) return null;
   if (booting) return <Shell><Splash1 /></Shell>;
   if (!session) return <Shell><Auth /></Shell>;
   if (loadError) return (

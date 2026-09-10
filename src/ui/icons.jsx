@@ -14,6 +14,7 @@ export function Glyph({ name }) {
     close: <><rect x="4" y="2.5" width="8" height="11" rx="1" {...p} /><circle cx="9.6" cy="8" r=".6" fill="currentColor" stroke="none" /></>,
     keys: <><rect x="1.5" y="4.5" width="13" height="8" rx="1.2" {...p} /><path d="M4 7h.01M6.5 7h.01M9 7h.01M11.5 7h.01M4.5 10h7" {...p} /></>,
     grid: <><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" {...p} /><rect x="9" y="2.5" width="4.5" height="4.5" rx="1" {...p} /><rect x="2.5" y="9" width="4.5" height="4.5" rx="1" {...p} /><rect x="9" y="9" width="4.5" height="4.5" rx="1" {...p} /></>,
+    list: <><rect x="1.5" y="2.5" width="13" height="3.2" rx="0.8" {...p} /><rect x="1.5" y="6.4" width="13" height="3.2" rx="0.8" {...p} /><rect x="1.5" y="10.3" width="13" height="3.2" rx="0.8" {...p} /></>,
   };
   return <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden>{paths[name] ?? null}</svg>;
 }

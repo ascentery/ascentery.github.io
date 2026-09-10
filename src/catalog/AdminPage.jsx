@@ -4,20 +4,26 @@ import {
   PROVIDERS,
   deleteArtPreset,
   deletePreset,
+  deleteTheme,
   loadArtPresets,
   loadDefaultArtPreset,
   loadDefaultPreset,
+  loadDefaultTheme,
   loadPresets,
   loadReports,
   loadSetting,
+  loadThemes,
   resolveReport,
   saveArtPreset,
   saveDefaultArtPreset,
   saveDefaultPreset,
+  saveDefaultTheme,
   savePreset,
   saveSetting,
+  saveTheme,
   unpublishWorld,
 } from "../lib/db";
+import { T as LIVE_T, P as LIVE_P } from "../theme";
 import { KINDS, KIND_LABEL } from "./ArtTab";
 import { T, inputStyle } from "../theme";
 import { Btn, Empty, Field, H1 } from "../ui/primitives";
@@ -59,7 +65,7 @@ export function AdminPage({ me, go }) {
       </H1>
 
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24 }}>
-        {[["settings", "Settings"], ["world_building", "World building"], ["image_generation", "Image generation"]].map(([k, label]) => (
+        {[["settings", "Settings"], ["world_building", "World building"], ["image_generation", "Image generation"], ["themes", "Themes"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className="pf-btn"
             style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px",
               fontFamily: T.mono, fontSize: 12, color: tab === k ? T.bone : T.boneDim,
@@ -72,6 +78,8 @@ export function AdminPage({ me, go }) {
       {tab === "world_building" && <WorldBuildingTab />}
 
       {tab === "image_generation" && <ImageGenerationTab />}
+
+      {tab === "themes" && <ThemesTab />}
 
       {tab === "settings" && (!setting ? (
         <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
@@ -572,6 +580,198 @@ function ArtPresetList({ engine }) {
         )}
 
         <div style={{ display: "flex", gap: 10 }}>
+          <Btn kind="solid" disabled={busy || !label.trim()} onClick={save}>
+            {editing ? "Save" : "Add"}
+          </Btn>
+          {editing && <Btn kind="ghost" onClick={() => edit(null)}>Cancel</Btn>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const T_KEYS = ["ground", "raised", "edge", "bone", "boneDim", "ochre", "moss", "clay"];
+const P_KEYS = ["paper", "paperDeep", "ink", "inkSoft", "ochre", "rust", "moss"];
+
+function Swatch({ label, value, onChange }) {
+  const v = /^#[0-9a-fA-F]{3,8}$/.test(value || "") ? value : "#000000";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+      <input type="color" value={v} onChange={(e) => onChange(e.target.value)}
+        style={{ width: 30, height: 30, padding: 0, border: "1px solid " + T.edge, borderRadius: 2, cursor: "pointer", background: "none" }} />
+      <input value={value ?? ""} onChange={(e) => onChange(e.target.value)}
+        placeholder="inherits the platform default"
+        style={{ ...inputStyle, flex: 1, fontFamily: T.mono, fontSize: 12, padding: "6px 8px" }} />
+      <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, width: 62, flexShrink: 0 }}>{label}</span>
+    </div>
+  );
+}
+
+function ThemesTab() {
+  const [rows, setRows] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [label, setLabel] = useState("");
+  const [tOv, setTOv] = useState({});
+  const [pOv, setPOv] = useState({});
+  const [defaultId, setDefaultId] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const refresh = () => {
+    loadThemes().then(setRows).catch((e) => setError(e.message));
+    loadDefaultTheme().then(setDefaultId).catch(() => {});
+  };
+  useEffect(() => { refresh(); }, []);
+
+  const edit = (row) => {
+    setEditing(row);
+    setLabel(row?.label ?? "");
+    setTOv(row?.t_overrides ?? {});
+    setPOv(row?.p_overrides ?? {});
+    setError(null);
+  };
+
+  const save = async () => {
+    setBusy(true); setError(null);
+    try {
+      await saveTheme({ id: editing?.id, label, tOverrides: tOv, pOverrides: pOv, sortOrder: editing?.sort_order ?? (rows?.length ?? 0) });
+      refresh();
+      // Fields stay as they are, same reasoning as the art preset editor:
+      // a saved theme is a reasonable starting point for the next one.
+      setEditing(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (row) => {
+    setBusy(true); setError(null);
+    try {
+      await deleteTheme(row.id);
+      refresh();
+      if (editing?.id === row.id) edit(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const makeDefault = async (row) => {
+    setBusy(true);
+    try {
+      await saveDefaultTheme(row.id);
+      setDefaultId(row.id);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeThemeDefault = async () => {
+    setBusy(true);
+    try {
+      await saveDefaultTheme(null);
+      setDefaultId(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+        gap: 12, marginBottom: 12 }}>
+        <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: 0, flex: 1 }}>
+          Colour tokens, not CSS — the app has none to swap. Whichever theme is marked default here
+          replaces these colours for everyone, on load, the moment they open the site. An empty box
+          leaves that one colour at the platform default rather than overriding it.
+        </p>
+        <Btn kind="solid" onClick={() => edit(null)} style={{ flexShrink: 0 }}>+ New preset</Btn>
+      </div>
+
+      <p style={{ fontFamily: T.mono, fontSize: 10.5, color: T.boneDim, lineHeight: 1.7, margin: "0 0 20px" }}>
+        Only reaches a signed-in visitor right now — the tables this reads are authenticated-only,
+        same as every other preset system. A logged-out visitor still sees the platform default.
+      </p>
+
+      {rows === null ? (
+        <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
+      ) : (
+        <div style={{ marginBottom: 24 }}>
+          {rows.map((r) => (
+            <div key={r.id} style={{ border: "1px solid " + (defaultId === r.id ? T.ochre : T.edge),
+              borderRadius: 2, padding: "10px 14px", marginBottom: 8,
+              display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+                {[r.t_overrides?.ochre ?? LIVE_T.ochre, r.t_overrides?.ground ?? LIVE_T.ground,
+                  r.t_overrides?.bone ?? LIVE_T.bone].map((c, i) => (
+                  <span key={i} style={{ width: 14, height: 14, borderRadius: 2, background: c,
+                    border: "1px solid " + T.edge }} />
+                ))}
+              </div>
+              <div style={{ fontFamily: T.serif, fontSize: 15, flex: 1, display: "flex", alignItems: "baseline", gap: 8 }}>
+                {r.label}
+                {defaultId === r.id && (
+                  <span style={{ fontFamily: T.mono, fontSize: 10, color: T.ochre }}>default</span>
+                )}
+              </div>
+              {defaultId === r.id ? (
+                <Btn kind="ghost" disabled={busy} onClick={removeThemeDefault}>remove default</Btn>
+              ) : (
+                <Btn kind="ghost" disabled={busy} onClick={() => makeDefault(r)}>make default</Btn>
+              )}
+              <Btn kind="ghost" onClick={() => edit(r)}>edit</Btn>
+              <Btn kind="danger" disabled={busy} onClick={() => remove(r)}>delete</Btn>
+            </div>
+          ))}
+          {!rows.length && (
+            <p style={{ fontFamily: T.mono, fontSize: 12, color: T.boneDim }}>No themes yet.</p>
+          )}
+        </div>
+      )}
+
+      <div style={{ borderTop: "1px solid " + T.edge, paddingTop: 18 }}>
+        <div style={{ fontFamily: T.serif, fontSize: 16, marginBottom: 12 }}>
+          {editing ? `Editing "${editing.label}"` : "New theme"}
+        </div>
+
+        <Field label="Theme label">
+          <input style={inputStyle} value={label} onChange={(e) => setLabel(e.target.value)}
+            placeholder="Old Ascentery" />
+        </Field>
+
+        <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 260 }}>
+            <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginBottom: 8 }}>
+              Catalog (T) — the browsing, editing, admin screens
+            </div>
+            {T_KEYS.map((k) => (
+              <Swatch key={k} label={k} value={tOv[k]}
+                onChange={(v) => setTOv((o) => ({ ...o, [k]: v || undefined }))} />
+            ))}
+          </div>
+          <div style={{ minWidth: 260 }}>
+            <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginBottom: 8 }}>
+              Play surface (P) — the game itself
+            </div>
+            {P_KEYS.map((k) => (
+              <Swatch key={k} label={k} value={pOv[k]}
+                onChange={(v) => setPOv((o) => ({ ...o, [k]: v || undefined }))} />
+            ))}
+          </div>
+        </div>
+
+        {error && (
+          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "12px 0" }}>{error}</p>
+        )}
+
+        <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
           <Btn kind="solid" disabled={busy || !label.trim()} onClick={save}>
             {editing ? "Save" : "Add"}
           </Btn>

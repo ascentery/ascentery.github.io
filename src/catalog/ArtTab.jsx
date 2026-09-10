@@ -17,6 +17,7 @@ import {
 } from "../lib/db";
 import { readable } from "../play/chrome";
 import { T, inputStyle } from "../theme";
+import { Glyph } from "../ui/icons";
 import { Btn, Field, Splash } from "../ui/primitives";
 
 export const KINDS = [
@@ -148,6 +149,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
   const [viewing, setViewingState] = useState({});
   const isViewingPrev = (id) => viewing[id] === "previous";
   const [swapping, setSwapping] = useState(null);
+  const [layout, setLayout] = useState("grid");   // not persisted; resets on reload
 
   const draw = async (entry) => {
     if (entry.locked || drawing) return;
@@ -427,6 +429,13 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
             : "Draw " + batch + " missing \u00b7 " + money(batch * COST)}
         </Btn>
       )}
+      <button onClick={() => setLayout(layout === "grid" ? "list" : "grid")} className="pf-btn"
+        title={layout === "grid" ? "Switch to list view" : "Switch to grid view"}
+        style={{ width: 34, height: 34, flexShrink: 0, borderRadius: 2, cursor: "pointer",
+          background: "transparent", border: "1px solid " + T.edge,
+          color: T.boneDim, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        <Glyph name={layout === "grid" ? "list" : "grid"} />
+      </button>
     </div>
 
     {affordable < 1 && (
@@ -441,21 +450,22 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
       </p>
     )}
 
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 18 }}>
-      {shown.map((e) => (
-        <div key={e.id}>
-          <div style={{ position: "relative" }}>
-            <Splash seed={e.key} src={e.url} pending={drawing === e.id || swapping === e.id} ratio={ratio} />
-            <button onClick={() => toggleLock(e)}
-              title={e.locked ? "Unlock to allow redraws" : "Lock to protect from redraws"} className="pf-btn"
-              style={{ position: "absolute", top: 7, right: 7, width: 27, height: 27, borderRadius: 2, cursor: "pointer",
-                background: e.locked ? T.ochre : "rgba(20,22,17,.72)", border: "1px solid " + (e.locked ? T.ochre : T.edge),
-                color: e.locked ? "#221D0C" : T.bone, fontSize: 12, lineHeight: 1 }}>
-              {e.locked ? "\ud83d\udd12" : "\ud83d\udd13"}
-            </button>
-          </div>
+    <div style={layout === "grid"
+      ? { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 18 }
+      : { display: "flex", flexDirection: "column", gap: 12 }}>
+      {shown.map((e) => {
+        const lockButton = (
+          <button onClick={() => toggleLock(e)}
+            title={e.locked ? "Unlock to allow redraws" : "Lock to protect from redraws"} className="pf-btn"
+            style={{ position: "absolute", top: 7, right: 7, width: 27, height: 27, borderRadius: 2, cursor: "pointer",
+              background: e.locked ? T.ochre : "rgba(20,22,17,.72)", border: "1px solid " + (e.locked ? T.ochre : T.edge),
+              color: e.locked ? "#221D0C" : T.bone, fontSize: 12, lineHeight: 1 }}>
+            {e.locked ? "\ud83d\udd12" : "\ud83d\udd13"}
+          </button>
+        );
 
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
+        const nameRow = (
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: layout === "grid" ? 8 : 0 }}>
             <span style={{ fontFamily: T.serif, fontSize: 15.5, flex: 1, minWidth: 0 }}>{e.name}</span>
             {kind === "orphan" ? (
               <button className="pf-btn"
@@ -477,13 +487,17 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
             </button>
             )}
           </div>
+        );
 
+        const promptRow = (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 2 }}>
-            <button onClick={() => setEditing(editing === e.id ? null : e.id)} className="pf-btn"
-              style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 10.5,
-                color: T.edge, cursor: "pointer" }}>
-              {editing === e.id ? "hide prompt" : "edit prompt"}
-            </button>
+            {layout === "grid" ? (
+              <button onClick={() => setEditing(editing === e.id ? null : e.id)} className="pf-btn"
+                style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 10.5,
+                  color: T.edge, cursor: "pointer" }}>
+                {editing === e.id ? "hide prompt" : "edit prompt"}
+              </button>
+            ) : <span />}
 
             {e.prevUrl && kind !== "orphan" && (
               <button onClick={() => toggleViewing(e)} disabled={swapping === e.id} className="pf-btn"
@@ -493,17 +507,49 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
               </button>
             )}
           </div>
+        );
 
-          {editing === e.id && (
-            <textarea
-              defaultValue={e.prompt}
-              rows={4}
-              onBlur={(ev) => savePrompt(e, ev.target.value)}
-              placeholder="What the picture should show"
-              style={{ ...inputStyle, fontSize: 12.5, lineHeight: 1.5, marginTop: 6, resize: "vertical" }} />
-          )}
-        </div>
-      ))}
+        const textarea = (
+          <textarea
+            defaultValue={e.prompt}
+            rows={layout === "grid" ? 4 : 5}
+            onBlur={(ev) => savePrompt(e, ev.target.value)}
+            placeholder="What the picture should show"
+            style={{ ...inputStyle, fontSize: 12.5, lineHeight: 1.5, marginTop: 6, resize: "vertical" }} />
+        );
+
+        if (layout === "list") {
+          // Image on the left, everything else stacked to its right — the
+          // prompt is always visible here rather than gated behind a
+          // toggle, since a list is for reviewing many at once.
+          return (
+            <div key={e.id} style={{ display: "flex", gap: 14, background: "transparent",
+              border: "1px solid " + T.edge, borderRadius: 2, padding: 10 }}>
+              <div style={{ position: "relative", width: 160, flexShrink: 0, alignSelf: "flex-start" }}>
+                <Splash seed={e.key} src={e.url} pending={drawing === e.id || swapping === e.id} ratio={ratio} />
+                {lockButton}
+              </div>
+              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                {nameRow}
+                {promptRow}
+                {textarea}
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div key={e.id}>
+            <div style={{ position: "relative" }}>
+              <Splash seed={e.key} src={e.url} pending={drawing === e.id || swapping === e.id} ratio={ratio} />
+              {lockButton}
+            </div>
+            {nameRow}
+            {promptRow}
+            {editing === e.id && textarea}
+          </div>
+        );
+      })}
     </div>
   </>);
 }

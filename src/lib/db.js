@@ -530,6 +530,72 @@ export async function deletePreset(id) {
   if (error) throw error
 }
 
+/* ---------- themes ---------- */
+
+export async function loadThemes() {
+  const { data, error } = await supabase
+    .from('theme_presets')
+    .select('id, label, t_overrides, p_overrides, sort_order')
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function saveTheme({ id, label, tOverrides, pOverrides, sortOrder }) {
+  const row = { label: label.trim(), t_overrides: tOverrides ?? {}, p_overrides: pOverrides ?? {}, sort_order: sortOrder ?? 0 }
+  if (!row.label) throw new Error('A theme needs a label.')
+
+  if (id) {
+    const { error } = await supabase.from('theme_presets').update(row).eq('id', id)
+    if (error) throw error
+    return id
+  }
+  const { data: existing } = await supabase.from('theme_presets').select('id').ilike('label', row.label).limit(1)
+  if (existing?.length) throw new Error('A theme with that label already exists.')
+
+  const { data, error } = await supabase.from('theme_presets').insert(row).select('id').single()
+  if (error) throw error
+  return data.id
+}
+
+export async function deleteTheme(id) {
+  const { error } = await supabase.from('theme_presets').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function loadDefaultTheme() {
+  const v = await loadSetting('theme_default')
+  return v?.id ?? null
+}
+export async function saveDefaultTheme(id) {
+  await saveSetting('theme_default', { id })
+}
+
+/** Fetches whichever theme is currently marked default and applies its
+    colours onto the live T/P objects in place. T and P are plain exported
+    objects, not React state — every component reads T.bone/P.ink etc. as a
+    property access at render time, so mutating the objects and forcing one
+    re-render at the root is enough for the whole app to pick up the
+    change; nothing needs to re-import them. Returns true if anything was
+    actually applied, so the caller knows whether a re-render is needed. */
+export async function applyDefaultTheme(T, P) {
+  let themeId = null
+  try {
+    themeId = await loadDefaultTheme()
+  } catch {
+    return false
+  }
+  if (!themeId) return false
+
+  const { data, error } = await supabase
+    .from('theme_presets').select('t_overrides, p_overrides').eq('id', themeId).single()
+  if (error || !data) return false
+
+  Object.assign(T, data.t_overrides ?? {})
+  Object.assign(P, data.p_overrides ?? {})
+  return true
+}
+
 /** Which preset to use by default for a given preset type, when nobody
     names one explicitly. Stored in app_settings, same pattern as the model
     picker. One key per type, so brief and details defaults are independent
