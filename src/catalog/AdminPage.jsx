@@ -590,19 +590,48 @@ function ArtPresetList({ engine }) {
   );
 }
 
-const T_KEYS = ["ground", "raised", "edge", "bone", "boneDim", "ochre", "moss", "clay"];
-const P_KEYS = ["paper", "paperDeep", "ink", "inkSoft", "ochre", "rust", "moss"];
+/* What each token actually paints, so a bare word like "edge" or "ground"
+   is not the only clue an admin has to go on. Textbox colours specifically
+   come from ground (background), edge (border) and bone (text) — the
+   thing this list exists to make findable, since those three names alone
+   give no hint that they are the textbox setting. */
+const T_KEYS = [
+  ["ground",  "Page background — also the textbox background"],
+  ["raised",  "Cards, panels, anything sitting above the page"],
+  ["edge",    "Borders — also the textbox border"],
+  ["bone",    "Main text — also the textbox text"],
+  ["boneDim", "Secondary, quieter text"],
+  ["ochre",   "The accent colour — selected states, links, highlights"],
+  ["moss",    "Success, confirmation"],
+  ["clay",    "Errors, warnings"],
+];
+const P_KEYS = [
+  ["paper",     "Play surface background — the game itself"],
+  ["paperDeep", "Panels within the game: the room picture frame, the settings sheet"],
+  ["ink",       "Main text in the game"],
+  ["inkSoft",   "Secondary, quieter text in the game"],
+  ["ochre",     "The accent colour in the game — selected states, highlights"],
+  ["rust",      "Errors, combat, anything that should read as trouble"],
+  ["moss",      "Success, confirmation"],
+];
 
-function Swatch({ label, value, onChange }) {
+function Swatch({ label, hint, value, onChange }) {
   const v = /^#[0-9a-fA-F]{3,8}$/.test(value || "") ? value : "#000000";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-      <input type="color" value={v} onChange={(e) => onChange(e.target.value)}
-        style={{ width: 30, height: 30, padding: 0, border: "1px solid " + T.edge, borderRadius: 2, cursor: "pointer", background: "none" }} />
-      <input value={value ?? ""} onChange={(e) => onChange(e.target.value)}
-        placeholder="inherits the platform default"
-        style={{ ...inputStyle, flex: 1, fontFamily: T.mono, fontSize: 12, padding: "6px 8px" }} />
-      <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, width: 62, flexShrink: 0 }}>{label}</span>
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <input type="color" value={v} onChange={(e) => onChange(e.target.value)}
+          style={{ width: 30, height: 30, padding: 0, border: "1px solid " + T.edge, borderRadius: 2, cursor: "pointer", background: "none" }} />
+        <input value={value ?? ""} onChange={(e) => onChange(e.target.value)}
+          placeholder="inherits the platform default"
+          style={{ ...inputStyle, flex: 1, fontFamily: T.mono, fontSize: 12, padding: "6px 8px" }} />
+        <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, width: 62, flexShrink: 0 }}>{label}</span>
+      </div>
+      {hint && (
+        <div style={{ fontFamily: T.mono, fontSize: 10, color: T.boneDim, marginTop: 3, marginLeft: 38 }}>
+          {hint}
+        </div>
+      )}
     </div>
   );
 }
@@ -751,8 +780,8 @@ function ThemesTab() {
             <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginBottom: 8 }}>
               Catalog (T) — the browsing, editing, admin screens
             </div>
-            {T_KEYS.map((k) => (
-              <Swatch key={k} label={k} value={tOv[k]}
+            {T_KEYS.map(([k, hint]) => (
+              <Swatch key={k} label={k} hint={hint} value={tOv[k]}
                 onChange={(v) => setTOv((o) => ({ ...o, [k]: v || undefined }))} />
             ))}
           </div>
@@ -760,8 +789,8 @@ function ThemesTab() {
             <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginBottom: 8 }}>
               Play surface (P) — the game itself
             </div>
-            {P_KEYS.map((k) => (
-              <Swatch key={k} label={k} value={pOv[k]}
+            {P_KEYS.map(([k, hint]) => (
+              <Swatch key={k} label={k} hint={hint} value={pOv[k]}
                 onChange={(v) => setPOv((o) => ({ ...o, [k]: v || undefined }))} />
             ))}
           </div>
