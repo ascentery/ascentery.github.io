@@ -807,6 +807,32 @@ export async function drawArt(artId) {
   return body   // { url, balance_cents, cost_cents, engine }
 }
 
+/** Admin only, enforced server-side regardless of what this function lets
+    you attempt. Reads the file as a data URL client-side and posts it as
+    JSON, matching every other call in this file — no multipart handling
+    needed for something this small. Free, and participates in the same
+    undo history as a normal draw. Returns { url, prev_url }. */
+export async function uploadArt(artId, file) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const image = await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(new Error('Could not read that file.'))
+    reader.readAsDataURL(file)
+  })
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/art-upload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ artId, image }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `Could not upload (${res.status})`)
+  return body   // { url, prev_url }
+}
+
 /** Undo and Redo are the same call: swaps current and previous for real,
     including the world's cover_path if this is the splash — so what
     swaps is what actually shows everywhere, not just this tab's preview.

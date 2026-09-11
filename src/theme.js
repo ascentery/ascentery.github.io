@@ -22,7 +22,21 @@ export const P = {
    ENGINE — hand-written once, world-agnostic
    ============================================================ */
 
-export const inputStyle = { width: "100%", background: T.ground, border: `1px solid ${T.edge}`, color: T.bone,
-  fontFamily: T.serif, fontSize: 15, padding: "10px 12px", borderRadius: 2 };
+/* background/border/color are getters, not plain values, on purpose: a
+   plain `background: T.ground` copies whatever T.ground happened to be the
+   moment this module first evaluated — before any theme has even loaded —
+   and freezes it there forever, since T is mutated in place afterward and
+   a copied value has no way to follow that. Every other colour in the app
+   reads T.bone etc. fresh inside a component's own render, which is why
+   it picks up a theme change and this never did. A getter re-runs on every
+   `{...inputStyle}` spread, which is how every call site already uses
+   this, so nothing else needs to change to fix it. */
+export const inputStyle = {
+  width: "100%",
+  get background() { return T.ground; },
+  get border() { return `1px solid ${T.edge}`; },
+  get color() { return T.bone; },
+  fontFamily: T.serif, fontSize: 15, padding: "10px 12px", borderRadius: 2,
+};
 
 export const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(238px, 1fr))", gap: 20 };

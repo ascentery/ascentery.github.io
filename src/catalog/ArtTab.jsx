@@ -14,6 +14,7 @@ import {
   setArtLock,
   setArtPrompt,
   swapArtVersions,
+  uploadArt,
 } from "../lib/db";
 import { useNarrow } from "../hooks";
 import { readable } from "../play/chrome";
@@ -172,6 +173,23 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
       setQueue([]);          // stop the run rather than repeat the same failure
     } finally {
       setDrawing(null);
+    }
+  };
+
+  const [uploading, setUploading] = useState(null);
+
+  const upload = async (entry, file) => {
+    if (!file) return;
+    setUploading(entry.id);
+    setError(null);
+    try {
+      const { url, prev_url } = await uploadArt(entry.id, file);
+      setEntries((es) => es.map((e) => e.id === entry.id ? { ...e, url, prevUrl: prev_url, art: true } : e));
+      setViewingState((v) => ({ ...v, [entry.id]: "current" }));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUploading(null);
     }
   };
 
@@ -491,6 +509,16 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
                 color: e.locked ? T.edge : T.boneDim, cursor: (e.locked || busy) ? "not-allowed" : "pointer" }}>
               {drawing === e.id ? "drawing" : (e.art ? "redraw \u00b7 " : "draw \u00b7 ") + money(COST)}
             </button>
+            )}
+            {isAdmin && kind === "cover" && kind !== "orphan" && (
+              <label className="pf-btn"
+                style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
+                  color: T.boneDim, cursor: uploading === e.id ? "default" : "pointer" }}>
+                {uploading === e.id ? "uploading\u2026" : "upload image"}
+                <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: "none" }}
+                  disabled={uploading === e.id}
+                  onChange={(ev) => { upload(e, ev.target.files?.[0]); ev.target.value = ""; }} />
+              </label>
             )}
           </div>
         );
