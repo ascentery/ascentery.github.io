@@ -156,10 +156,37 @@ export function buildWalkthrough(WORLD) {
         if (path === null) {
           entry.note = `${mobLabel(mob)} could not be reached — check this stage by hand`;
         } else {
-          if (inv.has(item)) inv.delete(item);
+          /* Handing something over is not always just a loss. If the mob
+             has a trade wanting exactly this item AND is actually holding
+             what it offers in return, a real "give" action triggers that
+             trade — the item moves to them, and whatever they offer in
+             exchange moves to the player, in the same breath. That second
+             condition matters and is not just belt-and-braces: the real
+             give handler (below) checks the mob's live inventory before
+             firing a trade, not just that one is theoretically offered, so
+             a world that describes a trade whose "gives" item was never
+             actually stocked would not fire it either. Checking only the
+             first condition here would let the simulator hand over
+             something the real game never would.
+
+             Earlier this only modelled the first half of a real give —
+             the item leaving the player — which quietly discarded it
+             without ever crediting what came back: a stage two rooms
+             later that expected the player to be holding the returned
+             item found the simulated inventory empty, even though the
+             real game would already have it. */
+          const trade = (mobs[mob]?.trades ?? [])
+            .find((t) => t.wants === item && mobInv[mob]?.has(t.gives));
+          inv.delete(item);
           mobInv[mob]?.add(item);
+          if (trade) {
+            mobInv[mob]?.delete(trade.gives);
+            inv.add(trade.gives);
+          }
           entry = { ...entry, room: mobs[mob]?.room, roomName: roomLabel(mobs[mob]?.room), path,
-            action: `give ${itemLabel(item)} to ${mobLabel(mob)}` };
+            action: trade
+              ? `trade ${itemLabel(item)} to ${mobLabel(mob)} for ${itemLabel(trade.gives)}`
+              : `give ${itemLabel(item)} to ${mobLabel(mob)}` };
         }
       } else if (when.inRoom) {
         const path = travel(when.inRoom);
