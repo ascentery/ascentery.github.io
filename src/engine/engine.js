@@ -207,6 +207,14 @@ export function buildWalkthrough(WORLD) {
               action: `${pr.verb ?? "use"} the ${pr.name}` };
           }
         }
+      } else {
+        // None of the four recognised condition types matched — a typo'd
+        // or invalid key like "workProp" instead of "flag". Silently
+        // pushing a blank entry here used to make a genuinely broken
+        // stage look exactly like one that resolved cleanly, since the
+        // UI only shows anything extra when a note is actually set.
+        const keys = Object.keys(when ?? {}).join(", ") || "nothing";
+        entry.note = `unrecognised condition (${keys}) — not playerHas, mobHas, inRoom or flag; check this stage by hand`;
       }
 
       steps.push(entry);
