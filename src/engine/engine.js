@@ -31,6 +31,21 @@ export function buildWalkthrough(WORLD) {
   const roomLabel = (id) => rooms[id]?.name ?? id;
 
   const inv = new Set();
+  /* Everything ever held, even if later spent — separate from inv, which
+     only reflects what is held right now. The real runtime checks every
+     quest stage's condition on every turn, so a playerHas stage is
+     satisfied the moment the item is briefly held, even if it gets traded
+     away one turn later; that is exactly why stages are tracked as
+     permanent booleans rather than a single pointer, elsewhere in this
+     file. This walkthrough builder processes one stage at a time in
+     listed order, though, and resolving an earlier stage's own travel
+     needs can spend an item a later-listed stage separately asks for as
+     its own condition — a real trade chain like cross-for-key-for-door
+     genuinely does this. Checking everHeld instead of inv for playerHas
+     gives that later stage the same credit the real engine would have
+     already given it, rather than reporting a false failure for an item
+     that was, in fact, correctly obtained and used. */
+  const everHeld = new Set();
   const flags = new Set();
   const roomItems = {};
   for (const [rk, list] of Object.entries(WORLD.roomItems ?? {})) roomItems[rk] = new Set(list ?? []);
@@ -106,24 +121,44 @@ export function buildWalkthrough(WORLD) {
      directly and returns whether it succeeded, with no step recorded,
      since a prerequisite fetched in passing is not itself the thing a
      stage asked for. */
-  const tryObtain = (item, open) => {
+  const tryObtain = (item, open, depth = 0) => {
     if (inv.has(item)) return true;
+    // A trade chain in a well-formed world is a handful of links at most;
+    // bounding this is only ever there to stop a cyclic or genuinely
+    // impossible chain from recursing forever, not something a real world
+    // should ever come close to.
+    if (depth > 6) return false;
+
     const source = Object.entries(roomItems).find(([rk, set]) => open.has(rk) && set.has(item))?.[0];
     if (source) {
       inv.add(item);
+      everHeld.add(item);
       roomItems[source]?.delete(item);
       return true;
     }
-    const seller = Object.entries(mobs).find(([mk, m]) =>
-      open.has(m.room) && (m.trades ?? []).some((t) => t.gives === item && inv.has(t.wants)));
-    if (seller) {
-      const [mk, m] = seller;
-      const trade = m.trades.find((t) => t.gives === item && inv.has(t.wants));
-      inv.delete(trade.wants);
-      mobInv[mk]?.add(trade.wants);
-      mobInv[mk]?.delete(item);
-      inv.add(item);
-      return true;
+
+    /* The part that was missing: a seller only counts if their price can
+       actually be paid, and paying it might itself require a trade or a
+       pickup that has not happened yet. Checking inv.has(t.wants) alone
+       treated "already holding the price, by coincidence" as the only
+       way a trade could ever fire — so a chain like "trade A for B, B for
+       C" only ever resolved if the walkthrough happened to acquire A
+       before ever needing C, purely by luck of stage order. Recursing
+       into the price itself is what actually chases the chain: try to
+       obtain what a seller wants, the same way anything else gets
+       obtained, before deciding whether their trade is usable. */
+    for (const [mk, m] of Object.entries(mobs)) {
+      if (!open.has(m.room)) continue;
+      for (const t of m.trades ?? []) {
+        if (t.gives !== item) continue;
+        if (!tryObtain(t.wants, open, depth + 1)) continue;
+        inv.delete(t.wants);
+        mobInv[mk]?.add(t.wants);
+        mobInv[mk]?.delete(item);
+        inv.add(item);
+        everHeld.add(item);
+        return true;
+      }
     }
     return false;
   };
@@ -189,7 +224,13 @@ export function buildWalkthrough(WORLD) {
 
       if (when.playerHas) {
         const item = when.playerHas;
-        if (inv.has(item)) {
+        // everHeld, not inv: resolving an earlier stage's own travel needs
+        // can spend an item this stage separately asks for — the item was
+        // still genuinely obtained and held, just already used by the
+        // time this stage gets its turn. The real engine would have
+        // caught that the moment it happened; this is how the walkthrough
+        // gives the same credit despite processing one stage at a time.
+        if (everHeld.has(item)) {
           entry.already = true;
           entry.action = `have the ${itemLabel(item)}`;
         } else {
@@ -201,25 +242,38 @@ export function buildWalkthrough(WORLD) {
             const path = travel(source);
             if (path) {
               inv.add(item);
+              everHeld.add(item);
               roomItems[source]?.delete(item);
               entry = { ...entry, room: source, roomName: roomLabel(source), path,
                 action: `take ${itemLabel(item)}` };
             }
           } else {
-            // offered in a trade we can currently afford
-            const seller = Object.entries(mobs).find(([mk, m]) =>
-              open.has(m.room) && (m.trades ?? []).some((t) => t.gives === item && inv.has(t.wants)));
+            // offered in a trade we can currently afford — "afford" now
+            // means "obtainable at all", chasing the price the same way
+            // tryObtain chases anything else, not just "already happens
+            // to be in inventory". This is the exact gap that left a
+            // trade chain of more than one link unresolved: a seller
+            // whose price itself needed a trade or a pickup first was
+            // invisible to a plain inv.has(t.wants) check.
+            let seller = null, trade = null;
+            for (const [mk, m] of Object.entries(mobs)) {
+              if (!open.has(m.room)) continue;
+              for (const t of m.trades ?? []) {
+                if (t.gives !== item) continue;
+                if (tryObtain(t.wants, open)) { seller = mk; trade = t; break; }
+              }
+              if (seller) break;
+            }
             if (seller) {
-              const [mk, m] = seller;
-              const trade = m.trades.find((t) => t.gives === item && inv.has(t.wants));
-              const path = travel(m.room);
+              const path = travel(mobs[seller].room);
               if (path) {
                 inv.delete(trade.wants);
-                mobInv[mk]?.add(trade.wants);
-                mobInv[mk]?.delete(item);
+                mobInv[seller]?.add(trade.wants);
+                mobInv[seller]?.delete(item);
                 inv.add(item);
-                entry = { ...entry, room: m.room, roomName: roomLabel(m.room), path,
-                  action: `trade ${itemLabel(trade.wants)} to ${mobLabel(mk)} for ${itemLabel(item)}` };
+                everHeld.add(item);
+                entry = { ...entry, room: mobs[seller].room, roomName: roomLabel(mobs[seller].room), path,
+                  action: `trade ${itemLabel(trade.wants)} to ${mobLabel(seller)} for ${itemLabel(item)}` };
               }
             } else {
               entry.note = "could not be resolved automatically — check this stage by hand";
@@ -258,6 +312,7 @@ export function buildWalkthrough(WORLD) {
           if (trade) {
             mobInv[mob]?.delete(trade.gives);
             inv.add(trade.gives);
+            everHeld.add(trade.gives);
           }
           entry = { ...entry, room: mobs[mob]?.room, roomName: roomLabel(mobs[mob]?.room), path,
             action: trade
@@ -273,18 +328,33 @@ export function buildWalkthrough(WORLD) {
             action: "go there" };
         }
       } else if (when.flag) {
-        const prop = Object.entries(props).find(([, pr]) => pr?.sets === when.flag);
-        if (!prop) {
-          entry.note = "no prop sets this flag — check this stage by hand";
+        if (flags.has(when.flag)) {
+          // Already set, most likely as a side effect of resolving an
+          // earlier stage's own route — the same "credit it, do not
+          // re-demand it" reasoning as everHeld for playerHas.
+          entry.already = true;
+          entry.action = "already done";
         } else {
-          const [pk, pr] = prop;
-          const path = travel(pr.room);
-          if (path === null) {
-            entry.note = `${pr.name} could not be reached — check this stage by hand`;
+          const prop = Object.entries(props).find(([, pr]) => pr?.sets === when.flag);
+          if (!prop) {
+            entry.note = "no prop sets this flag — check this stage by hand";
           } else {
-            flags.add(when.flag);
-            entry = { ...entry, room: pr.room, roomName: roomLabel(pr.room), path,
-              action: `${pr.verb ?? "use"} the ${pr.name}` };
+            const [pk, pr] = prop;
+            const path = travel(pr.room);
+            if (path === null) {
+              entry.note = `${pr.name} could not be reached — check this stage by hand`;
+            } else if (pr.requires && !inv.has(pr.requires) && !tryObtain(pr.requires, reachableNow())) {
+              // The prop is reachable but what it needs is not — a gap
+              // the earlier prerequisite pass would have caught if this
+              // prop were blocking a route, but working a prop directly
+              // for its own quest stage never went through that pass at
+              // all until now.
+              entry.note = `needs the ${itemLabel(pr.requires)} first — check this stage by hand`;
+            } else {
+              flags.add(when.flag);
+              entry = { ...entry, room: pr.room, roomName: roomLabel(pr.room), path,
+                action: `${pr.verb ?? "use"} the ${pr.name}` };
+            }
           }
         }
       } else {
