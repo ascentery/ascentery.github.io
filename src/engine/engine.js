@@ -91,19 +91,58 @@ export function buildWalkthrough(WORLD) {
     return seen;
   };
 
+  /* One shared answer to "how would the player actually get item X, given
+     what is reachable right now" — lying on the floor, or a trade with a
+     reachable mob whose price is already held. This used to be written
+     twice: once, richly, inside the playerHas stage handler below (which
+     also has to report which room, which path, which action, since that
+     is a real step in the walkthrough); and once, narrower, inside the
+     prerequisite collector, which only ever checked roomItems and had no
+     idea a trade could produce a key. That gap is exactly why a key
+     reachable only by trading silver_cross to the Ghost Butler was
+     invisible to anything gating a route rather than being the point of
+     a stage. One function now, called from both places, so they cannot
+     drift apart like that again. Silent: it mutates inv/roomItems/mobInv
+     directly and returns whether it succeeded, with no step recorded,
+     since a prerequisite fetched in passing is not itself the thing a
+     stage asked for. */
+  const tryObtain = (item, open) => {
+    if (inv.has(item)) return true;
+    const source = Object.entries(roomItems).find(([rk, set]) => open.has(rk) && set.has(item))?.[0];
+    if (source) {
+      inv.add(item);
+      roomItems[source]?.delete(item);
+      return true;
+    }
+    const seller = Object.entries(mobs).find(([mk, m]) =>
+      open.has(m.room) && (m.trades ?? []).some((t) => t.gives === item && inv.has(t.wants)));
+    if (seller) {
+      const [mk, m] = seller;
+      const trade = m.trades.find((t) => t.gives === item && inv.has(t.wants));
+      inv.delete(trade.wants);
+      mobInv[mk]?.add(trade.wants);
+      mobInv[mk]?.delete(item);
+      inv.add(item);
+      return true;
+    }
+    return false;
+  };
+
   /* Before attempting the real route, auto-resolve two kinds of thing a
      player would obviously do in passing but which no quest stage ever
      names as its own condition, so nothing else would ever think to fetch
      or do it:
-       - a KEY locking a reachable exit, sitting in a room already
-         reachable without it — pick it up;
+       - a KEY locking a reachable exit — obtained however tryObtain can
+         manage, lying around or traded for;
        - a FLAG gating a reachable exit ("needs"), with a prop somewhere
-         reachable that sets it — work the prop.
+         reachable that sets it, whose own "requires" (if any) is itself
+         obtainable the same way — work the prop.
      Both loop together, bounded rather than recursive: working a prop
      might reveal a room holding a key, and fetching a key might reveal a
-     room holding a lever, so one combined pass lets either side unblock
-     the other. A handful of passes covers any realistic chain without
-     risking a loop if something genuinely cannot be resolved. */
+     room holding a lever or something to trade, so one combined pass lets
+     any side unblock any other. A handful of passes covers any realistic
+     chain without risking a loop if something genuinely cannot be
+     resolved. */
   const collectFetchablePrereqs = () => {
     for (let pass = 0; pass < 6; pass++) {
       const open = reachableNow();
@@ -112,18 +151,12 @@ export function buildWalkthrough(WORLD) {
       for (const rk of open) {
         for (const ex of Object.values(rooms[rk]?.exits ?? {})) {
           const lock = typeof ex === "object" ? ex.locked : null;
-          if (lock && !inv.has(lock)) {
-            const source = Object.entries(roomItems).find(([srk, set]) => open.has(srk) && set.has(lock))?.[0];
-            if (source) {
-              inv.add(lock);
-              roomItems[source]?.delete(lock);
-              gained = true;
-            }
-          }
+          if (lock && !inv.has(lock) && tryObtain(lock, open)) gained = true;
+
           const need = typeof ex === "object" ? ex.needs : null;
           if (need && !flags.has(need)) {
             const propEntry = Object.entries(props).find(([, pr]) =>
-              pr?.sets === need && open.has(pr.room) && (!pr.requires || inv.has(pr.requires)));
+              pr?.sets === need && open.has(pr.room) && (!pr.requires || inv.has(pr.requires) || tryObtain(pr.requires, open)));
             if (propEntry) {
               flags.add(need);
               gained = true;
