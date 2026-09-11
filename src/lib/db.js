@@ -101,6 +101,19 @@ export async function loadSaves(userId) {
   return map
 }
 
+/** Deletes a save outright — "start anew" from the preview page. Scoped by
+    RLS to the caller's own row regardless of the worldId/characterId
+    given, so this can never touch anyone else's save. */
+export async function deleteSave(userId, worldId, characterId) {
+  const { error } = await supabase
+    .from('saves')
+    .delete()
+    .eq('user_id', userId)
+    .eq('world_id', worldId)
+    .eq('character_id', characterId)
+  if (error) throw error
+}
+
 export async function writeSave({ userId, worldId, characterId, state, log }) {
   const { error } = await supabase.from('saves').upsert(
     {

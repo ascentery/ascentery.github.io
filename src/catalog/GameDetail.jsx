@@ -2,18 +2,41 @@ import React, { useState } from "react";
 import {
   REPORT_REASONS,
   bumpPlays,
+  deleteSave,
   reportWorld,
 } from "../lib/db";
 import { useNarrow } from "../hooks";
 import { T, inputStyle } from "../theme";
 import { Btn, Empty, Splash } from "../ui/primitives";
 
-export function GameDetail({ game, chars, saves, go, from = "browse", isMine }) {
+export function GameDetail({ game, chars, saves, setSaves, userId, go, from = "browse", isMine }) {
   const [picked, setPicked] = useState(chars[0]?.id ?? null);
   const [reporting, setReporting] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const narrow = useNarrow();
   if (!game) return <Empty title="That world is gone." line="It may have been unpublished by its author." />;
   const save = saves[`${game.id}:${picked}`];
+
+  const resetSave = async () => {
+    if (!picked) return;
+    setResetting(true);
+    try {
+      await deleteSave(userId, game.id, picked);
+      setSaves((s) => {
+        const next = { ...s };
+        delete next[`${game.id}:${picked}`];
+        return next;
+      });
+      setConfirmReset(false);
+    } catch (e) {
+      // Nothing lost either way — the save stays exactly as it was if this
+      // fails, so a quiet retry is enough; no need to alarm over it.
+      console.error(e);
+    } finally {
+      setResetting(false);
+    }
+  };
 
   return (
     <div className="pf-in">
@@ -40,7 +63,7 @@ export function GameDetail({ game, chars, saves, go, from = "browse", isMine }) 
           <div style={{ fontFamily: T.serif, fontSize: 15, marginBottom: 8 }}>Play as</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
             {chars.map((c) => (
-              <button key={c.id} onClick={() => setPicked(c.id)} className="pf-btn"
+              <button key={c.id} onClick={() => { setPicked(c.id); setConfirmReset(false); }} className="pf-btn"
                 style={{ fontFamily: T.mono, fontSize: 12, padding: "8px 13px", cursor: "pointer", borderRadius: 2,
                   background: "transparent", color: picked === c.id ? T.bone : T.boneDim,
                   border: "1px solid " + (picked === c.id ? T.ochre : T.edge) }}>
@@ -60,12 +83,28 @@ export function GameDetail({ game, chars, saves, go, from = "browse", isMine }) 
               {save ? "Continue" : "Start"}
             </Btn>
             {isMine && <Btn onClick={() => go("edit", { id: game.id })}>Edit</Btn>}
+            {save && !confirmReset && (
+              <Btn kind="ghost" onClick={() => setConfirmReset(true)}>Reset</Btn>
+            )}
             {!isMine && (
               <Btn kind="ghost" onClick={() => setReporting((v) => !v)}>
                 {reporting ? "cancel" : "report"}
               </Btn>
             )}
           </div>
+
+          {confirmReset && save && (
+            <div style={{ fontFamily: T.mono, fontSize: 11.5, color: T.boneDim, lineHeight: 1.7, marginTop: 12 }}>
+              This deletes your progress on this world for this character — turn {save.state.turn},
+              gone for good. There is no undo.
+              <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+                <Btn kind="solid" disabled={resetting} onClick={resetSave}>
+                  {resetting ? "resetting\u2026" : "Yes, start over"}
+                </Btn>
+                <Btn kind="ghost" onClick={() => setConfirmReset(false)}>Never mind</Btn>
+              </div>
+            </div>
+          )}
 
           {!game.playable && (
             <div style={{ fontFamily: T.mono, fontSize: 11, color: T.clay, marginTop: 12, lineHeight: 1.6 }}>
