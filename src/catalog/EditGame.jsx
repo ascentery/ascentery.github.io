@@ -289,12 +289,34 @@ function RepairTab({ worldId, title, isAdmin }) {
   };
 
   const copyJson = async () => {
+    const text = JSON.stringify(world, null, 2);
+    // The modern clipboard API is not universally available — older
+    // Safari and some embedded webviews either lack it or reject it
+    // depending on permissions, and fail silently rather than throwing
+    // something visible. A classic textarea + execCommand fallback covers
+    // far more of those cases, so this only reports failure if both fail.
     try {
-      await navigator.clipboard.writeText(JSON.stringify(world, null, 2));
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+      return;
+    } catch { /* fall through to the classic approach below */ }
+
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if (!ok) throw new Error("execCommand copy returned false");
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
-      setError("Could not copy — your browser may be blocking clipboard access.");
+      setError("Could not copy — your browser may be blocking clipboard access. Select the text in the box above and copy it manually.");
     }
   };
 

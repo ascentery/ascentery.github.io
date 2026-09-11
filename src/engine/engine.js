@@ -91,32 +91,43 @@ export function buildWalkthrough(WORLD) {
     return seen;
   };
 
-  /* Before attempting the real route, auto-collect any key that is (a)
-     locking an exit somewhere and (b) sitting in a room already reachable
-     without it — the "pick it up on the way" case, which is not a quest
-     checkpoint and never gets named by any stage condition, but is
-     completely ordinary: a key sitting in the very room its own door
-     leaves from needs nothing more than being picked up first. Without
-     this, a stage could only ever fetch an item a quest stage explicitly
-     names as its condition, so a key required purely to get somewhere —
-     never itself the point of a stage — would report the destination as
-     unreachable even though a real player would simply grab it in
-     passing. Bounded, not recursive: each locked door needs at most one
-     key, so a handful of passes covers any realistic chain without risking
-     a loop if a key genuinely cannot be found. */
-  const collectFetchableKeys = () => {
+  /* Before attempting the real route, auto-resolve two kinds of thing a
+     player would obviously do in passing but which no quest stage ever
+     names as its own condition, so nothing else would ever think to fetch
+     or do it:
+       - a KEY locking a reachable exit, sitting in a room already
+         reachable without it — pick it up;
+       - a FLAG gating a reachable exit ("needs"), with a prop somewhere
+         reachable that sets it — work the prop.
+     Both loop together, bounded rather than recursive: working a prop
+     might reveal a room holding a key, and fetching a key might reveal a
+     room holding a lever, so one combined pass lets either side unblock
+     the other. A handful of passes covers any realistic chain without
+     risking a loop if something genuinely cannot be resolved. */
+  const collectFetchablePrereqs = () => {
     for (let pass = 0; pass < 6; pass++) {
       const open = reachableNow();
       let gained = false;
+
       for (const rk of open) {
         for (const ex of Object.values(rooms[rk]?.exits ?? {})) {
           const lock = typeof ex === "object" ? ex.locked : null;
-          if (!lock || inv.has(lock)) continue;
-          const source = Object.entries(roomItems).find(([srk, set]) => open.has(srk) && set.has(lock))?.[0];
-          if (source) {
-            inv.add(lock);
-            roomItems[source]?.delete(lock);
-            gained = true;
+          if (lock && !inv.has(lock)) {
+            const source = Object.entries(roomItems).find(([srk, set]) => open.has(srk) && set.has(lock))?.[0];
+            if (source) {
+              inv.add(lock);
+              roomItems[source]?.delete(lock);
+              gained = true;
+            }
+          }
+          const need = typeof ex === "object" ? ex.needs : null;
+          if (need && !flags.has(need)) {
+            const propEntry = Object.entries(props).find(([, pr]) =>
+              pr?.sets === need && open.has(pr.room) && (!pr.requires || inv.has(pr.requires)));
+            if (propEntry) {
+              flags.add(need);
+              gained = true;
+            }
           }
         }
       }
@@ -130,7 +141,7 @@ export function buildWalkthrough(WORLD) {
   // way.
   const travel = (to) => {
     if (here === to) return [];
-    collectFetchableKeys();
+    collectFetchablePrereqs();
     const path = pathTo(to);
     if (!path) return null;
     here = to;
@@ -149,7 +160,7 @@ export function buildWalkthrough(WORLD) {
           entry.already = true;
           entry.action = `have the ${itemLabel(item)}`;
         } else {
-          collectFetchableKeys();
+          collectFetchablePrereqs();
           const open = reachableNow();
           // lying in a room already open to us
           let source = Object.entries(roomItems).find(([rk, set]) => open.has(rk) && set.has(item))?.[0];
