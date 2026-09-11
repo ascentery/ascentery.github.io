@@ -91,11 +91,46 @@ export function buildWalkthrough(WORLD) {
     return seen;
   };
 
+  /* Before attempting the real route, auto-collect any key that is (a)
+     locking an exit somewhere and (b) sitting in a room already reachable
+     without it — the "pick it up on the way" case, which is not a quest
+     checkpoint and never gets named by any stage condition, but is
+     completely ordinary: a key sitting in the very room its own door
+     leaves from needs nothing more than being picked up first. Without
+     this, a stage could only ever fetch an item a quest stage explicitly
+     names as its condition, so a key required purely to get somewhere —
+     never itself the point of a stage — would report the destination as
+     unreachable even though a real player would simply grab it in
+     passing. Bounded, not recursive: each locked door needs at most one
+     key, so a handful of passes covers any realistic chain without risking
+     a loop if a key genuinely cannot be found. */
+  const collectFetchableKeys = () => {
+    for (let pass = 0; pass < 6; pass++) {
+      const open = reachableNow();
+      let gained = false;
+      for (const rk of open) {
+        for (const ex of Object.values(rooms[rk]?.exits ?? {})) {
+          const lock = typeof ex === "object" ? ex.locked : null;
+          if (!lock || inv.has(lock)) continue;
+          const source = Object.entries(roomItems).find(([srk, set]) => open.has(srk) && set.has(lock))?.[0];
+          if (source) {
+            inv.add(lock);
+            roomItems[source]?.delete(lock);
+            gained = true;
+          }
+        }
+      }
+      if (!gained) break;
+    }
+  };
+
   // Move `here` to `to`, recording one step of the walkthrough for the
   // journey. Returns the path taken (an empty array if already there), or
-  // null if no path could be found with what is currently held.
+  // null if no path could be found with what can be collected along the
+  // way.
   const travel = (to) => {
     if (here === to) return [];
+    collectFetchableKeys();
     const path = pathTo(to);
     if (!path) return null;
     here = to;
@@ -114,6 +149,7 @@ export function buildWalkthrough(WORLD) {
           entry.already = true;
           entry.action = `have the ${itemLabel(item)}`;
         } else {
+          collectFetchableKeys();
           const open = reachableNow();
           // lying in a room already open to us
           let source = Object.entries(roomItems).find(([rk, set]) => open.has(rk) && set.has(item))?.[0];
