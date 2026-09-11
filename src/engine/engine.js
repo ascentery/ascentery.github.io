@@ -286,6 +286,20 @@ const exitOf = (room, dir) => {
 };
 const exitsOf = (room) => Object.keys(room?.exits ?? {}).map((d) => ({ dir: d, ...exitOf(room, d) }));
 
+/** The other side of a door, if there is one: whichever exit in the
+    destination room leads back to where you started. Reciprocal exits are
+    already required elsewhere (the map pass, the validator), so this is
+    almost always exactly one exit — the same door, the other way. */
+const reverseExit = (fromRoomId, dir) => {
+  const fromRoom = WORLD.rooms?.[fromRoomId];
+  const ex = exitOf(fromRoom, dir);
+  if (!ex?.to) return null;
+  const destRoom = WORLD.rooms?.[ex.to];
+  const revDir = Object.keys(destRoom?.exits ?? {}).find((d) => exitOf(destRoom, d)?.to === fromRoomId);
+  if (!revDir) return null;
+  return { room: ex.to, dir: revDir, key: `${ex.to}:${revDir}` };
+};
+
 /* Everything in the room, found or not. `propsInRoom` is the one to use
    almost everywhere: a hidden prop is not in the room at all until whatever
    conceals it has been dealt with — not shown, not mentioned to the
@@ -714,9 +728,18 @@ function applyEffects(prev, effects) {
       }
 
       const key = `${s.player.room}:${dir}`;
+      /* A door is one physical thing with two sides, not two independent
+         locks that happen to share a key. Opening it from one side and
+         then finding it locked again from the other — after walking
+         straight through — reads as a bug, not a puzzle, and it is: real
+         doors do not re-lock themselves the moment you turn around.
+         reverseExit finds the other side, if there is one, so both marks
+         move together. */
+      const rev = reverseExit(s.player.room, dir);
       if (closing) {
         if (!s.opened[key]) { note(`The way ${dir} is already shut.`); continue; }
         delete s.opened[key];
+        if (rev) delete s.opened[rev.key];
         note(`You shut the way ${dir}. It locks behind you.`);
         continue;
       }
@@ -727,6 +750,7 @@ function applyEffects(prev, effects) {
         continue;
       }
       s.opened[key] = true;
+      if (rev) s.opened[rev.key] = true;
       note(`The ${itemName(ex.locked)} turns. The way ${dir} is open.`, "gain");
       continue;
     }
