@@ -464,10 +464,25 @@ const resolveMob = (input, pool) => {
   );
 };
 
-/* Quest stages. A quest is an ordered chain; `s.quests[qid]` is the index of
-   the stage still to be done, and the quest is finished once that index runs
-   past the end. A stage can satisfy itself the moment the previous one does,
-   so this advances in a loop rather than one step per turn. */
+/* Quest stages. `s.quests[qid]` is an array of booleans, one per stage —
+   which specific stages are done, not how far a single pointer has moved.
+   That distinction matters: a stage's action can genuinely happen out of
+   the order it's listed (the chest could be opened before the bread is
+   even found), and a single linear index has no way to register that — it
+   can only ever advance from wherever it currently sits, one stage at a
+   time, so anything done early is simply not recognised until everything
+   before it also happens to get done. Checking every stage independently,
+   every time, fixes that: whichever stages are actually true right now are
+   marked done, regardless of order, and "what to do next" is just the
+   earliest one still false. Monotonic, matching how flags never un-set
+   elsewhere in this engine: a stage that becomes true stays true even if
+   the state that satisfied it later changes. */
+const legacyQuestState = (raw, stageCount) => {
+  if (Array.isArray(raw)) return raw;
+  if (raw === true) return Array(stageCount).fill(true);            // pre-chain saves
+  const at = Number(raw) || 0;                                       // pre-per-stage saves
+  return Array.from({ length: stageCount }, (_, i) => i < at);
+};
 const stagesOf = (q) => (Array.isArray(q?.stages) && q.stages.length)
   ? q.stages
   // A world written before chains existed: one condition, one stage.
@@ -484,34 +499,49 @@ function stageMet(s, when) {
     const m = s.mobs[when.mobHas.mob];
     return Boolean(m && (m.inventory ?? []).includes(when.mobHas.item));
   }
+  // `flag` was missing here entirely — one of exactly four valid stage
+  // condition types, and the most common way a stage marks "a prop was
+  // worked", so a stage conditioned on one could never be recognised as
+  // done at all, regardless of order. Whatever a world actually asks for,
+  // this now recognises all four.
+  if (when.flag) return Boolean(s.flags?.[when.flag]);
   return false;
 }
 
+/** completed: array of booleans, one per stage — done is the whole array,
+    at is the earliest stage still false (or stages.length if all are
+    true), kept for every existing caller that only ever wanted "what's
+    the current stage" without needing to know the rest changed shape
+    underneath it. */
 function questProgress(s) {
   const out = [];
   for (const [qid, q] of Object.entries(WORLD.quests ?? {})) {
     const stages = stagesOf(q);
     if (!stages.length) continue;
-    const raw = s.quests?.[qid];
-    // `true` is how a save from before chains recorded completion.
-    const at = raw === true ? stages.length : (Number(raw) || 0);
-    out.push({ qid, quest: q, stages, at, done: at >= stages.length });
+    const completed = legacyQuestState(s.quests?.[qid], stages.length);
+    const at = completed.findIndex((done) => !done);
+    const done = at === -1;
+    out.push({ qid, quest: q, stages, completed, at: done ? stages.length : at, done });
   }
   return out;
 }
 
 function advanceQuests(s, note) {
-  for (const { qid, quest, stages, at, done } of questProgress(s)) {
+  for (const { qid, quest, stages, completed, done } of questProgress(s)) {
     if (done) continue;
-    let i = at;
-    while (i < stages.length && stageMet(s, stages[i].when)) i++;
-    if (i === at) continue;
+    let changed = false;
+    const next = completed.slice();
+    stages.forEach((stage, i) => {
+      if (!next[i] && stageMet(s, stage.when)) { next[i] = true; changed = true; }
+    });
+    if (!changed) continue;
 
-    s.quests[qid] = i;
-    if (i >= stages.length) {
+    s.quests[qid] = next;
+    const stillAt = next.findIndex((d) => !d);
+    if (stillAt === -1) {
       note(`Quest complete: ${quest.name}.`, "quest");
     } else {
-      note(`${quest.name} — ${stages[i].goal}`, "quest");
+      note(`${quest.name} — ${stages[stillAt].goal}`, "quest");
     }
   }
 }
