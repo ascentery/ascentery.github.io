@@ -15,6 +15,7 @@ import {
   setArtPrompt,
   swapArtVersions,
 } from "../lib/db";
+import { useNarrow } from "../hooks";
 import { readable } from "../play/chrome";
 import { T, inputStyle } from "../theme";
 import { Glyph } from "../ui/icons";
@@ -150,6 +151,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
   const isViewingPrev = (id) => viewing[id] === "previous";
   const [swapping, setSwapping] = useState(null);
   const [layout, setLayout] = useState("grid");   // not persisted; resets on reload
+  const narrow = useNarrow();
 
   const draw = async (entry) => {
     if (entry.locked || drawing) return;
@@ -450,14 +452,11 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
       </p>
     )}
 
-    {/* The splash screen is the one entry that matters most — a single
-        tile lost in a 200px grid column reads as an afterthought. It gets
-        a hero-sized box of its own, roughly half the panel, regardless of
-        the grid/list toggle above, which only makes sense once there is
-        more than one thing to lay out. */}
-    <div style={kind === "cover"
-      ? { maxWidth: "min(50%, 640px)", minWidth: 280 }
-      : layout === "grid"
+    {/* The splash screen is the one entry that matters most, and a grid
+        cell never made sense for something there is only ever one of — it
+        always renders as a full-width row, the same shape as list mode,
+        regardless of the grid/list toggle above. */}
+    <div style={(layout === "grid" && kind !== "cover")
       ? { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 18 }
       : { display: "flex", flexDirection: "column", gap: 12 }}>
       {shown.map((e) => {
@@ -525,25 +524,42 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
             style={{ ...inputStyle, fontSize: 12.5, lineHeight: 1.5, marginTop: 6, resize: "vertical" }} />
         );
 
-        if (layout === "list") {
-          // Image on the left, everything else stacked to its right — the
-          // prompt is always visible here rather than gated behind a
-          // toggle, since a list is for reviewing many at once.
+        const useRow = layout === "list" || kind === "cover";
+
+        if (useRow) {
+          // Image beside everything else — the prompt is always visible
+          // here rather than gated behind a toggle, since a row layout is
+          // for reviewing at size, not skimming a grid.
           //
-          // Splash normally sizes itself from width alone (paddingTop as a
-          // percentage of it), which is why a 16:9 room at 160px wide came
-          // out barely 90px tall — visibly smaller than the row itself,
-          // whatever ratio the kind uses. Overriding paddingTop with a
-          // fixed height here, and letting object-fit: cover handle the
-          // crop, makes every kind read as a substantial image regardless
-          // of its own aspect ratio, rather than leaving empty space next
-          // to a five-line textarea.
+          // Every kind gets its own honest shape rather than one forced
+          // box: a room or a splash is landscape and wide, a wide 16:9 box
+          // stretched to at least half the row's own width; a portrait
+          // keeps its natural tall ratio at a fixed width rather than
+          // being squeezed into something shorter than it wants to be;
+          // props and items are square and stay at the compact size that
+          // already suited them. On a narrow screen the image moves above
+          // the text instead of beside it, full width, since there is no
+          // room to sit them side by side.
+          const wide = kind === "room" || kind === "cover";
+          const imgStyle = narrow
+            ? { width: "100%" }
+            : wide
+              ? { flex: "0 0 50%" }
+              : { width: 240, flexShrink: 0 };
+          const splashOverride = narrow
+            ? undefined                                    // full width, natural ratio
+            : wide
+              ? { paddingTop: "56.25%" }                    // 16:9, independent of the image's own width now
+              : (kind === "prop" || kind === "item")
+                ? { paddingTop: 0, height: 220 }             // unchanged from before
+                : undefined;                                 // characters: natural ratio, no forcing
+
           return (
-            <div key={e.id} style={{ display: "flex", gap: 14, background: "transparent",
-              border: "1px solid " + T.edge, borderRadius: 2, padding: 10 }}>
-              <div style={{ position: "relative", width: 240, flexShrink: 0, alignSelf: "flex-start" }}>
+            <div key={e.id} style={{ display: "flex", flexDirection: narrow ? "column" : "row",
+              gap: 14, background: "transparent", border: "1px solid " + T.edge, borderRadius: 2, padding: 10 }}>
+              <div style={{ position: "relative", alignSelf: narrow ? "stretch" : "flex-start", ...imgStyle }}>
                 <Splash seed={e.key} src={e.url} pending={drawing === e.id || swapping === e.id}
-                  ratio={ratio} style={{ paddingTop: 0, height: 220 }} />
+                  ratio={ratio} style={splashOverride} />
                 {lockButton}
               </div>
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>

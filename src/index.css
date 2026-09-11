@@ -3,5 +3,10 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  background: #1e2119;
+  /* Black rather than the platform's own default colour on purpose: this
+     paints before any theme has loaded — including a custom one an admin
+     has set — so committing to a specific brand colour here means it is
+     wrong exactly as often as it is right. Black reads as neutral in
+     either case and never fights with whatever loads a moment later. */
+  background: #000;
 }
