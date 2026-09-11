@@ -32,7 +32,6 @@ export function buildWalkthrough(WORLD) {
 
   const inv = new Set();
   const flags = new Set();
-  const opened = new Set();                 // "room:dir", mirrors state.opened
   const roomItems = {};
   for (const [rk, list] of Object.entries(WORLD.roomItems ?? {})) roomItems[rk] = new Set(list ?? []);
   const mobInv = {};
@@ -41,9 +40,14 @@ export function buildWalkthrough(WORLD) {
   let here = WORLD.startRoom;
   const steps = [];
 
-  /* Shortest path from `here` to `to`, honouring only what has actually
-     been unlocked so far in this walkthrough — the same constraint a real
-     player is under. */
+  /* Shortest path from `here` to `to`. A locked exit is passable the
+     moment the key is held — a forward-only walkthrough only ever visits
+     a door once, so there is no earlier pass for it to have been "already
+     opened" by; holding the key is what crossing it represents. (An
+     earlier version also required the door to already be recorded as
+     opened before it would even consider crossing it, which nothing
+     could ever satisfy on a door's first visit — no locked door could
+     ever be walked, key or not.) */
   const pathTo = (to) => {
     if (here === to) return [];
     const seen = new Set([here]);
@@ -55,7 +59,7 @@ export function buildWalkthrough(WORLD) {
         if (!dest || !rooms[dest] || seen.has(dest)) continue;
         const lock = typeof ex === "object" ? ex.locked : null;
         const need = typeof ex === "object" ? ex.needs : null;
-        if (lock && !(inv.has(lock) && opened.has(`${cur}:${dir}`))) continue;
+        if (lock && !inv.has(lock)) continue;
         if (need && !flags.has(need)) continue;
         seen.add(dest);
         const nextPath = [...path, dir];
@@ -78,7 +82,7 @@ export function buildWalkthrough(WORLD) {
         if (!dest || !rooms[dest] || seen.has(dest)) continue;
         const lock = typeof ex === "object" ? ex.locked : null;
         const need = typeof ex === "object" ? ex.needs : null;
-        if (lock && !(inv.has(lock) && opened.has(`${cur}:${dir}`))) continue;
+        if (lock && !inv.has(lock)) continue;
         if (need && !flags.has(need)) continue;
         seen.add(dest);
         queue.push(dest);
@@ -87,21 +91,13 @@ export function buildWalkthrough(WORLD) {
     return seen;
   };
 
-  // Move `here` to `to`, opening any locked door along the way, recording
-  // one step of the walkthrough for the journey.
-  // Returns the path taken (an empty array if already there), or null if
-  // no path could be found given what has been unlocked so far.
+  // Move `here` to `to`, recording one step of the walkthrough for the
+  // journey. Returns the path taken (an empty array if already there), or
+  // null if no path could be found with what is currently held.
   const travel = (to) => {
     if (here === to) return [];
     const path = pathTo(to);
     if (!path) return null;
-    let cur = here;
-    for (const dir of path) {
-      const ex = rooms[cur].exits[dir];
-      const lock = typeof ex === "object" ? ex.locked : null;
-      if (lock && !opened.has(`${cur}:${dir}`)) opened.add(`${cur}:${dir}`);
-      cur = typeof ex === "string" ? ex : ex.to;
-    }
     here = to;
     return path;
   };
