@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "./lib/supabase";
 import {
   applyDefaultTheme,
+  checkBadge,
   loadCharacters,
   loadMe,
   loadSaves,
@@ -13,6 +14,7 @@ import { AdminPage } from "./catalog/AdminPage";
 import { Browse } from "./catalog/Browse";
 import { Create } from "./catalog/Create";
 import { CreatorPage } from "./catalog/CreatorPage";
+import { CreatorProfile } from "./catalog/CreatorProfile";
 import { EditGame } from "./catalog/EditGame";
 import { Friends, seedFriends } from "./catalog/Friends";
 import { GameDetail } from "./catalog/GameDetail";
@@ -137,6 +139,7 @@ export default function Ascentery() {
         onSave={(v) => {
           setSaves((s) => ({ ...s, [key]: v }));
           writeSave({ userId: me.id, worldId: view.id, characterId: view.charId, ...v })
+            .then(() => checkBadge(view.id))
             .catch((e) => console.error("save failed", e));
         }}
         onExit={() => go("game", { id: view.id })}
@@ -158,6 +161,8 @@ export default function Ascentery() {
         {view.name === "username" && <UsernamePage me={me} setMe={setMe} go={go} reason={view.reason} next={view.next} />}
         {view.name === "create" && <Create me={me} refreshWorlds={refreshWorlds} go={go} />}
         {view.name === "game" && <GameDetail game={games.find((g) => g.id === view.id)} chars={chars} saves={saves} setSaves={setSaves} userId={me.id} go={go} from={view.from ?? "browse"} isMine={games.find((g) => g.id === view.id)?.authorId === me.id} />}
+
+        {view.name === "creatorProfile" && <CreatorProfile username={view.username} go={go} />}
         {view.name === "edit" && <EditGame game={games.find((g) => g.id === view.id)} refreshWorlds={refreshWorlds} me={me} setMe={setMe} go={go} chars={chars} />}
       </main>
     </Shell>

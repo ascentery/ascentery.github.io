@@ -23,20 +23,22 @@ import { Glyph } from "../ui/icons";
 import { Btn, Field, Splash } from "../ui/primitives";
 
 export const KINDS = [
-  { key: "cover", label: "Splash", ratio: 0.5625 },
-  { key: "room",  label: "Rooms", ratio: 0.5625 },
-  { key: "mob",   label: "Characters", ratio: 1.33 },
-  { key: "prop",  label: "Props", ratio: 1 },
-  { key: "item",  label: "Items", ratio: 1 },
+  { key: "cover",  label: "Splash", ratio: 0.5625 },
+  { key: "room",   label: "Rooms", ratio: 0.5625 },
+  { key: "mob",    label: "Characters", ratio: 1.33 },
+  { key: "prop",   label: "Props", ratio: 1 },
+  { key: "item",   label: "Items", ratio: 1 },
+  { key: "ending", label: "Ending", ratio: 0.5625 },
+  { key: "badge",  label: "Badge", ratio: 1 },
 ];
 
 // Items and splash screens are always Adventure v2: v1 is trained heavily on
 // sprite sheets and fights a single object, and a titled splash needs type
 // the model can actually render.
 
-export const ENGINE_LOCKED = { item: "flux", prop: "flux", cover: "flux" };
+export const ENGINE_LOCKED = { item: "flux", prop: "flux", cover: "flux", ending: "flux", badge: "flux" };
 
-export const KIND_LABEL = { cover: "the splash screen", room: "rooms", mob: "characters", prop: "props", item: "items" };
+export const KIND_LABEL = { cover: "the splash screen", room: "rooms", mob: "characters", prop: "props", item: "items", ending: "the ending screen", badge: "the badge" };
 
 export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title }) {
   const isAdmin = Boolean(me?.isAdmin);
@@ -279,9 +281,9 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
           <Field
             label={`Engine for ${KIND_LABEL[kind] ?? kind}`}
             hint={ENGINE_LOCKED[kind]
-              ? (kind === "item" || kind === "prop"
+              ? (kind === "item" || kind === "prop" || kind === "badge"
                   ? "Single objects always use Adventure v2. Adventure v1 is trained heavily on sprite sheets and fights one thing on its own."
-                  : "Splash screens always use Adventure v2, because the title has to be readable.")
+                  : "Splash and ending screens always use Adventure v2, because any text in them has to be readable.")
               : ENGINES.find((x) => x.key === engine)?.note}>
             <div style={{ display: "flex", gap: 6 }}>
               {ENGINES.map((x) => {
@@ -510,7 +512,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
               {drawing === e.id ? "drawing" : (e.art ? "redraw \u00b7 " : "draw \u00b7 ") + money(COST)}
             </button>
             )}
-            {isAdmin && kind === "cover" && kind !== "orphan" && (
+            {isAdmin && (kind === "cover" || kind === "ending") && (
               <label className="pf-btn"
                 style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
                   color: T.boneDim, cursor: uploading === e.id ? "default" : "pointer" }}>
@@ -552,7 +554,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
             style={{ ...inputStyle, fontSize: 12.5, lineHeight: 1.5, marginTop: 6, resize: "vertical" }} />
         );
 
-        const useRow = layout === "list" || kind === "cover";
+        const useRow = layout === "list" || kind === "cover" || kind === "ending";
 
         if (useRow) {
           // Image beside everything else — the prompt is always visible
@@ -568,7 +570,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
           // already suited them. On a narrow screen the image moves above
           // the text instead of beside it, full width, since there is no
           // room to sit them side by side.
-          const wide = kind === "room" || kind === "cover";
+          const wide = kind === "room" || kind === "cover" || kind === "ending";
           const imgStyle = narrow
             ? { width: "100%" }
             : wide
@@ -578,7 +580,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
             ? undefined                                    // full width, natural ratio
             : wide
               ? { paddingTop: "56.25%" }                    // 16:9, independent of the image's own width now
-              : (kind === "prop" || kind === "item")
+              : (kind === "prop" || kind === "item" || kind === "badge")
                 ? { paddingTop: 0, height: 220 }             // unchanged from before
                 : undefined;                                 // characters: natural ratio, no forcing
 

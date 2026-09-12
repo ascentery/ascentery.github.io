@@ -142,6 +142,17 @@ export async function deleteSave(userId, worldId, characterId) {
   if (error) throw error
 }
 
+/** Checks whether the caller has just finished this world and, if so,
+    awards the badge — verified server-side against the world's own quest
+    structure and the caller's actual save, never trusted from the client.
+    Safe to call after every save: idempotent, and a no-op once already
+    earned. Returns true only the moment a badge is newly awarded. */
+export async function checkBadge(worldId) {
+  const { data, error } = await supabase.rpc('award_badge_if_earned', { p_world_id: worldId })
+  if (error) { console.error('could not check badge', error); return false }
+  return Boolean(data)
+}
+
 export async function writeSave({ userId, worldId, characterId, state, log }) {
   const { error } = await supabase.from('saves').upsert(
     {
@@ -760,6 +771,70 @@ export async function saveSetting(key, value) {
   if (error) throw error
 }
 
+/* ---------- public creator profiles ---------- */
+
+/** A creator's public profile — never includes gamer_tag, which stays
+    private regardless of what else is visible about someone. */
+export async function loadCreatorProfile(username) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, is_creator, avatar_path, bio')
+    .eq('username', username)
+    .single()
+  if (error) throw new Error('That creator could not be found.')
+  return {
+    id: data.id,
+    username: data.username,
+    name: data.display_name,
+    isCreator: Boolean(data.is_creator),
+    avatarUrl: artUrl(data.avatar_path),
+    bio: data.bio ?? '',
+  }
+}
+
+export async function loadCreatorGames(userId) {
+  const { data, error } = await supabase
+    .from('worlds')
+    .select('id, title, cover_path, plays')
+    .eq('owner_id', userId)
+    .eq('published', true)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map((w) => ({ id: w.id, title: w.title, coverUrl: artUrl(w.cover_path), plays: w.plays ?? 0 }))
+}
+
+/** Games this user has actually finished, verified server-side at the
+    time each badge was awarded — never just "worlds they have a save
+    in". Includes the badge image for each, drawn separately per world. */
+export async function loadCompletedGames(userId) {
+  const { data, error } = await supabase
+    .from('player_badges')
+    .select('world_id, earned_at, worlds(id, title, cover_path)')
+    .eq('user_id', userId)
+    .order('earned_at', { ascending: false })
+  if (error) throw error
+  const rows = (data ?? []).filter((r) => r.worlds)
+  const worldIds = rows.map((r) => r.world_id)
+
+  let badgeByWorld = {}
+  if (worldIds.length) {
+    const { data: badges } = await supabase
+      .from('world_art')
+      .select('world_id, image_path')
+      .eq('kind', 'badge')
+      .in('world_id', worldIds)
+    badgeByWorld = Object.fromEntries((badges ?? []).map((b) => [b.world_id, artUrl(b.image_path)]))
+  }
+
+  return rows.map((r) => ({
+    worldId: r.world_id,
+    earnedAt: r.earned_at,
+    title: r.worlds.title,
+    coverUrl: artUrl(r.worlds.cover_path),
+    badgeUrl: badgeByWorld[r.world_id] ?? null,
+  }))
+}
+
 /* ---------- usernames ---------- */
 
 export async function checkUsername(name) {
@@ -973,10 +1048,14 @@ export const DEFAULT_ART = {
         'flat plain dark background, nothing else in the picture,',
   cover: 'dramatic key art, cinematic composition, one striking image representing the game,',
   prop: 'a single fixed mechanism in place, close view, mounted or set into its surroundings, no hands, no people,',
+  ending: 'a final, conclusive image, warm resolution, the story reaching its conclusion, cinematic composition,',
+  badge: 'an achievement badge, emblem or medallion, centred, flat plain background, no scene, no figures,',
 
   // what to avoid
   neg: '3d render, realistic, photo, blurry, sketch, text, watermark, signature, lettering',
   neg_room: 'people, faces, figures, portrait, character',
+  neg_ending: '',
+  neg_badge: 'scenery, landscape, room, multiple objects, people, hands, spritesheet, grid, text, watermark',
   neg_mob: 'landscape, wide shot, crowd, multiple people, full body',
   neg_cover: '',
   neg_prop: 'hands, people, floating object, product shot on white, spritesheet, grid, multiple objects',

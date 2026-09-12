@@ -64,7 +64,7 @@ export function Browse({ games, go }) {
 
       <div style={grid}>
         {rest.map((g) => (
-          <GameCard key={g.id} g={g} onClick={() => go("game", { id: g.id, from: "browse" })}
+          <GameCard key={g.id} g={g} go={go} onClick={() => go("game", { id: g.id, from: "browse" })}
             meta={sort === "week" && g.weekPlays ? `${g.weekPlays.toLocaleString()} plays this week` : null} />
         ))}
       </div>
@@ -73,7 +73,7 @@ export function Browse({ games, go }) {
   );
 }
 
-export function GameCard({ g, onClick, showStatus, meta }) {
+export function GameCard({ g, onClick, showStatus, meta, go }) {
   return (
     <div className="pf-card pf-in" onClick={onClick}>
       <Splash seed={g.id} pending={g.status === "generating"} src={g.coverUrl} />
@@ -83,7 +83,14 @@ export function GameCard({ g, onClick, showStatus, meta }) {
           {showStatus && <Chip status={g.status} published={g.published} />}
         </div>
         <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginTop: 5 }}>
-          {g.author} · {meta ?? `${g.plays.toLocaleString()} plays`}
+          {go && g.author?.startsWith("@") ? (
+            <button className="pf-btn"
+              onClick={(e) => { e.stopPropagation(); go("creatorProfile", { username: g.author.slice(1) }); }}
+              style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "inherit", cursor: "pointer" }}>
+              {g.author}
+            </button>
+          ) : g.author}
+          {" "}· {meta ?? `${g.plays.toLocaleString()} plays`}
         </div>
       </div>
     </div>
