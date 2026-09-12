@@ -11,7 +11,7 @@ export function Mine({ games, go }) {
         <Btn kind="solid" onClick={() => go("create")}>Create a game</Btn>
       </div>
       {games.length ? (
-        <div style={grid}>{games.map((g) => <GameCard key={g.id} g={g} showStatus onClick={() => go("game", { id: g.id, from: "mine" })} />)}</div>
+        <div style={grid}>{games.map((g) => <GameCard key={g.id} g={g} go={go} showStatus onClick={() => go("game", { id: g.id, from: "mine" })} />)}</div>
       ) : (
         <Empty title="You haven't built anything yet."
           line="A world takes one paragraph to describe and about a minute to generate."

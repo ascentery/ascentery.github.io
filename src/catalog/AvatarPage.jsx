@@ -4,6 +4,7 @@ import {
   money,
   saveAvatarPrompt,
   saveDefaultAvatar,
+  setAvatarMode,
   swapAvatarVersion,
 } from "../lib/db";
 import { T, inputStyle } from "../theme";
@@ -100,7 +101,16 @@ export function AvatarPage({ me, setMe, go }) {
       {me.isCreator && (
         <div style={{ display: "flex", gap: 6, marginBottom: 24 }}>
           {[["default", "Use Default"], ["generated", "User Generated Image"]].map(([k, label]) => (
-            <button key={k} onClick={() => setMode(k)} className="pf-btn"
+            <button key={k} onClick={() => {
+              setMode(k);
+              // Persisted immediately, not deferred to a Save/Generate
+              // click — switching modes should show whatever already
+              // exists for that mode right away, everywhere the avatar
+              // appears, since the creator may just be switching back to
+              // a picture they already had rather than starting fresh.
+              setAvatarMode(me.id, k).catch((e) => console.error("could not save avatar mode", e));
+              setMe((m) => ({ ...m, avatarMode: k }));
+            }} className="pf-btn"
               style={{ flex: 1, padding: "9px 10px", borderRadius: 2, cursor: "pointer", background: "transparent",
                 fontFamily: T.mono, fontSize: 12, color: mode === k ? T.bone : T.boneDim,
                 border: "1px solid " + (mode === k ? T.ochre : T.edge) }}>

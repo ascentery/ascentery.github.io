@@ -56,7 +56,7 @@ export function GameDetail({ game, chars, saves, setSaves, userId, go, from = "b
             {game.author?.startsWith("@") ? (
               <button className="pf-btn"
                 onClick={() => go("creatorProfile", { username: game.author.slice(1) })}
-                style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "inherit", cursor: "pointer", textDecoration: "underline" }}>
+                style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "inherit", cursor: "pointer" }}>
                 {game.author}
               </button>
             ) : game.author} &middot; {game.rooms} rooms &middot; {game.mobs} characters

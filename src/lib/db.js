@@ -49,6 +49,18 @@ export async function saveBio(userId, bio) {
   if (error) throw error
 }
 
+/** Just the mode switch — "which avatar is currently active" — without
+    touching colours or the generated image at all. This is what a
+    creator flipping between "Use Default" and "User Generated Image"
+    should trigger immediately: showing whatever already exists for that
+    mode right away, everywhere the avatar appears, not waiting for a
+    Save or Generate action that may never come if they just wanted to
+    switch back to a picture they already had. */
+export async function setAvatarMode(userId, mode) {
+  const { error } = await supabase.from('profiles').update({ avatar_mode: mode }).eq('id', userId)
+  if (error) throw error
+}
+
 /** The letter/circle avatar mode: no generation, just two colours picked
     directly. Switching to this mode also flips avatar_mode back to
     'default' — it is what actually decides which avatar shows, separate
