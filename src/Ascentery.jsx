@@ -21,6 +21,7 @@ import { Friends, seedFriends } from "./catalog/Friends";
 import { GameDetail } from "./catalog/GameDetail";
 import { Mine } from "./catalog/Mine";
 import { Profile } from "./catalog/Profile";
+import { ResetPasswordPage } from "./catalog/ResetPasswordPage";
 import { SettingsPage } from "./catalog/SettingsPage";
 import { Auth, Shell, Splash1, TopBar } from "./catalog/Shell";
 import { UsernamePage } from "./catalog/UsernamePage";
@@ -65,9 +66,15 @@ export default function Ascentery() {
       setSession(data.session);
       if (!data.session) setBooting(false);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       if (!s) { setMe(null); setChars([]); setSaves({}); setBooting(false); }
+      // Clicking a password-reset email link lands here with a fresh
+      // session and this specific event — nothing else fires it. Force
+      // the reset-password screen regardless of whatever URL brought
+      // them here, since that session only exists to set a new password
+      // and shouldn't be treated as an ordinary sign-in.
+      if (event === "PASSWORD_RECOVERY") setView({ name: "resetPassword" });
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -118,6 +125,11 @@ export default function Ascentery() {
   if (!themeReady) return null;
   if (booting) return <Shell><Splash1 /></Shell>;
   if (!session) return <Shell><Auth /></Shell>;
+
+  // Rendered before the "me" guard below on purpose — a fresh recovery
+  // session is real and authenticated, but loadMe() may not have
+  // resolved yet, and this screen doesn't need the profile anyway.
+  if (view.name === "resetPassword") return <Shell><ResetPasswordPage go={go} /></Shell>;
   if (loadError) return (
     <Shell>
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
