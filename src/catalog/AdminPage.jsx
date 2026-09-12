@@ -2,6 +2,11 @@ import React, { useState, useEffect } from "react";
 import {
   ENGINES,
   PROVIDERS,
+  addReservedWord,
+  loadReservedWords,
+  loadUsernamePrompt,
+  removeReservedWord,
+  saveUsernamePrompt,
   deleteArtPreset,
   deletePreset,
   deleteTheme,
@@ -65,7 +70,7 @@ export function AdminPage({ me, go }) {
       </H1>
 
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24 }}>
-        {[["settings", "Settings"], ["world_building", "World building"], ["image_generation", "Image generation"], ["themes", "Themes"]].map(([k, label]) => (
+        {[["settings", "Settings"], ["world_building", "World building"], ["image_generation", "Image generation"], ["themes", "Themes"], ["usernames", "Usernames"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className="pf-btn"
             style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px",
               fontFamily: T.mono, fontSize: 12, color: tab === k ? T.bone : T.boneDim,
@@ -80,6 +85,8 @@ export function AdminPage({ me, go }) {
       {tab === "image_generation" && <ImageGenerationTab />}
 
       {tab === "themes" && <ThemesTab />}
+
+      {tab === "usernames" && <UsernamesTab />}
 
       {tab === "settings" && (!setting ? (
         <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
@@ -806,6 +813,124 @@ function ThemesTab() {
           </Btn>
           {editing && <Btn kind="ghost" onClick={() => edit(null)}>Cancel</Btn>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function UsernamesTab() {
+  const [words, setWords] = useState(null);
+  const [newWord, setNewWord] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [promptLoaded, setPromptLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [saved, setSaved] = useState(false);
+
+  const refresh = () => {
+    loadReservedWords().then(setWords).catch((e) => setError(e.message));
+  };
+  useEffect(() => {
+    refresh();
+    loadUsernamePrompt().then((t) => { setPrompt(t ?? ""); setPromptLoaded(true); }).catch(() => setPromptLoaded(true));
+  }, []);
+
+  const add = async () => {
+    const w = newWord.trim().toLowerCase();
+    if (!w) return;
+    setBusy(true); setError(null);
+    try {
+      await addReservedWord(w);
+      setNewWord("");
+      refresh();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (w) => {
+    setBusy(true); setError(null);
+    try {
+      await removeReservedWord(w);
+      refresh();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const savePrompt = async () => {
+    setBusy(true); setError(null);
+    try {
+      await saveUsernamePrompt(prompt.trim());
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1600);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 24px" }}>
+        Two layers, same as the check itself: this list is a free, instant, exact-match rejection —
+        no model call, no cost. The prompt below is what the AI is actually asked when a name passes
+        every mechanical check (length, characters, this list) and still needs a judgment call —
+        vulgarity, impersonation, anything a plain list can't catch. Length (5+), character set
+        (letters and numbers only), and the "ascentery"/"psyblade" substring checks are not editable
+        here — those are fixed rules, not a list to maintain.
+      </p>
+
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ fontFamily: T.serif, fontSize: 17, marginBottom: 12 }}>Reserved words</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          <input style={{ ...inputStyle, flex: 1 }} value={newWord} onChange={(e) => setNewWord(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && add()} placeholder="dashboard" />
+          <Btn kind="solid" disabled={busy || !newWord.trim()} onClick={add}>Add</Btn>
+        </div>
+
+        {words === null ? (
+          <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {words.map((w) => (
+              <span key={w} style={{ display: "flex", alignItems: "center", gap: 6,
+                border: "1px solid " + T.edge, borderRadius: 2, padding: "5px 10px",
+                fontFamily: T.mono, fontSize: 12, color: T.bone }}>
+                {w}
+                <button onClick={() => remove(w)} disabled={busy} className="pf-btn"
+                  style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: T.clay, fontSize: 13 }}>
+                  \u00d7
+                </button>
+              </span>
+            ))}
+            {!words.length && <p style={{ fontFamily: T.mono, fontSize: 12, color: T.boneDim }}>Nothing reserved yet.</p>}
+          </div>
+        )}
+      </div>
+
+      <div style={{ borderTop: "1px solid " + T.edge, paddingTop: 24 }}>
+        <div style={{ fontFamily: T.serif, fontSize: 17, marginBottom: 12 }}>AI moderation prompt</div>
+        {!promptLoaded ? (
+          <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
+        ) : (
+          <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={10}
+            placeholder="Leave blank to use the platform's own built-in instructions."
+            style={{ ...inputStyle, fontFamily: T.mono, fontSize: 12.5, lineHeight: 1.6, resize: "vertical" }} />
+        )}
+        <p style={{ fontFamily: T.mono, fontSize: 10.5, color: T.boneDim, margin: "8px 0 14px" }}>
+          Clearing this and saving falls back to the platform's own built-in wording — it never sends
+          nothing to the model, just the default instructions instead of a customised set.
+        </p>
+
+        {error && <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, marginBottom: 12 }}>{error}</p>}
+
+        <Btn kind="solid" disabled={busy} onClick={savePrompt}>{saved ? "saved" : "Save"}</Btn>
       </div>
     </div>
   );

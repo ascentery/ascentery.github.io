@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import {
   money,
+  requestPasswordReset,
   signIn,
+  signOut,
   signUp,
 } from "../lib/db";
 import { Create } from "./Create";
@@ -52,7 +54,12 @@ export function Auth() {
   const go = async () => {
     setBusy(true); setError(null); setNotice(null);
     try {
-      if (mode === "in") {
+      if (mode === "forgot") {
+        // Deliberately does not say whether the address exists — that
+        // would let anyone use this form to check who has an account.
+        await requestPasswordReset(email, `${window.location.origin}/`);
+        setNotice("If that address has an account, a reset link is on its way.");
+      } else if (mode === "in") {
         await signIn({ email, password });
         // onAuthStateChange in the root takes it from here.
       } else {
@@ -83,13 +90,15 @@ export function Auth() {
             onKeyDown={(e) => e.key === "Enter" && go()}
             placeholder="you@example.com" />
         </Field>
-        <Field label="Password" hint={mode === "up" ? "At least six characters." : undefined}>
-          <input style={inputStyle} type="password" value={password}
-            autoComplete={mode === "in" ? "current-password" : "new-password"}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && go()}
-            placeholder="••••••••" />
-        </Field>
+        {mode !== "forgot" && (
+          <Field label="Password" hint={mode === "up" ? "At least six characters." : undefined}>
+            <input style={inputStyle} type="password" value={password}
+              autoComplete={mode === "in" ? "current-password" : "new-password"}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && go()}
+              placeholder="••••••••" />
+          </Field>
+        )}
         {mode === "up" && (<>
           <Field label="Display name">
             <input style={inputStyle} value={displayName}
@@ -116,12 +125,18 @@ export function Auth() {
           </p>
         )}
 
-        <Btn kind="solid" full disabled={busy || !email || !password} onClick={go} style={{ marginBottom: 14 }}>
-          {busy ? "…" : mode === "in" ? "Sign in" : "Create account"}
+        <Btn kind="solid" full disabled={busy || !email || (mode !== "forgot" && !password)} onClick={go} style={{ marginBottom: 14 }}>
+          {busy ? "…" : mode === "in" ? "Sign in" : mode === "up" ? "Create account" : "Send reset link"}
         </Btn>
-        <button className="pf-btn" onClick={() => { setMode(mode === "in" ? "up" : "in"); setError(null); }}
+        {mode === "in" && (
+          <button className="pf-btn" onClick={() => { setMode("forgot"); setError(null); setNotice(null); }}
+            style={{ background: "none", border: "none", color: T.boneDim, fontFamily: T.mono, fontSize: 11.5, cursor: "pointer", padding: "0 0 10px", display: "block" }}>
+            Forgot password?
+          </button>
+        )}
+        <button className="pf-btn" onClick={() => { setMode(mode === "up" ? "in" : mode === "forgot" ? "in" : "up"); setError(null); setNotice(null); }}
           style={{ background: "none", border: "none", color: T.boneDim, fontFamily: T.mono, fontSize: 11.5, cursor: "pointer", padding: 0 }}>
-          {mode === "in" ? "No account yet? Create one" : "Already have an account? Sign in"}
+          {mode === "in" ? "No account yet? Create one" : mode === "up" ? "Already have an account? Sign in" : "Back to sign in"}
         </button>
       </div>
     </div>
@@ -129,6 +144,7 @@ export function Auth() {
 }
 
 export function TopBar({ me, view, go }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const tabs = [["browse", "Browse"], ["mine", "Your games"], ["friends", "Friends"]];
   const frac = me.balanceCap ? me.balance / me.balanceCap : 0;
   return (
@@ -159,14 +175,46 @@ export function TopBar({ me, view, go }) {
           </span>
           <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>{money(me.balance)}</span>
         </button>
-        <button onClick={() => go("profile")} title={me.tag}
-          style={{ padding: 0, borderRadius: "50%", cursor: "pointer", background: "none",
-            border: `1px solid ${view.name === "profile" ? T.ochre : T.edge}` }}>
-          <Avatar name={me.name} tag={me.tag}
-            src={me.avatarMode === "generated" ? me.avatarUrl : undefined}
-            bgColor={me.avatarMode === "default" ? me.avatarBgColor : undefined}
-            letterColor={me.avatarMode === "default" ? me.avatarLetterColor : undefined} />
-        </button>
+        <div style={{ position: "relative" }}>
+          <button onClick={() => setMenuOpen((v) => !v)} title={me.tag}
+            style={{ padding: 0, borderRadius: "50%", cursor: "pointer", background: "none",
+              border: `1px solid ${menuOpen || view.name === "profile" ? T.ochre : T.edge}` }}>
+            <Avatar name={me.name} tag={me.tag}
+              src={me.avatarMode === "generated" ? me.avatarUrl : undefined}
+              bgColor={me.avatarMode === "default" ? me.avatarBgColor : undefined}
+              letterColor={me.avatarMode === "default" ? me.avatarLetterColor : undefined} />
+          </button>
+
+          {menuOpen && (<>
+            <div onClick={() => setMenuOpen(false)}
+              style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+            <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 41,
+              background: T.raised, border: `1px solid ${T.edge}`, borderRadius: 4, minWidth: 170,
+              display: "flex", flexDirection: "column", padding: 6, gap: 2 }}>
+              {me.isCreator && (
+                <button onClick={() => { setMenuOpen(false); go("create"); }} className="pf-btn"
+                  style={{ background: T.ochre, border: "none", borderRadius: 2, cursor: "pointer",
+                    padding: "9px 12px", textAlign: "left", fontFamily: T.mono, fontSize: 12.5,
+                    color: "#241a08", fontWeight: 600, marginBottom: 2 }}>
+                  Create a game
+                </button>
+              )}
+              {[["profile", "Profile Page"], ["settings", "Settings"]].map(([k, label]) => (
+                <button key={k} onClick={() => { setMenuOpen(false); go(k); }} className="pf-btn"
+                  style={{ background: "none", border: "none", borderRadius: 2, cursor: "pointer",
+                    padding: "9px 12px", textAlign: "left", fontFamily: T.mono, fontSize: 12.5, color: T.bone }}>
+                  {label}
+                </button>
+              ))}
+              <div style={{ borderTop: `1px solid ${T.edge}`, margin: "4px 0" }} />
+              <button onClick={() => { setMenuOpen(false); signOut(); }} className="pf-btn"
+                style={{ background: "none", border: "none", borderRadius: 2, cursor: "pointer",
+                  padding: "9px 12px", textAlign: "left", fontFamily: T.mono, fontSize: 12.5, color: T.boneDim }}>
+                Sign Out
+              </button>
+            </div>
+          </>)}
+        </div>
       </div>
     </header>
   );

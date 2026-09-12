@@ -270,6 +270,33 @@ export async function signOut() {
   await supabase.auth.signOut()
 }
 
+export async function getCurrentEmail() {
+  const { data } = await supabase.auth.getSession()
+  return data.session?.user?.email ?? ''
+}
+
+export async function updatePassword(newPassword) {
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
+  if (error) throw error
+}
+
+/** Supabase sends its own confirmation email to the new address before the
+    change actually takes effect — nothing here needs to build or send
+    that itself. */
+export async function updateEmail(newEmail) {
+  const { error } = await supabase.auth.updateUser({ email: newEmail })
+  if (error) throw error
+}
+
+/** Does not reveal whether the address exists — Supabase's own API is
+    already written not to, which is the correct behaviour for this: a
+    "forgot password" flow that confirms an email exists is itself a
+    privacy leak. */
+export async function requestPasswordReset(email, redirectTo) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+  if (error) throw error
+}
+
 /* ---------- worlds ---------- */
 
 /** Catalog rows only. Never pulls world_data — that would drag every
@@ -947,6 +974,34 @@ export async function loadCompletedGames(userId) {
 }
 
 /* ---------- usernames ---------- */
+
+export async function loadReservedWords() {
+  const { data, error } = await supabase.from('reserved_usernames').select('name').order('name')
+  if (error) throw error
+  return (data ?? []).map((r) => r.name)
+}
+
+export async function addReservedWord(name) {
+  const { error } = await supabase.from('reserved_usernames').insert({ name: name.trim().toLowerCase() })
+  if (error) throw error
+}
+
+export async function removeReservedWord(name) {
+  const { error } = await supabase.from('reserved_usernames').delete().eq('name', name)
+  if (error) throw error
+}
+
+/** The AI's own moderation instructions for usernames, editable from the
+    admin panel rather than only ever living in the edge function's
+    source. Falls back to null when nothing has been saved yet — the
+    function itself keeps a hardcoded default for that case. */
+export async function loadUsernamePrompt() {
+  const v = await loadSetting('username_ai_prompt')
+  return v?.text ?? null
+}
+export async function saveUsernamePrompt(text) {
+  await saveSetting('username_ai_prompt', { text })
+}
 
 export async function checkUsername(name) {
   const { data, error } = await supabase.rpc('username_available', { p_username: name })

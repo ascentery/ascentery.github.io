@@ -21,6 +21,7 @@ import { Friends, seedFriends } from "./catalog/Friends";
 import { GameDetail } from "./catalog/GameDetail";
 import { Mine } from "./catalog/Mine";
 import { Profile } from "./catalog/Profile";
+import { SettingsPage } from "./catalog/SettingsPage";
 import { Auth, Shell, Splash1, TopBar } from "./catalog/Shell";
 import { UsernamePage } from "./catalog/UsernamePage";
 import { PlayLoader } from "./play/Play";
@@ -166,6 +167,8 @@ export default function Ascentery() {
         {view.name === "creatorProfile" && <CreatorProfile username={view.username} me={me} go={go} />}
 
         {view.name === "avatar" && <AvatarPage me={me} setMe={setMe} go={go} />}
+
+        {view.name === "settings" && <SettingsPage me={me} go={go} />}
         {view.name === "edit" && <EditGame game={games.find((g) => g.id === view.id)} refreshWorlds={refreshWorlds} me={me} setMe={setMe} go={go} chars={chars} />}
       </main>
     </Shell>

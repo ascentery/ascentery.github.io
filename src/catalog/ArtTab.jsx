@@ -83,7 +83,15 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
     } catch (e) { console.error(e); }
   };
 
-  const engine = ENGINE_LOCKED[kind] ?? (config?.[`engine_${kind}`] ?? DEFAULT_ENGINE[kind] ?? "pixel");
+  // Ending's own default isn't a fixed engine — it follows whatever the
+  // world's rooms are drawn with, since a completion scene reads as a
+  // continuation of the same rooms, not a separate style choice. Badge
+  // keeps its own static default; there's no equivalent "which kind
+  // should it match" for a small emblem.
+  const engine = ENGINE_LOCKED[kind]
+    ?? config?.[`engine_${kind}`]
+    ?? (kind === "ending" ? config?.engine_room : DEFAULT_ENGINE[kind])
+    ?? "pixel";
   const COST = PRICE_CENTS[engine] ?? 5;      // cents
   const styleKey = engine === "flux" ? "style_flux" : "style_pixel";
 
@@ -483,7 +491,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
         cell never made sense for something there is only ever one of — it
         always renders as a full-width row, the same shape as list mode,
         regardless of the grid/list toggle above. */}
-    <div style={(layout === "grid" && kind !== "cover")
+    <div style={(layout === "grid" && kind !== "cover" && kind !== "ending")
       ? { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 18 }
       : { display: "flex", flexDirection: "column", gap: 12 }}>
       {shown.map((e) => {
