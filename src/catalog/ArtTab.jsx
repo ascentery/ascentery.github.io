@@ -36,7 +36,14 @@ export const KINDS = [
 // sprite sheets and fights a single object, and a titled splash needs type
 // the model can actually render.
 
-export const ENGINE_LOCKED = { item: "flux", prop: "flux", cover: "flux", ending: "flux", badge: "flux" };
+export const ENGINE_LOCKED = { item: "flux", prop: "flux", cover: "flux" };
+
+// Ending and badge are a creator's choice, same as rooms and characters —
+// just biased toward Adventure v2 by default, since a conclusive scene or
+// an emblem tends to want the same closely-directed, legible-text-capable
+// look a splash screen does. Explicitly choosing Adventure v1 for either
+// still works; this only decides what shows before anyone has chosen.
+export const DEFAULT_ENGINE = { ending: "flux", badge: "flux" };
 
 export const KIND_LABEL = { cover: "the splash screen", room: "rooms", mob: "characters", prop: "props", item: "items", ending: "the ending screen", badge: "the badge" };
 
@@ -76,7 +83,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
     } catch (e) { console.error(e); }
   };
 
-  const engine = ENGINE_LOCKED[kind] ?? (config?.[`engine_${kind}`] ?? "pixel");
+  const engine = ENGINE_LOCKED[kind] ?? (config?.[`engine_${kind}`] ?? DEFAULT_ENGINE[kind] ?? "pixel");
   const COST = PRICE_CENTS[engine] ?? 5;      // cents
   const styleKey = engine === "flux" ? "style_flux" : "style_pixel";
 
@@ -281,9 +288,9 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
           <Field
             label={`Engine for ${KIND_LABEL[kind] ?? kind}`}
             hint={ENGINE_LOCKED[kind]
-              ? (kind === "item" || kind === "prop" || kind === "badge"
+              ? (kind === "item" || kind === "prop"
                   ? "Single objects always use Adventure v2. Adventure v1 is trained heavily on sprite sheets and fights one thing on its own."
-                  : "Splash and ending screens always use Adventure v2, because any text in them has to be readable.")
+                  : "The splash screen always uses Adventure v2, because the title has to be readable.")
               : ENGINES.find((x) => x.key === engine)?.note}>
             <div style={{ display: "flex", gap: 6 }}>
               {ENGINES.map((x) => {
