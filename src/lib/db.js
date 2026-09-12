@@ -17,7 +17,7 @@ export const PRICE_CENTS = { flux: 11, pixel: 5 }
 
 export async function loadMe(userId) {
   const [{ data: profile, error: pe }, { data: credits }] = await Promise.all([
-    supabase.from('profiles').select('id, display_name, gamer_tag, username, is_creator, is_admin').eq('id', userId).single(),
+    supabase.from('profiles').select('id, display_name, gamer_tag, username, is_creator, is_admin, bio, avatar_path').eq('id', userId).single(),
     supabase.from('credits').select('balance_cents, cap_cents').eq('user_id', userId).single(),
   ])
 
@@ -31,9 +31,37 @@ export async function loadMe(userId) {
     username: profile.username ?? null,
     isCreator: Boolean(profile.is_creator),
     isAdmin: Boolean(profile.is_admin),
+    bio: profile.bio ?? '',
+    avatarUrl: artUrl(profile.avatar_path),
     balance: credits?.balance_cents ?? 0,
     balanceCap: credits?.cap_cents ?? 500,
   }
+}
+
+export async function saveBio(userId, bio) {
+  const { error } = await supabase.from('profiles').update({ bio }).eq('id', userId)
+  if (error) throw error
+}
+
+/** Creator-only, enforced server-side regardless of what this lets you
+    attempt client-side. Draws from whatever is currently saved in the
+    profile's bio — save it first if you just typed something new.
+    Returns { url, cost_cents, balance_cents }. */
+export async function generateAvatar() {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-avatar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error(body.error || `Could not generate a picture (${res.status})`)
+    err.needsFunds = Boolean(body.needs_funds)
+    throw err
+  }
+  return body
 }
 
 export async function saveDisplayName(userId, name) {
@@ -132,15 +160,38 @@ export async function writeSave({ userId, worldId, characterId, state, log }) {
 
 /* ---------- auth ---------- */
 
-export async function signUp({ email, password, displayName }) {
+export async function signUp({ email, password, displayName, gamerTagBase }) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: { data: { display_name: displayName || 'New player' } },
   })
   if (error) throw error
-  // With email confirmation on, session is null until they click the link.
+
+  // Assigning the gamer tag needs a session (RLS scopes the update to the
+  // caller's own row) — with email confirmation on, there isn't one yet,
+  // so this only runs when signup grants a session immediately. If it
+  // doesn't, the profile is left without a gamer tag until whatever flow
+  // handles that case runs; nothing here is silently lost, just deferred.
+  if (data.session && gamerTagBase) {
+    try {
+      await supabase.rpc('assign_gamer_tag', { p_user_id: data.user.id, p_base: gamerTagBase })
+    } catch (e) {
+      console.error('could not assign a gamer tag at signup', e)
+    }
+  }
+
   return { needsConfirmation: !data.session }
+}
+
+/** Changes the caller's own gamer tag to "base-digits". Throws with a
+    plain message if the exact combination is already taken, the base
+    fails the same word filter used elsewhere, or the digits aren't
+    exactly four numbers. */
+export async function setGamerTag(base, digits) {
+  const { data, error } = await supabase.rpc('set_gamer_tag', { p_base: base, p_digits: digits })
+  if (error) throw new Error(error.message.replace(/^.*: /, ''))
+  return data
 }
 
 export async function signIn({ email, password }) {
@@ -723,6 +774,30 @@ export async function claimUsername(name) {
   return data
 }
 
+/** Moderation gate in front of claimUsername: fast structural checks are
+    free, an AI judgment call on anything more subjective (impersonation,
+    vulgarity dressed up to dodge a filter) costs 2 cents whether it
+    approves or rejects. Only ever tells you whether a name is allowed —
+    call claimUsername() afterward to actually take it, same as before.
+    Returns { allowed, reason, cost_cents, balance_cents }. */
+export async function checkUsernameAllowed(name) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-username`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ username: name }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error(body.error || `Could not check that name (${res.status})`)
+    err.needsFunds = Boolean(body.needs_funds)
+    throw err
+  }
+  return body
+}
+
 /* ---------- money in ---------- */
 
 export const TOPUPS = ['5', '10', '15', '20']
@@ -877,8 +952,8 @@ export async function setArtLock(artId, locked) {
    the editor so the creator can see what they are changing rather than
    editing an empty box. */
 export const ENGINES = [
-  { key: 'pixel', label: 'Pixel LoRA', note: 'SDXL with the pixel-art-xl LoRA, then a downscale pass. The look comes mostly from that last step.' },
-  { key: 'flux', label: 'Flux 2 flex', note: 'No LoRA and no post-processing. Follows a written art direction closely and renders legible text.' },
+  { key: 'pixel', label: 'Adventure v1', note: 'A sharper, more graphic look with a strong downscale pass. The look comes mostly from that last step.' },
+  { key: 'flux', label: 'Adventure v2', note: 'Follows a written art direction closely and renders legible text.' },
 ]
 
 export const DEFAULT_ART = {

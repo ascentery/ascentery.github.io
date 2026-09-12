@@ -20,6 +20,9 @@ export function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
   const [art, setArt] = useState(null);
   const [illustrated, setIllustrated] = useState(false);
   const [pubError, setPubError] = useState(null);
+  const [deleteStage, setDeleteStage] = useState(0);      // 0 idle | 1 confirming | 2 typing the name
+  const [deleteText, setDeleteText] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const checkIllustrated = () => {
     if (!game?.id) return;
@@ -137,12 +140,46 @@ export function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
             </p>
           )}
           <div style={{ borderTop: "1px solid " + T.edge, paddingTop: 20, marginTop: 20 }}>
-            <Btn kind="danger" onClick={async () => {
-              try { await deleteWorld(game.id); await refreshWorlds(); go("mine"); }
-              catch (e) { console.error(e); }
-            }}>
-              Delete this world
-            </Btn>
+            {deleteStage === 0 && (
+              <Btn kind="danger" onClick={() => setDeleteStage(1)}>
+                Delete this world
+              </Btn>
+            )}
+
+            {deleteStage === 1 && (
+              <div>
+                <p style={{ fontFamily: T.mono, fontSize: 12, color: T.clay, lineHeight: 1.7, margin: "0 0 12px" }}>
+                  This deletes "{game.title}" — every room, character, item, picture, and anyone's
+                  save — for good. Are you sure?
+                </p>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <Btn kind="danger" onClick={() => setDeleteStage(2)}>Yes, delete it</Btn>
+                  <Btn kind="ghost" onClick={() => setDeleteStage(0)}>Never mind</Btn>
+                </div>
+              </div>
+            )}
+
+            {deleteStage === 2 && (
+              <div>
+                <p style={{ fontFamily: T.mono, fontSize: 12, color: T.clay, lineHeight: 1.7, margin: "0 0 12px" }}>
+                  Type the world's exact title to confirm — "{game.title}".
+                </p>
+                <input value={deleteText} onChange={(e) => setDeleteText(e.target.value)}
+                  placeholder={game.title}
+                  style={{ ...inputStyle, marginBottom: 12 }} />
+                <div style={{ display: "flex", gap: 10 }}>
+                  <Btn kind="danger" disabled={deleting || deleteText !== game.title}
+                    onClick={async () => {
+                      setDeleting(true);
+                      try { await deleteWorld(game.id); await refreshWorlds(); go("mine"); }
+                      catch (e) { console.error(e); setDeleting(false); }
+                    }}>
+                    {deleting ? "deleting…" : "Delete forever"}
+                  </Btn>
+                  <Btn kind="ghost" onClick={() => { setDeleteStage(0); setDeleteText(""); }}>Cancel</Btn>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

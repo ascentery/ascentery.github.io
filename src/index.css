@@ -3,10 +3,10 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  /* Black rather than the platform's own default colour on purpose: this
-     paints before any theme has loaded — including a custom one an admin
-     has set — so committing to a specific brand colour here means it is
-     wrong exactly as often as it is right. Black reads as neutral in
-     either case and never fights with whatever loads a moment later. */
-  background: #000;
+  /* Old Ascentery's own ink colour, matching it being the platform's live
+     default theme now — this paints before the theme system has actually
+     loaded, so it only avoids a visible flash when the default really is
+     this colour. If the live default theme is ever changed to something
+     else, this should change to match it. */
+  background: #14161f;
 }

@@ -30,7 +30,7 @@ export const KINDS = [
   { key: "item",  label: "Items", ratio: 1 },
 ];
 
-// Items and splash screens are always flux: the LoRA is trained heavily on
+// Items and splash screens are always Adventure v2: v1 is trained heavily on
 // sprite sheets and fights a single object, and a titled splash needs type
 // the model can actually render.
 
@@ -280,8 +280,8 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
             label={`Engine for ${KIND_LABEL[kind] ?? kind}`}
             hint={ENGINE_LOCKED[kind]
               ? (kind === "item" || kind === "prop"
-                  ? "Single objects always use Flux. The pixel LoRA is trained heavily on sprite sheets and fights one thing on its own."
-                  : "Splash screens always use Flux, because the title has to be readable.")
+                  ? "Single objects always use Adventure v2. Adventure v1 is trained heavily on sprite sheets and fights one thing on its own."
+                  : "Splash screens always use Adventure v2, because the title has to be readable.")
               : ENGINES.find((x) => x.key === engine)?.note}>
             <div style={{ display: "flex", gap: 6 }}>
               {ENGINES.map((x) => {
@@ -350,8 +350,8 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
           <Field
             label="Art style"
             hint={engine === "flux"
-              ? "Flux follows written direction closely, so be specific and imperative. Colour limits and dithering instructions work well here."
-              : "Shared by every picture drawn with the pixel LoRA. The look, not the subject."}>
+              ? "Adventure v2 follows written direction closely, so be specific and imperative. Colour limits and dithering instructions work well here."
+              : "Shared by every picture drawn with Adventure v1. The look, not the subject."}>
             <textarea
               defaultValue={config[styleKey] ?? ""}
               rows={4}

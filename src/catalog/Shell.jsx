@@ -44,6 +44,7 @@ export function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [gamerTagBase, setGamerTagBase] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -55,7 +56,7 @@ export function Auth() {
         await signIn({ email, password });
         // onAuthStateChange in the root takes it from here.
       } else {
-        const { needsConfirmation } = await signUp({ email, password, displayName });
+        const { needsConfirmation } = await signUp({ email, password, displayName, gamerTagBase });
         if (needsConfirmation) {
           setNotice("Check your email for a confirmation link, then sign in.");
           setMode("in");
@@ -89,14 +90,20 @@ export function Auth() {
             onKeyDown={(e) => e.key === "Enter" && go()}
             placeholder="••••••••" />
         </Field>
-        {mode === "up" && (
-          <Field label="Display name" hint="Your gamer tag is generated for you and can't be changed.">
+        {mode === "up" && (<>
+          <Field label="Display name">
             <input style={inputStyle} value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && go()}
               placeholder="Wei" />
           </Field>
-        )}
+          <Field label="Gamer Tag" hint="A random 4-digit number is added to make it yours — you can change either part later from your profile.">
+            <input style={inputStyle} value={gamerTagBase}
+              onChange={(e) => setGamerTagBase(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && go()}
+              placeholder="lily" />
+          </Field>
+        </>)}
 
         {error && (
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, lineHeight: 1.6, margin: "0 0 14px" }}>
