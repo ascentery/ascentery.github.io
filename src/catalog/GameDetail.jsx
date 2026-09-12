@@ -53,7 +53,13 @@ export function GameDetail({ game, chars, saves, setSaves, userId, go, from = "b
             {game.title}
           </h1>
           <div style={{ fontFamily: T.mono, fontSize: 11.5, color: T.boneDim, marginBottom: 16 }}>
-            {game.author} &middot; {game.tag} &middot; {game.rooms} rooms &middot; {game.mobs} characters
+            {game.author?.startsWith("@") ? (
+              <button className="pf-btn"
+                onClick={() => go("creatorProfile", { username: game.author.slice(1) })}
+                style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "inherit", cursor: "pointer", textDecoration: "underline" }}>
+                {game.author}
+              </button>
+            ) : game.author} &middot; {game.rooms} rooms &middot; {game.mobs} characters
             &middot; {game.plays.toLocaleString()} plays
           </div>
           <p style={{ fontFamily: T.serif, fontSize: 17, lineHeight: 1.62, margin: 0 }}>{game.blurb}</p>

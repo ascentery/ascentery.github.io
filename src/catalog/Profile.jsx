@@ -64,7 +64,14 @@ export function Profile({ me, setMe, chars, setChars, go }) {
     <div className="pf-in" style={{ maxWidth: 620 }}>
       <H1>Profile</H1>
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 26 }}>
-        <Avatar name={me.name} tag={me.tag} size={62} src={me.avatarUrl} />
+        <button onClick={() => go("avatar")} className="pf-btn"
+          style={{ background: "none", border: "none", padding: 0, cursor: "pointer", borderRadius: "50%" }}
+          title="Change your profile picture">
+          <Avatar name={me.name} tag={me.tag} size={62}
+            src={me.avatarMode === "generated" ? me.avatarUrl : undefined}
+            bgColor={me.avatarMode === "default" ? me.avatarBgColor : undefined}
+            letterColor={me.avatarMode === "default" ? me.avatarLetterColor : undefined} />
+        </button>
         <div>
           <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginBottom: 3 }}>your gamer tag</div>
           <button className="pf-btn"

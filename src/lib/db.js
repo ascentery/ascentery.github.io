@@ -17,7 +17,7 @@ export const PRICE_CENTS = { flux: 11, pixel: 5 }
 
 export async function loadMe(userId) {
   const [{ data: profile, error: pe }, { data: credits }] = await Promise.all([
-    supabase.from('profiles').select('id, display_name, gamer_tag, username, is_creator, is_admin, bio, avatar_path').eq('id', userId).single(),
+    supabase.from('profiles').select('id, display_name, gamer_tag, username, is_creator, is_admin, bio, avatar_path, avatar_mode, avatar_bg_color, avatar_letter_color, avatar_prompt, avatar_engine, prev_avatar_path').eq('id', userId).single(),
     supabase.from('credits').select('balance_cents, cap_cents').eq('user_id', userId).single(),
   ])
 
@@ -33,6 +33,12 @@ export async function loadMe(userId) {
     isAdmin: Boolean(profile.is_admin),
     bio: profile.bio ?? '',
     avatarUrl: artUrl(profile.avatar_path),
+    avatarPrevUrl: artUrl(profile.prev_avatar_path),
+    avatarMode: profile.avatar_mode ?? 'default',
+    avatarBgColor: profile.avatar_bg_color,
+    avatarLetterColor: profile.avatar_letter_color,
+    avatarPrompt: profile.avatar_prompt ?? '',
+    avatarEngine: profile.avatar_engine ?? 'pixel',
     balance: credits?.balance_cents ?? 0,
     balanceCap: credits?.cap_cents ?? 500,
   }
@@ -43,10 +49,32 @@ export async function saveBio(userId, bio) {
   if (error) throw error
 }
 
+/** The letter/circle avatar mode: no generation, just two colours picked
+    directly. Switching to this mode also flips avatar_mode back to
+    'default' — it is what actually decides which avatar shows, separate
+    from whatever image may still be sitting in avatar_path from an
+    earlier generated picture. */
+export async function saveDefaultAvatar(userId, { bgColor, letterColor }) {
+  const { error } = await supabase.from('profiles')
+    .update({ avatar_mode: 'default', avatar_bg_color: bgColor, avatar_letter_color: letterColor })
+    .eq('id', userId)
+  if (error) throw error
+}
+
+/** Saves the prompt and engine choice for a generated avatar, without
+    drawing anything yet — a separate step from generateAvatar() itself,
+    the same split Create's game-building steps already use. */
+export async function saveAvatarPrompt(userId, { prompt, engine }) {
+  const { error } = await supabase.from('profiles')
+    .update({ avatar_prompt: prompt, avatar_engine: engine })
+    .eq('id', userId)
+  if (error) throw error
+}
+
 /** Creator-only, enforced server-side regardless of what this lets you
-    attempt client-side. Draws from whatever is currently saved in the
-    profile's bio — save it first if you just typed something new.
-    Returns { url, cost_cents, balance_cents }. */
+    attempt client-side. Draws from whatever was just saved via
+    saveAvatarPrompt — save that first, or this draws from whatever was
+    saved last time. Returns { url, prev_url, cost_cents, balance_cents }. */
 export async function generateAvatar() {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Not signed in')
@@ -61,6 +89,22 @@ export async function generateAvatar() {
     err.needsFunds = Boolean(body.needs_funds)
     throw err
   }
+  return body
+}
+
+/** Undo/redo for the generated avatar — same real, persisted swap as
+    swapArtVersions for world pictures, not just a local display toggle.
+    Throws if there is no previous version yet. */
+export async function swapAvatarVersion() {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/avatar-swap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `Could not switch pictures (${res.status})`)
   return body
 }
 
@@ -250,7 +294,10 @@ export async function loadWorlds(userId) {
   const ownerIds = [...new Set((data ?? []).map((w) => w.owner_id))]
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, display_name, gamer_tag, username')
+    // gamer_tag is never fetched here — it stays private even at the
+    // network-request level, not just hidden from render. It's for
+    // adding friends off-platform, not for anyone browsing a game to see.
+    .select('id, display_name, username')
     .in('id', ownerIds.length ? ownerIds : ['00000000-0000-0000-0000-000000000000'])
 
   const byId = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
@@ -286,7 +333,6 @@ export async function loadWorlds(userId) {
     author: byId[w.owner_id]?.username
       ? `@${byId[w.owner_id].username}`
       : (byId[w.owner_id]?.display_name ?? 'Someone'),
-    tag: byId[w.owner_id]?.gamer_tag ?? '',
     playable: w.status === 'ready',
   }))
 }
@@ -771,6 +817,56 @@ export async function saveSetting(key, value) {
   if (error) throw error
 }
 
+/* ---------- follows ---------- */
+
+export async function followCreator(creatorId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+  const { error } = await supabase.from('follows').insert({ follower_id: session.user.id, followed_id: creatorId })
+  if (error) throw error
+}
+
+export async function unfollowCreator(creatorId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+  const { error } = await supabase.from('follows')
+    .delete().eq('follower_id', session.user.id).eq('followed_id', creatorId)
+  if (error) throw error
+}
+
+/** Whether the caller follows this creator, and how many followers that
+    creator has in total — the two things a profile page needs together. */
+export async function loadFollowStatus(creatorId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const [{ data: mine }, { count }] = await Promise.all([
+    session
+      ? supabase.from('follows').select('follower_id').eq('follower_id', session.user.id).eq('followed_id', creatorId)
+      : Promise.resolve({ data: [] }),
+    supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('followed_id', creatorId),
+  ])
+  return { isFollowing: Boolean(mine?.length), followerCount: count ?? 0 }
+}
+
+/** Everyone a given user follows — their own "Following" list, which
+    shows the same regardless of whose profile page it's opened from. */
+export async function loadFollowing(userId) {
+  const { data, error } = await supabase
+    .from('follows')
+    .select('followed_id, profiles!follows_followed_id_fkey(id, username, display_name, avatar_path, avatar_mode, avatar_bg_color, avatar_letter_color)')
+    .eq('follower_id', userId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).filter((r) => r.profiles).map((r) => ({
+    id: r.profiles.id,
+    username: r.profiles.username,
+    name: r.profiles.display_name,
+    avatarMode: r.profiles.avatar_mode ?? 'default',
+    avatarUrl: artUrl(r.profiles.avatar_path),
+    avatarBgColor: r.profiles.avatar_bg_color,
+    avatarLetterColor: r.profiles.avatar_letter_color,
+  }))
+}
+
 /* ---------- public creator profiles ---------- */
 
 /** A creator's public profile — never includes gamer_tag, which stays
@@ -778,7 +874,7 @@ export async function saveSetting(key, value) {
 export async function loadCreatorProfile(username) {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, username, display_name, is_creator, avatar_path, bio')
+    .select('id, username, display_name, is_creator, avatar_path, avatar_mode, avatar_bg_color, avatar_letter_color, bio')
     .eq('username', username)
     .single()
   if (error) throw new Error('That creator could not be found.')
@@ -787,7 +883,10 @@ export async function loadCreatorProfile(username) {
     username: data.username,
     name: data.display_name,
     isCreator: Boolean(data.is_creator),
+    avatarMode: data.avatar_mode ?? 'default',
     avatarUrl: artUrl(data.avatar_path),
+    avatarBgColor: data.avatar_bg_color,
+    avatarLetterColor: data.avatar_letter_color,
     bio: data.bio ?? '',
   }
 }

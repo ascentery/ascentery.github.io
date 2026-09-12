@@ -162,7 +162,10 @@ export function TopBar({ me, view, go }) {
         <button onClick={() => go("profile")} title={me.tag}
           style={{ padding: 0, borderRadius: "50%", cursor: "pointer", background: "none",
             border: `1px solid ${view.name === "profile" ? T.ochre : T.edge}` }}>
-          <Avatar name={me.name} tag={me.tag} />
+          <Avatar name={me.name} tag={me.tag}
+            src={me.avatarMode === "generated" ? me.avatarUrl : undefined}
+            bgColor={me.avatarMode === "default" ? me.avatarBgColor : undefined}
+            letterColor={me.avatarMode === "default" ? me.avatarLetterColor : undefined} />
         </button>
       </div>
     </header>
