@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import {
-  PRICE_CENTS,
   TOPUPS,
   money,
   startCheckout,
@@ -29,7 +28,7 @@ export function CreatorPage({ me, go }) {
       <Btn kind="ghost" onClick={() => go("browse")} style={{ marginBottom: 16 }}>back</Btn>
 
       <H1 sub={first
-        ? "Playing is free and always will be. Making a world costs money because every picture in it costs money to draw, so creators pay for what they use and nothing else."
+        ? "Making a world costs money because every picture in it costs money to draw, so creators pay for that and other features."
         : "Add more whenever you run out. It never expires, and there is no subscription."}>
         {first ? "Become a creator" : "Add funds"}
       </H1>
@@ -38,10 +37,7 @@ export function CreatorPage({ me, go }) {
         <div style={{ border: "1px solid " + T.edge, borderRadius: 2, padding: 18, marginBottom: 26 }}>
           <div style={{ fontFamily: T.serif, fontSize: 17, marginBottom: 10 }}>What $5 gets you</div>
           <div style={{ fontFamily: T.mono, fontSize: 12.5, lineHeight: 2, color: T.boneDim }}>
-            <div>Unlimited worlds. Building one is free; only pictures cost.</div>
-            <div>A room, character or item on the pixel engine &mdash; {money(PRICE_CENTS.pixel)}</div>
-            <div>The same on Flux, and every splash screen &mdash; {money(PRICE_CENTS.flux)}</div>
-            <div>Roughly four or five fully illustrated worlds</div>
+            <div>Build worlds and generate scenes, characters, props, items and objects in your game as you imagined them.</div>
           </div>
         </div>
       )}

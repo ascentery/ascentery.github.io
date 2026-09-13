@@ -73,10 +73,11 @@ export function AdminPage({ me, go }) {
         Admin
       </H1>
 
-      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24 }}>
+      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24,
+        overflowX: "auto", whiteSpace: "nowrap" }}>
         {[["settings", "Settings"], ["world_building", "World building"], ["image_generation", "Image generation"], ["themes", "Themes"], ["usernames", "Usernames"], ["users", "Users"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className="pf-btn"
-            style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px",
+            style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px", flexShrink: 0,
               fontFamily: T.mono, fontSize: 12, color: tab === k ? T.bone : T.boneDim,
               boxShadow: tab === k ? "inset 0 -2px 0 " + T.ochre : "none" }}>
             {label}

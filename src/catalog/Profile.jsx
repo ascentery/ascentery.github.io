@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import {
   createCharacter,
   deleteCharacter,
-  generateAvatar,
   money,
   saveBio,
   saveDisplayName,
@@ -36,22 +35,6 @@ export function Profile({ me, setMe, chars, setChars, go }) {
     }
   };
 
-  const [avatarBusy, setAvatarBusy] = useState(false);
-  const [avatarError, setAvatarError] = useState(null);
-  const [avatarNeedsFunds, setAvatarNeedsFunds] = useState(false);
-
-  const makeAvatar = async () => {
-    setAvatarBusy(true); setAvatarError(null); setAvatarNeedsFunds(false);
-    try {
-      const { url, balance_cents } = await generateAvatar();
-      setMe((m) => ({ ...m, avatarUrl: url, balance: typeof balance_cents === "number" ? balance_cents : m.balance }));
-    } catch (e) {
-      setAvatarError(e.message);
-      setAvatarNeedsFunds(Boolean(e.needsFunds));
-    } finally {
-      setAvatarBusy(false);
-    }
-  };
   const addChar = async () => {
     const n = newName.trim(); if (!n) return;
     setNewName("");
@@ -131,29 +114,13 @@ export function Profile({ me, setMe, chars, setChars, go }) {
             .catch((err) => console.error("could not save name", err))} />
       </Field>
 
-      <Field label="Description" hint={me.isCreator
-        ? "A little about yourself — this is what a generated profile picture is drawn from."
-        : "A little about yourself."}>
+      <Field label="Description" hint="A little about yourself.">
         <textarea style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} rows={4} value={me.bio ?? ""}
           onChange={(e) => setMe({ ...me, bio: e.target.value })}
           onBlur={(e) => saveBio(me.id, e.target.value.trim())
             .catch((err) => console.error("could not save bio", err))}
           placeholder="Tell people a little about yourself" />
       </Field>
-
-      {me.isCreator && (
-        <div style={{ marginTop: -8, marginBottom: 22 }}>
-          <Btn disabled={avatarBusy || !me.bio?.trim()} onClick={makeAvatar}>
-            {avatarBusy ? "drawing\u2026" : `Generate profile picture \u00b7 ${money(11)}`}
-          </Btn>
-          {avatarError && (
-            <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, marginTop: 8 }}>
-              {avatarError}
-              {avatarNeedsFunds && <Btn kind="ghost" style={{ marginLeft: 10 }} onClick={() => go("creator")}>Add funds</Btn>}
-            </p>
-          )}
-        </div>
-      )}
 
       <div style={{ borderTop: `1px solid ${T.edge}`, paddingTop: 24, marginTop: 10 }}>
         <h2 style={{ fontFamily: T.serif, fontSize: 20, fontWeight: 400, margin: "0 0 4px" }}>Characters</h2>

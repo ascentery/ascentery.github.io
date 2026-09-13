@@ -19,6 +19,7 @@ import { CreatorProfile } from "./catalog/CreatorProfile";
 import { EditGame } from "./catalog/EditGame";
 import { Friends, seedFriends } from "./catalog/Friends";
 import { GameDetail } from "./catalog/GameDetail";
+import { Home } from "./catalog/Home";
 import { Mine } from "./catalog/Mine";
 import { Profile } from "./catalog/Profile";
 import { ResetPasswordPage } from "./catalog/ResetPasswordPage";
@@ -142,6 +143,8 @@ export default function Ascentery() {
     </Shell>
   );
   if (!me) return <Shell><Splash1 /></Shell>;
+
+  if (view.name === "home") return <Shell><TopBar me={me} view={view} go={go} /><Home me={me} go={go} /></Shell>;
 
   if (view.name === "play") {
     const key = `${view.id}:${view.charId}`;

@@ -586,18 +586,23 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
           // the text instead of beside it, full width, since there is no
           // room to sit them side by side.
           const wide = kind === "room" || kind === "cover" || kind === "ending";
-          const imgStyle = narrow
-            ? { width: "100%" }
-            : wide
-              ? { flex: "0 0 50%" }
-              : { width: 240, flexShrink: 0 };
+          const imgStyle = kind === "badge"
+            ? { width: 220, flexShrink: 0 }                  // fixed on every layout — an oval badge on
+                                                               // narrow screens would look obviously wrong
+            : narrow
+              ? { width: "100%" }
+              : wide
+                ? { flex: "0 0 50%" }
+                : { width: 240, flexShrink: 0 };
           const splashOverride = narrow
             ? undefined                                    // full width, natural ratio
             : wide
               ? { paddingTop: "56.25%" }                    // 16:9, independent of the image's own width now
-              : (kind === "prop" || kind === "item" || kind === "badge")
-                ? { paddingTop: 0, height: 220 }             // unchanged from before
-                : undefined;                                 // characters: natural ratio, no forcing
+              : kind === "badge"
+                ? { paddingTop: 0, height: 220, borderRadius: "50%" }  // round, not square
+                : (kind === "prop" || kind === "item")
+                  ? { paddingTop: 0, height: 220 }             // unchanged from before
+                  : undefined;                                 // characters: natural ratio, no forcing
 
           return (
             <div key={e.id} style={{ display: "flex", flexDirection: narrow ? "column" : "row",
