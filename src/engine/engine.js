@@ -658,6 +658,17 @@ function advanceQuests(s, note) {
       note(`${quest.name} — ${stages[stillAt].goal}`, "quest");
     }
   }
+
+  // Every quest fully done, at least one quest existing to be done — the
+  // game itself is over, not just one thread of it. Checked fresh every
+  // turn rather than cached, since a mid-play edit to the world could
+  // otherwise leave a save incorrectly marked complete or incomplete.
+  if (!s.over) {
+    const progress = questProgress(s);
+    if (progress.length && progress.every((q) => q.done)) {
+      s.over = "complete";
+    }
+  }
 }
 
 /* A save is a snapshot of a world that may since have been edited: a

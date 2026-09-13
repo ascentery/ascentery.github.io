@@ -99,6 +99,24 @@ export function LogLine({ entry }) {
     return <div className="hr-fade">{entry.text.split(/\n\n+/).map((p, i) =>
       <p key={i} style={{ ...base, fontSize: 17, lineHeight: 1.62 }}>{p}</p>)}</div>;
 
+  if (entry.kind === "ending") {
+    const parts = entry.text.split(/\n\n+/);
+    const last = parts[parts.length - 1];
+    const isFinalLine = (i) => i === parts.length - 1 && last.trim().toUpperCase() === "THE END";
+    return (
+      <div className="hr-fade" style={{ margin: "24px 0 20px", paddingTop: 24, borderTop: `1px solid ${P.inkSoft}33` }}>
+        {parts.map((p, i) => isFinalLine(i) ? (
+          <p key={i} style={{ fontFamily: "Newsreader, serif", fontSize: 15, letterSpacing: ".22em",
+            textAlign: "center", color: P.inkSoft, margin: "22px 0 0" }}>
+            {p}
+          </p>
+        ) : (
+          <p key={i} style={{ ...base, fontSize: 17, lineHeight: 1.62, textAlign: "center" }}>{p}</p>
+        ))}
+      </div>
+    );
+  }
+
   const tone = entry.kind === "hit" ? P.rust : (entry.kind === "gain" || entry.kind === "quest") ? P.moss : P.inkSoft;
   return <p className="hr-fade" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, lineHeight: 1.6,
     color: tone, margin: "0 0 14px", paddingLeft: 11, borderLeft: `2px solid ${tone}55` }}>{entry.text}</p>;

@@ -14,7 +14,7 @@ import { EyeIcon, Glyph, PinIcon } from "../ui/icons";
 
 export function PlayLoader({ worldId, char, save, onSave, onExit, onHome }) {
   const [world, setWorld] = useState(null);
-  const [art, setArt] = useState({ room: {}, mob: {}, item: {}, prop: {} });
+  const [art, setArt] = useState({ room: {}, mob: {}, item: {}, prop: {}, ending: null });
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -26,9 +26,14 @@ export function PlayLoader({ worldId, char, save, onSave, onExit, onHome }) {
     ])
       .then(([{ data }, entries]) => {
         if (cancelled) return;
-        const byKind = { room: {}, mob: {}, item: {}, prop: {} };
+        const byKind = { room: {}, mob: {}, item: {}, prop: {}, ending: null };
         for (const e of entries) {
-          if (e.url && byKind[e.kind]) byKind[e.kind][e.key] = e.url;
+          if (!e.url) continue;
+          // "ending" is a single picture for the whole world, not one per
+          // room/mob/item — stored directly rather than nested under a key,
+          // matching how the pinned panel and completion screen read it.
+          if (e.kind === "ending") byKind.ending = e.url;
+          else if (byKind[e.kind]) byKind[e.kind][e.key] = e.url;
         }
         setArt(byKind);
         setWorld(data);
@@ -191,6 +196,22 @@ export function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
     else el.scrollTop = 0;
   }, [log, busy, typing]);
   useEffect(() => { onSave({ state, log }); }, [state, log]);
+
+  // The ending screen's own text is built the same way its image prompt
+  // was at generation time — the first quest's own summary line, which
+  // reads reasonably as a resolution. Appended to the log exactly once,
+  // the moment the game becomes complete; because the log persists via
+  // onSave above, it naturally reappears on any later reload without
+  // needing separate handling for that case.
+  useEffect(() => {
+    if (state.over !== "complete") return;
+    setLog((l) => {
+      if (l.some((e) => e.kind === "ending")) return l;
+      const firstQuest = Object.values(WORLD.quests ?? {})[0];
+      const story = firstQuest?.summary || "The story finds its end.";
+      return [...l, { kind: "ending", text: `${story}\n\nTHE END` }];
+    });
+  }, [state.over]);
 
   // Once it is no longer in your hands there is nothing to hold ready.
   useEffect(() => {
@@ -486,10 +507,10 @@ export function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
             // takes whatever room the hidden transcript left behind.
             flex: typing ? "1 1 auto" : "0 0 auto",
           }}>
-            {art.room?.[state.player.room] && (
+            {(state.over === "complete" ? art.ending : art.room?.[state.player.room]) && (
               <div style={{ position: "relative", minHeight: 0, display: "flex" }}>
                 <img
-                  src={art.room[state.player.room]}
+                  src={state.over === "complete" ? art.ending : art.room[state.player.room]}
                   alt=""
                   onError={(e) => { e.currentTarget.style.display = "none"; }}
                   style={{
@@ -749,11 +770,15 @@ export function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
 
         {state.over ? (
           <div style={{ padding: "16px 20px", borderTop: `1px solid ${P.inkSoft}33`, flexShrink: 0, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <p style={{ fontFamily: "Newsreader, serif", fontSize: 16, margin: 0, flex: 1, minWidth: 180 }}>You do not get up.</p>
-            <button className="hr-btn" onClick={restart}
-              style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, padding: "8px 16px", background: "transparent", border: `1px solid ${P.ink}`, color: P.ink, cursor: "pointer" }}>
-              Start again
-            </button>
+            <p style={{ fontFamily: "Newsreader, serif", fontSize: 16, margin: 0, flex: 1, minWidth: 180 }}>
+              {state.over === "complete" ? "The story is over." : "You do not get up."}
+            </p>
+            {state.over !== "complete" && (
+              <button className="hr-btn" onClick={restart}
+                style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, padding: "8px 16px", background: "transparent", border: `1px solid ${P.ink}`, color: P.ink, cursor: "pointer" }}>
+                Start again
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 20px 14px", flexShrink: 0,
