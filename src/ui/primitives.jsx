@@ -97,7 +97,7 @@ export const Avatar = ({ name, tag, size = 32, src, bgColor, bgColor2, letterCol
       // look — a chosen colour replaces one of the two hues fed into it
       // rather than flattening the style into a single flat fill.
       background: `linear-gradient(140deg, ${bgColor || `hsl(${hash(tag) % 360} 30% 30%)`}, ${bgColor2 || bgColor || `hsl(${(hash(tag) + 60) % 360} 34% 44%)`})` }}>
-      {name[0]}
+      {(name || "?")[0]}
     </div>
   );
 
