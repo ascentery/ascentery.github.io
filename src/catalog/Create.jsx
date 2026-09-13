@@ -412,6 +412,22 @@ export function Create({ me, refreshWorlds, go }) {
               {buildResult.stats?.quests} quests</div>
             <div>{money(buildResult.cost_cents)} charged &middot; built successfully</div>
           </div>
+
+          {me?.isAdmin && buildResult.usage && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid " + T.edge,
+              fontFamily: T.mono, fontSize: 11, lineHeight: 1.9, color: T.boneDim }}>
+              <div style={{ color: T.ochre, marginBottom: 2 }}>Admin only</div>
+              <div>{buildResult.built_by}</div>
+              <div>{buildResult.usage.prompt_tokens.toLocaleString()} input tokens &middot;{" "}
+                {buildResult.usage.completion_tokens.toLocaleString()} output tokens</div>
+              <div>
+                {"~"}{money(Math.round(buildResult.usage.estimated_provider_cost_cents))} estimated provider
+                cost{" "}
+                {buildResult.usage.estimated_provider_cost_cents < 1 &&
+                  `($${buildResult.usage.estimated_provider_cost_cents.toFixed(4)})`}
+              </div>
+            </div>
+          )}
         </div>
         <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, marginTop: 0 }}>
           The next real step is illustrating it, in the Pictures tab — a world can be published once
