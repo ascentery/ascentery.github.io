@@ -7,6 +7,7 @@ import {
   adminSearchUsers,
   adminSetCreator,
   loadReservedWords,
+  money,
   loadUsernamePrompt,
   removeReservedWord,
   saveUsernamePrompt,
