@@ -908,6 +908,61 @@ export async function loadFollowing(userId) {
   }))
 }
 
+/** The reverse of loadFollowing — everyone who follows this user, not
+    everyone this user follows. Same shape, same privacy rule about never
+    including gamer_tag. */
+export async function loadFollowers(userId) {
+  const { data, error } = await supabase
+    .from('follows')
+    .select('follower_id, profiles!follows_follower_id_fkey(id, username, display_name, avatar_path, avatar_mode, avatar_bg_color, avatar_bg_color2, avatar_letter_color)')
+    .eq('followed_id', userId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).filter((r) => r.profiles).map((r) => ({
+    id: r.profiles.id,
+    username: r.profiles.username,
+    name: r.profiles.display_name,
+    avatarMode: r.profiles.avatar_mode ?? 'default',
+    avatarUrl: artUrl(r.profiles.avatar_path),
+    avatarBgColor: r.profiles.avatar_bg_color,
+    avatarBgColor2: r.profiles.avatar_bg_color2,
+    avatarLetterColor: r.profiles.avatar_letter_color,
+  }))
+}
+
+/** Published games from everyone the given user follows — a personalised
+    "new from people you follow" feed, effectively. Only ever shown on a
+    person's own profile page, never someone else's. */
+export async function loadGamesByFollowedCreators(userId) {
+  const { data: followed, error: fErr } = await supabase
+    .from('follows').select('followed_id').eq('follower_id', userId)
+  if (fErr) throw fErr
+  const ids = (followed ?? []).map((r) => r.followed_id)
+  if (!ids.length) return []
+
+  // Two-step rather than an embedded select, matching loadWorlds — worlds
+  // does not have a foreign key aimed directly at profiles the way
+  // PostgREST embedding needs, only at auth.users.
+  const { data: worlds, error } = await supabase
+    .from('worlds')
+    .select('id, title, cover_path, plays, owner_id')
+    .in('owner_id', ids)
+    .eq('published', true)
+    .order('created_at', { ascending: false })
+    .limit(60)
+  if (error) throw error
+
+  const { data: profs } = await supabase
+    .from('profiles').select('id, username, display_name').in('id', ids)
+  const byId = Object.fromEntries((profs ?? []).map((p) => [p.id, p]))
+
+  return (worlds ?? []).map((w) => ({
+    id: w.id, title: w.title, coverUrl: artUrl(w.cover_path), plays: w.plays ?? 0,
+    authorUsername: byId[w.owner_id]?.username ?? null,
+    authorName: byId[w.owner_id]?.display_name ?? 'Someone',
+  }))
+}
+
 /* ---------- admin: user management ---------- */
 
 export async function adminSearchUsers(query) {
@@ -935,25 +990,38 @@ export async function adminAddCredits(userId, cents) {
 
 /** A creator's public profile — never includes gamer_tag, which stays
     private regardless of what else is visible about someone. */
+const CREATOR_PROFILE_COLUMNS =
+  'id, username, display_name, is_creator, avatar_path, avatar_mode, avatar_bg_color, avatar_bg_color2, avatar_letter_color, bio'
+
+const mapCreatorProfile = (data) => ({
+  id: data.id,
+  username: data.username,
+  name: data.display_name,
+  isCreator: Boolean(data.is_creator),
+  avatarMode: data.avatar_mode ?? 'default',
+  avatarUrl: artUrl(data.avatar_path),
+  avatarBgColor: data.avatar_bg_color,
+  avatarBgColor2: data.avatar_bg_color2,
+  avatarLetterColor: data.avatar_letter_color,
+  bio: data.bio ?? '',
+})
+
 export async function loadCreatorProfile(username) {
   const { data, error } = await supabase
-    .from('profiles')
-    .select('id, username, display_name, is_creator, avatar_path, avatar_mode, avatar_bg_color, avatar_bg_color2, avatar_letter_color, bio')
-    .eq('username', username)
-    .single()
+    .from('profiles').select(CREATOR_PROFILE_COLUMNS).eq('username', username).single()
   if (error) throw new Error('That creator could not be found.')
-  return {
-    id: data.id,
-    username: data.username,
-    name: data.display_name,
-    isCreator: Boolean(data.is_creator),
-    avatarMode: data.avatar_mode ?? 'default',
-    avatarUrl: artUrl(data.avatar_path),
-    avatarBgColor: data.avatar_bg_color,
-    avatarBgColor2: data.avatar_bg_color2,
-    avatarLetterColor: data.avatar_letter_color,
-    bio: data.bio ?? '',
-  }
+  return mapCreatorProfile(data)
+}
+
+/** Viewing your own public profile page works even without a username
+    set — the dropdown's "Profile Page" link goes by id for exactly this
+    reason, since looking up by username would have nowhere to go for
+    someone who has never claimed one. */
+export async function loadCreatorProfileById(id) {
+  const { data, error } = await supabase
+    .from('profiles').select(CREATOR_PROFILE_COLUMNS).eq('id', id).single()
+  if (error) throw new Error('Profile could not be found.')
+  return mapCreatorProfile(data)
 }
 
 export async function loadCreatorGames(userId) {

@@ -176,7 +176,7 @@ export function TopBar({ me, view, go }) {
           <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>{money(me.balance)}</span>
         </button>
         <div style={{ position: "relative" }}>
-          <button onClick={() => setMenuOpen((v) => !v)} title={me.tag}
+          <button onClick={() => { setMenuOpen((v) => !v); go("profile"); }} title={me.tag}
             style={{ padding: 0, borderRadius: "50%", cursor: "pointer", background: "none",
               border: `1px solid ${menuOpen || view.name === "profile" ? T.ochre : T.edge}` }}>
             <Avatar name={me.name} tag={me.tag}
@@ -198,13 +198,21 @@ export function TopBar({ me, view, go }) {
                   color: "#241a08", fontWeight: 600, marginBottom: 2 }}>
                 Create a game
               </button>
-              {[["profile", "Profile Page"], ["settings", "Settings"]].map(([k, label]) => (
-                <button key={k} onClick={() => { setMenuOpen(false); go(k); }} className="pf-btn"
-                  style={{ background: "none", border: "none", borderRadius: 2, cursor: "pointer",
-                    padding: "9px 12px", textAlign: "left", fontFamily: T.mono, fontSize: 12.5, color: T.bone }}>
-                  {label}
-                </button>
-              ))}
+              {/* Public Profile — the page other people see, reached by
+                  id rather than username, since a person without a
+                  username claimed yet still has a page to view. Distinct
+                  from clicking the avatar itself, which opens Profile
+                  Settings — the private, editable page. */}
+              <button onClick={() => { setMenuOpen(false); go("creatorProfile", { selfId: me.id }); }} className="pf-btn"
+                style={{ background: "none", border: "none", borderRadius: 2, cursor: "pointer",
+                  padding: "9px 12px", textAlign: "left", fontFamily: T.mono, fontSize: 12.5, color: T.bone }}>
+                Profile Page
+              </button>
+              <button onClick={() => { setMenuOpen(false); go("settings"); }} className="pf-btn"
+                style={{ background: "none", border: "none", borderRadius: 2, cursor: "pointer",
+                  padding: "9px 12px", textAlign: "left", fontFamily: T.mono, fontSize: 12.5, color: T.bone }}>
+                Settings
+              </button>
               <div style={{ borderTop: `1px solid ${T.edge}`, margin: "4px 0" }} />
               <button onClick={() => { setMenuOpen(false); signOut(); }} className="pf-btn"
                 style={{ background: "none", border: "none", borderRadius: 2, cursor: "pointer",

@@ -176,7 +176,7 @@ export default function Ascentery() {
         {view.name === "create" && <Create me={me} refreshWorlds={refreshWorlds} go={go} />}
         {view.name === "game" && <GameDetail game={games.find((g) => g.id === view.id)} chars={chars} saves={saves} setSaves={setSaves} userId={me.id} go={go} from={view.from ?? "browse"} isMine={games.find((g) => g.id === view.id)?.authorId === me.id} />}
 
-        {view.name === "creatorProfile" && <CreatorProfile username={view.username} me={me} go={go} />}
+        {view.name === "creatorProfile" && <CreatorProfile username={view.username} selfId={view.selfId} me={me} go={go} />}
 
         {view.name === "avatar" && <AvatarPage me={me} setMe={setMe} go={go} />}
 
