@@ -4,8 +4,13 @@ import React from "react";
 import { T } from "../theme";
 
 export function hash(str) {
+  // Guarded because callers routinely pass a person's username as the
+  // seed for their avatar's colour, and a username is often genuinely
+  // absent — not every account has claimed one. This was the actual
+  // cause of the follower-list crash: hash(null).length with no fallback.
+  const s = str || "x";
   let h = 2166136261;
-  for (let i = 0; i < str.length; i++) h = (h ^ str.charCodeAt(i)) * 16777619;
+  for (let i = 0; i < s.length; i++) h = (h ^ s.charCodeAt(i)) * 16777619;
   return Math.abs(h);
 }
 
