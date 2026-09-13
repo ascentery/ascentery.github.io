@@ -419,7 +419,7 @@ export async function generateCompleteWalkthrough(worldId) {
 // Mirrors FLAT_GEN_CENTS in the generate function by hand — this is
 // display-only, shown before a build starts, and has to be kept in sync
 // manually if that server-side value ever changes.
-export const GEN_FLAT_CENTS = 10
+export const GEN_FLAT_CENTS = 3
 
 export const ROOM_CHOICES = [
   { key: 'auto', label: 'Let the brief decide', min: null, max: null,

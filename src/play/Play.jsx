@@ -540,10 +540,10 @@ export function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                             style={{ padding: 0, background: P.ink, cursor: busy ? "default" : "pointer",
                               border: `1px solid ${held ? P.ochre : P.paper}`, lineHeight: 0,
                               boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
-                            <img src={url} alt={who}
+                            <img src={url} alt=""
                               onError={(e) => { e.currentTarget.style.display = "none"; }}
                               style={{ width: 46, height: 46, objectFit: "cover", objectPosition: "50% 25%",
-                                imageRendering: "pixelated", display: "block" }} />
+                                imageRendering: "pixelated", display: "block", background: P.ink }} />
                           </button>
                         );
                       })}
@@ -569,10 +569,10 @@ export function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                             style={{ padding: 0, background: P.ink, cursor: busy ? "default" : "pointer",
                               border: `1px solid ${P.paper}`, lineHeight: 0,
                               boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
-                            <img src={url} alt={pr.name}
+                            <img src={url} alt=""
                               onError={(e) => { e.currentTarget.style.display = "none"; }}
                               style={{ width: 46, height: 46, objectFit: "cover",
-                                imageRendering: "pixelated", display: "block" }} />
+                                imageRendering: "pixelated", display: "block", background: P.ink }} />
                           </button>
                         );
                       })}
@@ -588,10 +588,10 @@ export function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                             style={{ padding: 0, background: P.ink, cursor: busy ? "default" : "pointer",
                               border: `1px solid ${P.paper}`, lineHeight: 0,
                               boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
-                            <img src={url} alt={itemName(id)}
+                            <img src={url} alt=""
                               onError={(e) => { e.currentTarget.style.display = "none"; }}
                               style={{ width: 46, height: 46, objectFit: "cover",
-                                imageRendering: "pixelated", display: "block" }} />
+                                imageRendering: "pixelated", display: "block", background: P.ink }} />
                           </button>
                         );
                       })}

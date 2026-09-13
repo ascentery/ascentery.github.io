@@ -288,10 +288,15 @@ export function Create({ me, refreshWorlds, go }) {
         )}
 
         <div style={{ marginBottom: 20 }} />
-        <Btn kind="solid" disabled={desc.trim().length < 40 || !title.trim() || storyBusy}
-          onClick={advanceToStory}>
-          {storyBusy ? "fleshing it out\u2026" : "Continue"}
-        </Btn>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Btn kind="solid" disabled={desc.trim().length < 40 || !title.trim() || storyBusy}
+            onClick={advanceToStory}>
+            {storyBusy ? "fleshing it out\u2026" : "Continue"}
+          </Btn>
+          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
+            {money(GEN_FLAT_CENTS)} to build the world, charged only if it succeeds
+          </span>
+        </div>
       </>)}
 
       {step === 2 && (<>
@@ -386,8 +391,7 @@ export function Create({ me, refreshWorlds, go }) {
         )}
 
         <p style={{ fontFamily: T.mono, fontSize: 11, lineHeight: 1.7, color: T.boneDim, margin: "16px 0 20px" }}>
-          {money(GEN_FLAT_CENTS)} to build, whatever size the world turns out to be, charged only if
-          it succeeds. Pictures are separate and optional. You have {money(me.balance)}.
+          Pictures are separate and optional. You have {money(me.balance)}.
         </p>
 
         <div style={{ display: "flex", gap: 10 }}>
@@ -410,7 +414,7 @@ export function Create({ me, refreshWorlds, go }) {
             <div>{buildResult.stats?.rooms} rooms &middot; {buildResult.stats?.mobs} characters &middot;{" "}
               {buildResult.stats?.items} items &middot; {buildResult.stats?.props ?? 0} things to work &middot;{" "}
               {buildResult.stats?.quests} quests</div>
-            <div>{money(buildResult.cost_cents)} charged &middot; built successfully</div>
+            <div>Built successfully.</div>
           </div>
 
           {me?.isAdmin && buildResult.usage && (
