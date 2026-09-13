@@ -73,8 +73,18 @@ export function AdminPage({ me, go }) {
         Admin
       </H1>
 
-      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24,
-        overflowX: "auto", whiteSpace: "nowrap" }}>
+      <div className="pf-scroll-x"
+        onWheel={(e) => {
+          // A plain mouse wheel only ever produces vertical delta — this
+          // redirects that into horizontal movement so hovering the row
+          // and scrolling normally moves it left/right, rather than
+          // requiring a trackpad's native horizontal gesture or Shift+scroll.
+          if (e.deltaY === 0) return;
+          e.currentTarget.scrollLeft += e.deltaY;
+          e.preventDefault();
+        }}
+        style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24,
+          overflowX: "auto", whiteSpace: "nowrap" }}>
         {[["settings", "Settings"], ["world_building", "World building"], ["image_generation", "Image generation"], ["themes", "Themes"], ["usernames", "Usernames"], ["users", "Users"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className="pf-btn"
             style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px", flexShrink: 0,

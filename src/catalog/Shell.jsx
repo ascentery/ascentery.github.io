@@ -18,6 +18,11 @@ export function Shell({ children }) {
         * { box-sizing: border-box; }
         body { margin: 0; }
         .pf-btn:hover:not(:disabled) { background: ${T.raised}; }
+        /* Scrollable but with no visible scrollbar — the admin tabs row
+           uses this. Still fully scrollable by wheel, trackpad, or touch;
+           this only hides the bar itself, not the functionality. */
+        .pf-scroll-x { scrollbar-width: none; -ms-overflow-style: none; }
+        .pf-scroll-x::-webkit-scrollbar { display: none; }
         .pf-btn:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid ${T.ochre}; outline-offset: 2px; }
         input:focus, textarea:focus { outline: none; }
         .pf-card { cursor: pointer; }

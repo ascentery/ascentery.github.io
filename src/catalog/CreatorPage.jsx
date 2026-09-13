@@ -28,7 +28,7 @@ export function CreatorPage({ me, go }) {
       <Btn kind="ghost" onClick={() => go("browse")} style={{ marginBottom: 16 }}>back</Btn>
 
       <H1 sub={first
-        ? "Making a world costs money because every picture in it costs money to draw, so creators pay for that and other features."
+        ? "Making a world costs money because every picture in it costs money to draw, so creators pay only for what they use."
         : "Add more whenever you run out. It never expires, and there is no subscription."}>
         {first ? "Become a creator" : "Add funds"}
       </H1>
@@ -37,7 +37,7 @@ export function CreatorPage({ me, go }) {
         <div style={{ border: "1px solid " + T.edge, borderRadius: 2, padding: 18, marginBottom: 26 }}>
           <div style={{ fontFamily: T.serif, fontSize: 17, marginBottom: 10 }}>What $5 gets you</div>
           <div style={{ fontFamily: T.mono, fontSize: 12.5, lineHeight: 2, color: T.boneDim }}>
-            <div>Build worlds and generate scenes, characters, props, items and objects in your game as you imagined them.</div>
+            <div>The ability to build worlds and generate scenes, characters, props, items and objects exactly as you imagined them.</div>
           </div>
         </div>
       )}
