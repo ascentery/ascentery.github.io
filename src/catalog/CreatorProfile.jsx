@@ -169,10 +169,10 @@ export function CreatorProfile({ username, selfId, me, go }) {
         {isOwnProfile ? (
           <>
             <Btn kind="ghost" onClick={() => setOpenList((v) => v === "following" ? null : "following")}>
-              Following {following ? `(${following.length})` : ""}
+              Following
             </Btn>
             <Btn kind="ghost" onClick={() => setOpenList((v) => v === "followers" ? null : "followers")}>
-              Followers {followers ? `(${followers.length})` : ""}
+              Followers
             </Btn>
           </>
         ) : (

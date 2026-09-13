@@ -889,45 +889,53 @@ export async function loadFollowStatus(creatorId) {
 
 /** Everyone a given user follows — their own "Following" list, which
     shows the same regardless of whose profile page it's opened from. */
-export async function loadFollowing(userId) {
-  const { data, error } = await supabase
-    .from('follows')
-    .select('followed_id, profiles!follows_followed_id_fkey(id, username, display_name, avatar_path, avatar_mode, avatar_bg_color, avatar_bg_color2, avatar_letter_color)')
-    .eq('follower_id', userId)
+const FOLLOW_PROFILE_COLUMNS =
+  'id, username, display_name, avatar_path, avatar_mode, avatar_bg_color, avatar_bg_color2, avatar_letter_color'
+
+const mapFollowProfile = (p) => ({
+  id: p.id,
+  username: p.username,
+  name: p.display_name,
+  avatarMode: p.avatar_mode ?? 'default',
+  avatarUrl: artUrl(p.avatar_path),
+  avatarBgColor: p.avatar_bg_color,
+  avatarBgColor2: p.avatar_bg_color2,
+  avatarLetterColor: p.avatar_letter_color,
+})
+
+/** Two-step rather than an embedded select on purpose: follows has two
+    foreign keys aimed at the same table (profiles), which is a known
+    PostgREST ambiguity trap even with an explicit relationship hint.
+    Fetching ids, then profiles, then joining by hand in JS sidesteps
+    that fragility entirely instead of trying to get the embedding syntax
+    exactly right. */
+async function loadFollowSide(column, userId) {
+  const { data: rows, error } = await supabase
+    .from('follows').select(column).eq(column === 'followed_id' ? 'follower_id' : 'followed_id', userId)
     .order('created_at', { ascending: false })
   if (error) throw error
-  return (data ?? []).filter((r) => r.profiles).map((r) => ({
-    id: r.profiles.id,
-    username: r.profiles.username,
-    name: r.profiles.display_name,
-    avatarMode: r.profiles.avatar_mode ?? 'default',
-    avatarUrl: artUrl(r.profiles.avatar_path),
-    avatarBgColor: r.profiles.avatar_bg_color,
-    avatarBgColor2: r.profiles.avatar_bg_color2,
-    avatarLetterColor: r.profiles.avatar_letter_color,
-  }))
+  const ids = (rows ?? []).map((r) => r[column])
+  if (!ids.length) return []
+
+  const { data: profs, error: pErr } = await supabase
+    .from('profiles').select(FOLLOW_PROFILE_COLUMNS).in('id', ids)
+  if (pErr) throw pErr
+  const byId = Object.fromEntries((profs ?? []).map((p) => [p.id, p]))
+
+  // Preserves the follow list's own order (most recent first) rather
+  // than whatever order the profiles query happened to return.
+  return ids.map((id) => byId[id]).filter(Boolean).map(mapFollowProfile)
+}
+
+export async function loadFollowing(userId) {
+  return loadFollowSide('followed_id', userId)
 }
 
 /** The reverse of loadFollowing — everyone who follows this user, not
     everyone this user follows. Same shape, same privacy rule about never
     including gamer_tag. */
 export async function loadFollowers(userId) {
-  const { data, error } = await supabase
-    .from('follows')
-    .select('follower_id, profiles!follows_follower_id_fkey(id, username, display_name, avatar_path, avatar_mode, avatar_bg_color, avatar_bg_color2, avatar_letter_color)')
-    .eq('followed_id', userId)
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return (data ?? []).filter((r) => r.profiles).map((r) => ({
-    id: r.profiles.id,
-    username: r.profiles.username,
-    name: r.profiles.display_name,
-    avatarMode: r.profiles.avatar_mode ?? 'default',
-    avatarUrl: artUrl(r.profiles.avatar_path),
-    avatarBgColor: r.profiles.avatar_bg_color,
-    avatarBgColor2: r.profiles.avatar_bg_color2,
-    avatarLetterColor: r.profiles.avatar_letter_color,
-  }))
+  return loadFollowSide('follower_id', userId)
 }
 
 /** Published games from everyone the given user follows — a personalised

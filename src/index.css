@@ -3,10 +3,13 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  /* Old Ascentery's own ink colour, matching it being the platform's live
-     default theme now — this paints before the theme system has actually
-     loaded, so it only avoids a visible flash when the default really is
-     this colour. If the live default theme is ever changed to something
-     else, this should change to match it. */
-  background: #14161f;
+  /* Neutral on purpose, not a guess at whichever theme is currently the
+     live default — this paints before the theme system has loaded at
+     all, and a hand-maintained guess here goes stale the moment an admin
+     changes the default theme without anyone remembering to update this
+     file too. That's exactly what happened: this used to hardcode Old
+     Ascentery's ink colour, and it broke the first time the default
+     theme changed underneath it. Black is wrong in the same small way
+     every time instead of being wrong unpredictably. */
+  background: #000;
 }
