@@ -1,6 +1,6 @@
 /* The handful of elements every page is built from. */
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { T } from "../theme";
 
 export function hash(str) {
@@ -16,13 +16,27 @@ export function hash(str) {
 
 export function Splash({ seed, ratio = 0.5625, pending, src, style }) {
   const h = hash(seed || "x"), a = h % 360, b = (h >> 3) % 60;
+  const [loaded, setLoaded] = useState(false);
+  // Reset if the image itself changes (a redraw swapping to a new url) —
+  // otherwise a previously-loaded flag would wrongly skip the fade-in for
+  // the new picture.
+  useEffect(() => { setLoaded(false); }, [src]);
+
   return (
     <div style={{ position: "relative", width: "100%", paddingTop: `${ratio * 100}%`, overflow: "hidden",
       background: `linear-gradient(${h % 180}deg, hsl(${a} 34% 22%), hsl(${(a + 40 + b) % 360} 30% 34%))`, ...style }}>
       {src && (
         <img src={src} alt="" loading="lazy"
+          onLoad={() => setLoaded(true)}
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%",
-            objectFit: "cover", imageRendering: "pixelated" }} />
+            objectFit: "cover", imageRendering: "pixelated",
+            // Invisible until the browser actually has pixels to show —
+            // some browsers paint an image element's own blank state the
+            // moment it starts loading, regardless of any CSS background
+            // set on it, which is what caused the white flash this
+            // replaces. The gradient behind it (never covered while
+            // opacity is 0) is what's visible during that gap instead.
+            opacity: loaded ? 1 : 0, transition: "opacity 120ms ease-out" }} />
       )}
       {!pending && !src && (
         <svg viewBox="0 0 100 56" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>

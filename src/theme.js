@@ -3,9 +3,15 @@
 
 
 export const T = {
-  ground: "#1E2119", raised: "#272B21", edge: "#3C4232",
-  bone: "#E8E4D6", boneDim: "#9BA08C",
-  ochre: "#C99A2E", moss: "#7A9152", clay: "#B4643C",
+  // Matches the "Old Ascentery" preset's own values exactly, on purpose —
+  // this is what T falls back to if applyDefaultTheme ever fails for any
+  // reason (a deleted preset, a missing setting, a DB hiccup), and it
+  // used to silently match the "Original" preset instead, which is why
+  // deleting that preset from the database never visibly changed
+  // anything: this hardcoded copy never read from that row to begin with.
+  ground: "#14161f", raised: "#1c1f2b", edge: "#2e3347",
+  bone: "#e8e0cd", boneDim: "#9a937f",
+  ochre: "#e3a44f", moss: "#8da876", clay: "#c75545",
   serif: "Newsreader, Georgia, serif",
   mono: "'IBM Plex Mono', ui-monospace, monospace",
 };

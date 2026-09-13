@@ -128,6 +128,17 @@ export function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
   }, []);
 
   const [state, setState] = useState(opened.state);
+  // Tracks whether the currently-displayed room/ending picture has
+  // actually finished loading — some browsers paint an <img> element's
+  // own blank state the instant it starts loading, regardless of any CSS
+  // background set on it, which is what caused a white flash here even
+  // after giving the element an explicit dark background. Staying
+  // invisible until onLoad fires, rather than trusting the background to
+  // show through in time, is the reliable fix.
+  const [roomImgLoaded, setRoomImgLoaded] = useState(false);
+  const currentRoomImg = state.over === "complete" ? art.ending : art.room?.[state.player.room];
+  useEffect(() => { setRoomImgLoaded(false); }, [currentRoomImg]);
+
   const [log, setLog] = useState(() => {
     const base = save?.log ?? [];
     if (!base.length) return arrival(WORLD.startRoom, opened.state, !pinned);
@@ -507,15 +518,17 @@ export function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
             // takes whatever room the hidden transcript left behind.
             flex: typing ? "1 1 auto" : "0 0 auto",
           }}>
-            {(state.over === "complete" ? art.ending : art.room?.[state.player.room]) && (
+            {currentRoomImg && (
               <div style={{ position: "relative", minHeight: 0, display: "flex", background: P.ink }}>
                 <img
-                  src={state.over === "complete" ? art.ending : art.room[state.player.room]}
+                  src={currentRoomImg}
                   alt=""
+                  onLoad={() => setRoomImgLoaded(true)}
                   onError={(e) => { e.currentTarget.style.display = "none"; }}
                   style={{
                     display: "block", width: "100%", objectFit: "cover",
                     imageRendering: "pixelated", background: P.ink,
+                    opacity: roomImgLoaded ? 1 : 0, transition: "opacity 120ms ease-out",
                     ...(typing
                       ? { flex: 1, minHeight: 0 }
                       : { aspectRatio: "16 / 9", maxHeight: "34vh" }),
