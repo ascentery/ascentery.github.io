@@ -38,10 +38,11 @@ function PersonRow({ person, go }) {
 }
 
 function GameGrid({ games, go, emptyTitle }) {
-  if (!games.length) return <Empty title={emptyTitle} />;
+  const list = Array.isArray(games) ? games : [];
+  if (!list.length) return <Empty title={emptyTitle} />;
   return (
     <div style={grid}>
-      {games.map((g) => (
+      {list.map((g) => (
         <button key={g.id} onClick={() => go("game", { id: g.id })} className="pf-btn"
           style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
           <div style={{ aspectRatio: "16/9", background: T.raised, borderRadius: 2, overflow: "hidden", marginBottom: 6 }}>
@@ -79,8 +80,11 @@ export function CreatorProfile({ username, selfId, me, go }) {
   const [followBusy, setFollowBusy] = useState(false);
   const [following, setFollowing] = useState(null); // own page only
   const [followers, setFollowers] = useState(null); // own page only
-  const [listTab, setListTab] = useState("following");
-  const [showLists, setShowLists] = useState(false);
+  // null = closed; otherwise which list is open. One piece of state
+  // instead of two avoids a stale-closure race where toggling open and
+  // switching tabs in the same click could read the tab value from
+  // before this render, not after.
+  const [openList, setOpenList] = useState(null);
 
   const toggleFollow = async () => {
     if (!follow || followBusy) return;
@@ -104,7 +108,7 @@ export function CreatorProfile({ username, selfId, me, go }) {
     let cancelled = false;
     setProfile(null); setError(null); setTab(null);
     setGames(null); setCompleted(null); setFollowedGames(null);
-    setFollow(null); setFollowing(null); setFollowers(null); setShowLists(false);
+    setFollow(null); setFollowing(null); setFollowers(null); setOpenList(null);
 
     const loader = selfId ? loadCreatorProfileById(selfId) : loadCreatorProfile(username);
     loader
@@ -164,10 +168,10 @@ export function CreatorProfile({ username, selfId, me, go }) {
 
         {isOwnProfile ? (
           <>
-            <Btn kind="ghost" onClick={() => { setListTab("following"); setShowLists((v) => !v || listTab !== "following"); }}>
+            <Btn kind="ghost" onClick={() => setOpenList((v) => v === "following" ? null : "following")}>
               Following {following ? `(${following.length})` : ""}
             </Btn>
-            <Btn kind="ghost" onClick={() => { setListTab("followers"); setShowLists((v) => !v || listTab !== "followers"); }}>
+            <Btn kind="ghost" onClick={() => setOpenList((v) => v === "followers" ? null : "followers")}>
               Followers {followers ? `(${followers.length})` : ""}
             </Btn>
           </>
@@ -181,26 +185,27 @@ export function CreatorProfile({ username, selfId, me, go }) {
         )}
       </div>
 
-      {isOwnProfile && showLists && (
+      {isOwnProfile && openList && (
         <div style={{ border: "1px solid " + T.edge, borderRadius: 2, padding: 14, marginBottom: 20 }}>
           <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
             {[["following", "Following"], ["followers", "Followers"]].map(([k, label]) => (
-              <button key={k} onClick={() => setListTab(k)} className="pf-btn"
+              <button key={k} onClick={() => setOpenList(k)} className="pf-btn"
                 style={{ background: "transparent", cursor: "pointer", padding: "5px 10px", borderRadius: 2,
-                  fontFamily: T.mono, fontSize: 11.5, color: listTab === k ? T.bone : T.boneDim,
-                  border: "1px solid " + (listTab === k ? T.ochre : T.edge) }}>
+                  fontFamily: T.mono, fontSize: 11.5, color: openList === k ? T.bone : T.boneDim,
+                  border: "1px solid " + (openList === k ? T.ochre : T.edge) }}>
                 {label}
               </button>
             ))}
           </div>
           {(() => {
-            const list = listTab === "following" ? following : followers;
-            const emptyText = listTab === "following" ? "Not following anyone yet." : "No followers yet.";
-            if (list === null) return <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, margin: 0 }}>loading</p>;
+            const raw = openList === "following" ? following : followers;
+            const emptyText = openList === "following" ? "Not following anyone yet." : "No followers yet.";
+            if (raw == null) return <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, margin: 0 }}>loading</p>;
+            const list = Array.isArray(raw) ? raw : [];
             if (!list.length) return <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, margin: 0 }}>{emptyText}</p>;
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                {list.map((p) => <PersonRow key={p.id} person={p} go={go} />)}
+                {list.filter(Boolean).map((p) => <PersonRow key={p.id} person={p} go={go} />)}
               </div>
             );
           })()}
