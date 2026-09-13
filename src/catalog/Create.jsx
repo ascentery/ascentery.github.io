@@ -424,7 +424,7 @@ export function Create({ me, refreshWorlds, go }) {
                 {"~"}{money(Math.round(buildResult.usage.estimated_provider_cost_cents))} estimated provider
                 cost{" "}
                 {buildResult.usage.estimated_provider_cost_cents < 1 &&
-                  `($${buildResult.usage.estimated_provider_cost_cents.toFixed(4)})`}
+                  `($${(buildResult.usage.estimated_provider_cost_cents / 100).toFixed(4)})`}
               </div>
             </div>
           )}
