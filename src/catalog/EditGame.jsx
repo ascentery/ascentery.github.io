@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   deleteWorld,
+  generateCompleteWalkthrough,
   isFullyIllustrated,
   loadArt,
   loadWorldData,
@@ -102,7 +103,7 @@ export function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
 
       {tab === "walkthrough" && (
         game.status === "ready"
-          ? <WalkthroughTab worldId={game.id} />
+          ? <WalkthroughTab worldId={game.id} me={me} setMe={setMe} go={go} />
           : <Empty title="Nothing to walk through yet." line="This world has not finished building." />
       )}
 
@@ -225,17 +226,36 @@ export function DetailsTab({ game, refreshWorlds }) {
   );
 }
 
-function WalkthroughTab({ worldId }) {
+function WalkthroughTab({ worldId, me, setMe, go }) {
   const [world, setWorld] = useState(null);
+  const [completeText, setCompleteText] = useState(null);
   const [error, setError] = useState(null);
+  const [mode, setMode] = useState("compact");
+  const [genBusy, setGenBusy] = useState(false);
+  const [genError, setGenError] = useState(null);
+  const [needsFunds, setNeedsFunds] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     loadWorldData(worldId)
-      .then(({ data }) => { if (!cancelled) setWorld(data); })
+      .then((d) => { if (!cancelled) { setWorld(d.data); setCompleteText(d.complete_walkthrough ?? null); } })
       .catch((e) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
   }, [worldId]);
+
+  const generate = async () => {
+    setGenBusy(true); setGenError(null); setNeedsFunds(false);
+    try {
+      const { text, balance_cents } = await generateCompleteWalkthrough(worldId);
+      setCompleteText(text);
+      if (typeof balance_cents === "number") setMe((m) => ({ ...m, balance: balance_cents }));
+    } catch (e) {
+      setGenError(e.message);
+      setNeedsFunds(Boolean(e.needsFunds));
+    } finally {
+      setGenBusy(false);
+    }
+  };
 
   if (error) {
     return <p style={{ fontFamily: T.mono, fontSize: 12, color: T.clay }}>{error}</p>;
@@ -244,15 +264,65 @@ function WalkthroughTab({ worldId }) {
     return <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>;
   }
 
+  const modeToggle = (
+    <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
+      {[["compact", "Compact Walkthrough"], ["complete", "Complete Walkthrough"]].map(([k, label]) => (
+        <button key={k} onClick={() => setMode(k)} className="pf-btn"
+          style={{ padding: "8px 14px", borderRadius: 2, cursor: "pointer", background: "transparent",
+            fontFamily: T.mono, fontSize: 12, color: mode === k ? T.bone : T.boneDim,
+            border: "1px solid " + (mode === k ? T.ochre : T.edge) }}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (mode === "complete") {
+    return (
+      <div style={{ maxWidth: 720 }}>
+        {modeToggle}
+        <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 20px" }}>
+          Written by a model, grounded in this world's actual rooms, characters, items, and quest
+          stages — a narrative guide rather than a plain step list. Costs {money(8)} to write or rewrite,
+          and is saved, not regenerated every time you open this tab.
+        </p>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
+          <Btn kind="solid" disabled={genBusy} onClick={generate}>
+            {genBusy ? "writing\u2026" : completeText ? `Rewrite \u00b7 ${money(8)}` : `Write it \u00b7 ${money(8)}`}
+          </Btn>
+        </div>
+
+        {genError && (
+          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, marginBottom: 16 }}>
+            {genError}
+            {needsFunds && <Btn kind="ghost" style={{ marginLeft: 10 }} onClick={() => go("creator")}>Add funds</Btn>}
+          </p>
+        )}
+
+        {completeText ? (
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: T.serif, fontSize: 14.5,
+            lineHeight: 1.7, color: T.bone, background: T.raised, border: "1px solid " + T.edge,
+            borderRadius: 4, padding: 20, margin: 0 }}>
+            {completeText}
+          </pre>
+        ) : !genBusy && (
+          <Empty title="No complete walkthrough yet." line="Write one above to see it here." />
+        )}
+      </div>
+    );
+  }
+
   const steps = buildWalkthrough(world);
   if (!steps.length) {
-    return <Empty title="No quests in this world." line="There is nothing to walk through yet." />;
+    return (<div>{modeToggle}<Empty title="No quests in this world." line="There is nothing to walk through yet." /></div>);
   }
 
   const DIR_ARROW = { north: "\u2191", south: "\u2193", east: "\u2192", west: "\u2190", up: "\u2197", down: "\u2199" };
 
   return (
     <div style={{ maxWidth: 640 }}>
+      {modeToggle}
       <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 20px" }}>
         Computed directly from the world itself, the same way the reachability check is — not
         written by a model, so it cannot describe a step that does not actually work. If the world

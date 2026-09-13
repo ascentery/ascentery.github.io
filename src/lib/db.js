@@ -384,11 +384,33 @@ export async function loadWorlds(userId) {
 export async function loadWorldData(worldId) {
   const { data, error } = await supabase
     .from('world_data')
-    .select('data, warnings')
+    .select('data, warnings, complete_walkthrough')
     .eq('world_id', worldId)
     .single()
   if (error) throw new Error('That world has no data yet.')
   return data
+}
+
+/** The narrative "Complete Walkthrough" — a real, paid AI generation,
+    grounded in the world's actual rooms/items/dialogue/quest stages
+    rather than invented from the premise alone. Stored once generated;
+    call generateCompleteWalkthrough to create or replace it. */
+export async function generateCompleteWalkthrough(worldId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-walkthrough`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ world_id: worldId }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error(body.error || `Could not write a walkthrough (${res.status})`)
+    err.needsFunds = Boolean(body.needs_funds)
+    throw err
+  }
+  return body
 }
 
 /** What building a world costs. Mirrors the generate function; a flat fee
