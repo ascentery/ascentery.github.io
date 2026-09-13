@@ -15,6 +15,7 @@ import { ArtTab } from "./ArtTab";
 import { WorldTab } from "./WorldTab";
 import { T, inputStyle } from "../theme";
 import { Btn, Chip, Empty, Field } from "../ui/primitives";
+import { renderMarkdown } from "../ui/markdownLite";
 
 export function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
   const [tab, setTab] = useState("art");
@@ -234,6 +235,7 @@ function WalkthroughTab({ worldId, me, setMe, go }) {
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState(null);
   const [needsFunds, setNeedsFunds] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -254,6 +256,38 @@ function WalkthroughTab({ worldId, me, setMe, go }) {
       setNeedsFunds(Boolean(e.needsFunds));
     } finally {
       setGenBusy(false);
+    }
+  };
+
+  // Same fallback reasoning as copyJson in the Repair tab below: the
+  // modern clipboard API is not universally available (older Safari,
+  // some embedded webviews), and fails silently rather than throwing
+  // something visible, so a classic textarea + execCommand fallback
+  // covers far more of those cases.
+  const copyWalkthrough = async () => {
+    if (!completeText) return;
+    try {
+      await navigator.clipboard.writeText(completeText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+      return;
+    } catch { /* fall through to the classic approach below */ }
+
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = completeText;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if (!ok) throw new Error("execCommand copy returned false");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setGenError("Could not copy — your browser may be blocking clipboard access. Select the text above and copy it manually.");
     }
   };
 
@@ -291,6 +325,11 @@ function WalkthroughTab({ worldId, me, setMe, go }) {
           <Btn kind="solid" disabled={genBusy} onClick={generate}>
             {genBusy ? "writing\u2026" : completeText ? `Rewrite \u00b7 ${money(8)}` : `Write it \u00b7 ${money(8)}`}
           </Btn>
+          {completeText && (
+            <Btn kind="ghost" style={{ marginLeft: "auto" }} onClick={copyWalkthrough}>
+              {copied ? "Copied" : "Copy to clipboard"}
+            </Btn>
+          )}
         </div>
 
         {genError && (
@@ -301,11 +340,22 @@ function WalkthroughTab({ worldId, me, setMe, go }) {
         )}
 
         {completeText ? (
-          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: T.serif, fontSize: 14.5,
-            lineHeight: 1.7, color: T.bone, background: T.raised, border: "1px solid " + T.edge,
-            borderRadius: 4, padding: 20, margin: 0 }}>
-            {completeText}
-          </pre>
+          <div style={{ background: T.raised, border: "1px solid " + T.edge, borderRadius: 4, padding: "8px 24px" }}>
+            {renderMarkdown(completeText, {
+              h1: { fontFamily: T.serif, fontSize: 24, color: T.bone, margin: "20px 0 10px" },
+              h2: { fontFamily: T.serif, fontSize: 19, color: T.bone, margin: "18px 0 8px" },
+              h3: { fontFamily: T.serif, fontSize: 16, color: T.ochre, margin: "14px 0 6px" },
+              p: { fontFamily: T.serif, fontSize: 14.5, lineHeight: 1.7, color: T.bone, margin: "0 0 12px" },
+              list: { margin: "0 0 14px", paddingLeft: 22 },
+              listItem: { fontFamily: T.serif, fontSize: 14.5, lineHeight: 1.7, color: T.bone, marginBottom: 4 },
+              blockquote: { fontFamily: T.serif, fontStyle: "italic", fontSize: 14.5, lineHeight: 1.7,
+                color: T.boneDim, borderLeft: "3px solid " + T.edge, margin: "0 0 14px", padding: "2px 16px" },
+              hr: { border: "none", borderTop: "1px solid " + T.edge, margin: "20px 0" },
+              table: { fontFamily: T.mono, fontSize: 12 },
+              th: { textAlign: "left", padding: "6px 10px", borderBottom: "1px solid " + T.ochre, color: T.ochre },
+              td: { padding: "6px 10px", borderBottom: "1px solid " + T.edge, color: T.bone },
+            })}
+          </div>
         ) : !genBusy && (
           <Empty title="No complete walkthrough yet." line="Write one above to see it here." />
         )}
