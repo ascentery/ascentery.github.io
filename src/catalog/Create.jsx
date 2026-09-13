@@ -486,7 +486,7 @@ export function StageChecklist({ stage }) {
         return (
           <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 10,
             fontFamily: T.mono, fontSize: 12.5, lineHeight: 2.1,
-            color: state === "done" ? T.boneDim : state === "active" ? T.ochre : T.edge }}>
+            color: state === "done" ? T.moss : state === "active" ? T.ochre : T.edge }}>
             <span style={{ width: 14, flexShrink: 0 }}>{state === "done" ? "\u2713" : state === "active" ? "\u00b7" : ""}</span>
             {s.label}
           </div>
