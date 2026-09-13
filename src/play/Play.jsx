@@ -508,14 +508,14 @@ export function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
             flex: typing ? "1 1 auto" : "0 0 auto",
           }}>
             {(state.over === "complete" ? art.ending : art.room?.[state.player.room]) && (
-              <div style={{ position: "relative", minHeight: 0, display: "flex" }}>
+              <div style={{ position: "relative", minHeight: 0, display: "flex", background: P.ink }}>
                 <img
                   src={state.over === "complete" ? art.ending : art.room[state.player.room]}
                   alt=""
                   onError={(e) => { e.currentTarget.style.display = "none"; }}
                   style={{
                     display: "block", width: "100%", objectFit: "cover",
-                    imageRendering: "pixelated",
+                    imageRendering: "pixelated", background: P.ink,
                     ...(typing
                       ? { flex: 1, minHeight: 0 }
                       : { aspectRatio: "16 / 9", maxHeight: "34vh" }),
