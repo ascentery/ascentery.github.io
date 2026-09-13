@@ -167,7 +167,7 @@ export default function Ascentery() {
     <Shell>
       <TopBar me={me} view={view} go={go} />
       <main style={{ maxWidth: 1080, margin: "0 auto", padding: "26px 22px 80px" }}>
-        {view.name === "home" && <Home me={me} go={go} />}
+        {view.name === "home" && <Home games={games} saves={saves} go={go} />}
         {view.name === "browse" && <Browse games={games.filter((g) => g.published)} go={go} />}
         {view.name === "mine" && <Mine games={games.filter((g) => g.authorId === me.id)} go={go} />}
         {view.name === "friends" && <Friends friends={friends} setFriends={setFriends} games={games} go={go} />}

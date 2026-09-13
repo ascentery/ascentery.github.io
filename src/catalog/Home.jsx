@@ -1,49 +1,59 @@
-import React, { useState, useEffect } from "react";
-import { loadHomeFeed } from "../lib/db";
+import React from "react";
 import { T, grid } from "../theme";
 import { Empty } from "../ui/primitives";
 import { GameCard } from "./Browse";
 
-export function Home({ me, go }) {
-  const [feed, setFeed] = useState(null);
-  const [error, setError] = useState(null);
+/** Computed entirely from data already sitting in React state — games and
+    saves are both loaded once at app boot, the same way Browse and Mine
+    already use them. An earlier version of this page fetched its own
+    data fresh on every visit, several sequential queries deep, which is
+    exactly why it loaded slower than every other tab: this fixes that by
+    not fetching anything at all. */
+export function Home({ games, saves, go }) {
+  const lastPlayedAt = {};
+  for (const key of Object.keys(saves ?? {})) {
+    const worldId = key.split(":")[0];
+    const t = saves[key]?.updatedAt;
+    if (t && (!lastPlayedAt[worldId] || t > lastPlayedAt[worldId])) lastPlayedAt[worldId] = t;
+  }
 
-  useEffect(() => {
-    let cancelled = false;
-    loadHomeFeed(me.id)
-      .then((f) => { if (!cancelled) setFeed(f); })
-      .catch((e) => { if (!cancelled) setError(e.message); });
-    return () => { cancelled = true; };
-  }, [me.id]);
+  const recentlyPlayed = games
+    .filter((g) => lastPlayedAt[g.id])
+    .sort((a, b) => (lastPlayedAt[b.id] > lastPlayedAt[a.id] ? 1 : -1));
 
-  if (error) return <Empty title="Could not load your home feed." line={error} />;
-  if (!feed) return <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>;
+  const remaining = Math.max(0, 12 - recentlyPlayed.length);
+  const newest = remaining > 0
+    ? games
+        .filter((g) => g.published && !lastPlayedAt[g.id])
+        .sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1))
+        .slice(0, remaining)
+    : [];
 
   return (
     <div className="pf-in">
-      {feed.recentlyPlayed.length > 0 && (
+      {recentlyPlayed.length > 0 && (
         <div style={{ marginBottom: 32 }}>
           <div style={{ fontFamily: T.serif, fontSize: 19, marginBottom: 14 }}>Recently played</div>
           <div style={grid}>
-            {feed.recentlyPlayed.map((g) => (
+            {recentlyPlayed.map((g) => (
               <GameCard key={g.id} g={g} go={go} onClick={() => go("game", { id: g.id, from: "home" })} />
             ))}
           </div>
         </div>
       )}
 
-      {feed.newest.length > 0 && (
+      {newest.length > 0 && (
         <div>
           <div style={{ fontFamily: T.serif, fontSize: 19, marginBottom: 14 }}>Newest games</div>
           <div style={grid}>
-            {feed.newest.map((g) => (
+            {newest.map((g) => (
               <GameCard key={g.id} g={g} go={go} onClick={() => go("game", { id: g.id, from: "home" })} />
             ))}
           </div>
         </div>
       )}
 
-      {!feed.recentlyPlayed.length && !feed.newest.length && (
+      {!recentlyPlayed.length && !newest.length && (
         <Empty title="Nothing here yet." line="Browse to find something to play." />
       )}
     </div>

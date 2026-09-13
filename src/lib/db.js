@@ -172,81 +172,20 @@ export async function deleteCharacter(id) {
    Keyed on (world_id, character_id), matching the unique constraint,
    so one account can hold separate progress per character. */
 
-/** The games shown when you click the "Ascentery" wordmark itself —
-    recently played first (from saves.updated_at, most recent activity
-    wins even over a save that's technically older), then newest published
-    games filling up to 12 total, never repeating a world already shown
-    in the recently-played half. */
-export async function loadHomeFeed(userId) {
-  const { data: saves, error: sErr } = await supabase
-    .from('saves').select('world_id, updated_at').eq('user_id', userId)
-    .order('updated_at', { ascending: false })
-  if (sErr) throw sErr
-
-  // One entry per world even if multiple characters have saves in it —
-  // keep the most recent activity, drop the rest.
-  const seen = new Set()
-  const recentIds = []
-  for (const row of saves ?? []) {
-    if (seen.has(row.world_id)) continue
-    seen.add(row.world_id)
-    recentIds.push(row.world_id)
-  }
-
-  let recentlyPlayed = []
-  if (recentIds.length) {
-    const { data: worlds } = await supabase
-      .from('worlds').select('id, owner_id, title, cover_path, plays').in('id', recentIds)
-    const byId = Object.fromEntries((worlds ?? []).map((w) => [w.id, w]))
-    // Preserve the recency order — the worlds query does not.
-    const ordered = recentIds.map((id) => byId[id]).filter(Boolean)
-    recentlyPlayed = await attachAuthors(ordered)
-  }
-
-  const remaining = Math.max(0, 12 - recentlyPlayed.length)
-  let newest = []
-  if (remaining > 0) {
-    const { data: worlds, error } = await supabase
-      .from('worlds').select('id, owner_id, title, cover_path, plays')
-      .eq('published', true)
-      .order('created_at', { ascending: false })
-      .limit(remaining + recentIds.length) // headroom to exclude overlaps
-    if (error) throw error
-    const filtered = (worlds ?? []).filter((w) => !seen.has(w.id)).slice(0, remaining)
-    newest = await attachAuthors(filtered)
-  }
-
-  return { recentlyPlayed, newest }
-}
-
-/** GameCard (from Browse) expects an "author" string per game, formatted
-    as "@username" when one exists or the display name otherwise — the
-    same convention loadWorlds already uses, kept identical here so both
-    feeds render the same way. */
-async function attachAuthors(worlds) {
-  const ownerIds = [...new Set(worlds.map((w) => w.owner_id))]
-  const { data: owners } = ownerIds.length
-    ? await supabase.from('profiles').select('id, display_name, username').in('id', ownerIds)
-    : { data: [] }
-  const byId = Object.fromEntries((owners ?? []).map((o) => [o.id, o]))
-  return worlds.map((w) => ({
-    id: w.id, title: w.title, coverUrl: artUrl(w.cover_path), plays: w.plays ?? 0,
-    author: byId[w.owner_id]?.username
-      ? `@${byId[w.owner_id].username}`
-      : (byId[w.owner_id]?.display_name ?? 'Someone'),
-  }))
-}
-
 export async function loadSaves(userId) {
   const { data, error } = await supabase
     .from('saves')
-    .select('world_id, character_id, state, log')
+    .select('world_id, character_id, state, log, updated_at')
     .eq('user_id', userId)
   if (error) throw error
 
+  // updatedAt is what the home feed sorts "recently played" by — added
+  // here rather than fetched separately, since saves are already loaded
+  // once at boot and this avoids a second round trip just for a
+  // timestamp that was sitting right next to data already being read.
   const map = {}
   for (const row of data ?? []) {
-    map[`${row.world_id}:${row.character_id}`] = { state: row.state, log: row.log }
+    map[`${row.world_id}:${row.character_id}`] = { state: row.state, log: row.log, updatedAt: row.updated_at }
   }
   return map
 }

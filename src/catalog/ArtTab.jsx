@@ -624,7 +624,8 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
         return (
           <div key={e.id}>
             <div style={{ position: "relative" }}>
-              <Splash seed={e.key} src={e.url} pending={drawing === e.id || swapping === e.id} ratio={ratio} />
+              <Splash seed={e.key} src={e.url} pending={drawing === e.id || swapping === e.id} ratio={ratio}
+                style={kind === "badge" ? { borderRadius: "50%" } : undefined} />
               {lockButton}
             </div>
             {nameRow}
