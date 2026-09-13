@@ -416,9 +416,10 @@ export async function generateCompleteWalkthrough(worldId) {
 
 /** What building a world costs. Mirrors the generate function; a flat fee
     for the map and plot passes, plus the prose pass which grows with rooms. */
-export const GEN_BASE_CENTS = 10
-export const GEN_PER_ROOM_CENTS = 2
-export const genCost = (rooms) => GEN_BASE_CENTS + GEN_PER_ROOM_CENTS * rooms
+// Mirrors FLAT_GEN_CENTS in the generate function by hand — this is
+// display-only, shown before a build starts, and has to be kept in sync
+// manually if that server-side value ever changes.
+export const GEN_FLAT_CENTS = 10
 
 export const ROOM_CHOICES = [
   { key: 'auto', label: 'Let the brief decide', min: null, max: null,
@@ -453,6 +454,23 @@ export async function isFullyIllustrated(worldId) {
 /** Polls gen_stage while a world is being built, so progress can be shown
     honestly instead of guessed at with a timer. Stops itself once the
     world leaves "generating", however that happens. */
+/** Retrying an existing (already-failed) world skips createWorld entirely,
+    since the world row already exists — which means the DB still shows
+    the previous failure's status the instant watchGeneration starts
+    polling again. watchGeneration only keeps polling while status is
+    "generating", so on a retry its very first check can see the stale
+    "failed" status and stop forever before the server ever gets a chance
+    to flip it back — silent generation with no visible progress, even
+    though it is genuinely still running. Call this immediately before
+    watchGeneration on a retry so the first poll is guaranteed correct. */
+export async function resetWorldForRetry(worldId) {
+  const { error } = await supabase
+    .from('worlds')
+    .update({ status: 'generating', gen_stage: null, failure_note: null })
+    .eq('id', worldId)
+  if (error) throw error
+}
+
 export function watchGeneration(worldId, onStage) {
   let stopped = false
   const tick = async () => {

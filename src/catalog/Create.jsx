@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
-  GEN_BASE_CENTS,
-  GEN_PER_ROOM_CENTS,
+  GEN_FLAT_CENTS,
   createWorld,
   generateBriefFromPreset,
   generateGameDetails,
@@ -9,6 +8,7 @@ import {
   generateWorld,
   loadPresets,
   money,
+  resetWorldForRetry,
   setPublished,
   watchGeneration,
 } from "../lib/db";
@@ -196,13 +196,23 @@ export function Create({ me, refreshWorlds, go }) {
     setPhase("building"); setStep(4); setError(null); setStage(null); setNeedsFunds(false); setBuildResult(null);
     let id = worldId;
     try {
-      id = id ?? await createWorld({
-        userId: me.id,
-        title: title.trim() || "Untitled world",
-        brief: gameDetails.trim() || storyDetails.trim() || desc.trim(),
-        roomMin: null,
-        roomMax: null,
-      });
+      if (id) {
+        // Retrying an existing world: the row's status still shows the
+        // previous failure, and watchGeneration only keeps polling while
+        // it sees "generating" — without this, its very first check can
+        // catch that stale status and stop forever before the server
+        // gets a chance to flip it back. Silent generation, no visible
+        // progress, even though it is genuinely still running.
+        await resetWorldForRetry(id);
+      } else {
+        id = await createWorld({
+          userId: me.id,
+          title: title.trim() || "Untitled world",
+          brief: gameDetails.trim() || storyDetails.trim() || desc.trim(),
+          roomMin: null,
+          roomMax: null,
+        });
+      }
       setWorldId(id);
 
       const stop = watchGeneration(id, (status, gs) => { if (status === "generating") setStage(gs); });
@@ -376,8 +386,8 @@ export function Create({ me, refreshWorlds, go }) {
         )}
 
         <p style={{ fontFamily: T.mono, fontSize: 11, lineHeight: 1.7, color: T.boneDim, margin: "16px 0 20px" }}>
-          {money(GEN_BASE_CENTS)} plus {money(GEN_PER_ROOM_CENTS)} a room to build, charged only if it
-          succeeds. Pictures are separate and optional. You have {money(me.balance)}.
+          {money(GEN_FLAT_CENTS)} to build, whatever size the world turns out to be, charged only if
+          it succeeds. Pictures are separate and optional. You have {money(me.balance)}.
         </p>
 
         <div style={{ display: "flex", gap: 10 }}>
@@ -392,18 +402,16 @@ export function Create({ me, refreshWorlds, go }) {
 
       {step === 4 && phase === "done" && buildResult && (<>
         <div style={{ border: "1px solid " + T.moss + "55", padding: 18, borderRadius: 2, marginBottom: 22 }}>
-          <div style={{ fontFamily: T.serif, fontSize: 19, marginBottom: 10 }}>The world is built</div>
-          <div style={{ fontFamily: T.mono, fontSize: 12, lineHeight: 2, color: T.boneDim }}>
+          <div style={{ fontFamily: T.serif, fontSize: 19, marginBottom: 16 }}>The world is built</div>
+
+          <StageChecklist stage="finished" />
+
+          <div style={{ fontFamily: T.mono, fontSize: 12, lineHeight: 2, color: T.boneDim, marginTop: 14 }}>
             <div>{buildResult.stats?.rooms} rooms &middot; {buildResult.stats?.mobs} characters &middot;{" "}
               {buildResult.stats?.items} items &middot; {buildResult.stats?.props ?? 0} things to work &middot;{" "}
               {buildResult.stats?.quests} quests</div>
-            <div>{money(buildResult.cost_cents)} charged &middot; built with {buildResult.built_by}</div>
+            <div>{money(buildResult.cost_cents)} charged &middot; built successfully</div>
           </div>
-          {buildResult.warnings?.length > 0 && (
-            <div style={{ marginTop: 14, fontFamily: T.mono, fontSize: 11, lineHeight: 1.8, color: T.ochre }}>
-              {buildResult.warnings.map((w, i) => <div key={i}>{w.message ?? String(w)}</div>)}
-            </div>
-          )}
         </div>
         <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, marginTop: 0 }}>
           The next real step is illustrating it, in the Pictures tab — a world can be published once
@@ -462,22 +470,17 @@ export const GEN_STEPS = [
    than the current one is done; the current one is in progress; anything
    after is still waiting. */
 
-export function Building({ stage }) {
-  const [secs, setSecs] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setSecs((n) => n + 1), 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  const at = GEN_STEPS.findIndex((s) => s.key === stage);
-  const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
-
+/** Just the checkmark list, no title/clock/footer — shared by Building
+    (mid-progress, showing which step is active) and the done screen
+    (stage="done", which makes every step read as complete rather than
+    disappearing entirely once the build finishes). */
+export function StageChecklist({ stage }) {
+  // "finished" is not one of GEN_STEPS's own keys — it means the whole
+  // build is done, so every step (including the last one) should read as
+  // complete, not just the steps before whichever one matched "stage".
+  const at = stage === "finished" ? GEN_STEPS.length : GEN_STEPS.findIndex((s) => s.key === stage);
   return (
-    <div style={{ border: "1px solid " + T.edge, padding: "30px 22px", borderRadius: 2 }}>
-      <div style={{ fontFamily: T.serif, fontSize: 19, marginBottom: 16 }}>
-        Building the world
-      </div>
-
+    <div>
       {GEN_STEPS.map((s, i) => {
         const state = at < 0 ? "pending" : i < at ? "done" : i === at ? "active" : "pending";
         return (
@@ -489,6 +492,26 @@ export function Building({ stage }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+export function Building({ stage }) {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setSecs((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+
+  return (
+    <div style={{ border: "1px solid " + T.edge, padding: "30px 22px", borderRadius: 2 }}>
+      <div style={{ fontFamily: T.serif, fontSize: 19, marginBottom: 16 }}>
+        Building the world
+      </div>
+
+      <StageChecklist stage={stage} />
 
       <p style={{ fontFamily: T.serif, fontSize: 14.5, color: T.boneDim, lineHeight: 1.6, margin: "16px 0 0" }}>
         If it does not hold together it goes back and fixes itself, which is why this sometimes

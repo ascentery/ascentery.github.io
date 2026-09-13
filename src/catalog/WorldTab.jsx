@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
-  GEN_BASE_CENTS,
+  GEN_FLAT_CENTS,
   amendWorld,
-  genCost,
   loadHistory,
   loadNameables,
   money,
@@ -44,7 +43,7 @@ export function WorldTab({ game, refreshWorlds, me, setMe, go }) {
     refreshHistory();
   }, [game.id]);
 
-  const cost = kind === "prose" ? GEN_BASE_CENTS : genCost(game.rooms || 8);
+  const cost = GEN_FLAT_CENTS;
 
   /* Saving on blur alone is invisible: no button, no confirmation, and from
      the creator's side it looks as though nothing happened. Enter also
@@ -117,7 +116,7 @@ export function WorldTab({ game, refreshWorlds, me, setMe, go }) {
                   {k.label}
                 </span>
                 <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
-                  {money(k.key === "prose" ? GEN_BASE_CENTS : genCost(game.rooms || 8))}
+                  {money(GEN_FLAT_CENTS)}
                 </span>
               </div>
               <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginTop: 4, lineHeight: 1.6 }}>
