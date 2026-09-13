@@ -406,7 +406,8 @@ export async function generateCompleteWalkthrough(worldId) {
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {
-    const err = new Error(body.error || `Could not write a walkthrough (${res.status})`)
+    const message = body.detail ? `${body.error} (${body.detail})` : (body.error || `Could not write a walkthrough (${res.status})`)
+    const err = new Error(message)
     err.needsFunds = Boolean(body.needs_funds)
     throw err
   }
