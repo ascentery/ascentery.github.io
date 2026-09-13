@@ -3,6 +3,9 @@ import {
   ENGINES,
   PROVIDERS,
   addReservedWord,
+  adminAddCredits,
+  adminSearchUsers,
+  adminSetCreator,
   loadReservedWords,
   loadUsernamePrompt,
   removeReservedWord,
@@ -70,7 +73,7 @@ export function AdminPage({ me, go }) {
       </H1>
 
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24 }}>
-        {[["settings", "Settings"], ["world_building", "World building"], ["image_generation", "Image generation"], ["themes", "Themes"], ["usernames", "Usernames"]].map(([k, label]) => (
+        {[["settings", "Settings"], ["world_building", "World building"], ["image_generation", "Image generation"], ["themes", "Themes"], ["usernames", "Usernames"], ["users", "Users"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className="pf-btn"
             style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px",
               fontFamily: T.mono, fontSize: 12, color: tab === k ? T.bone : T.boneDim,
@@ -87,6 +90,8 @@ export function AdminPage({ me, go }) {
       {tab === "themes" && <ThemesTab />}
 
       {tab === "usernames" && <UsernamesTab />}
+
+      {tab === "users" && <UsersTab />}
 
       {tab === "settings" && (!setting ? (
         <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading</p>
@@ -932,6 +937,104 @@ function UsernamesTab() {
 
         <Btn kind="solid" disabled={busy} onClick={savePrompt}>{saved ? "saved" : "Save"}</Btn>
       </div>
+    </div>
+  );
+}
+
+function UsersTab() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [creditInputs, setCreditInputs] = useState({});   // { [userId]: "500" }
+
+  const search = async () => {
+    setBusy(true); setError(null);
+    try {
+      setResults(await adminSearchUsers(query.trim()));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleCreator = async (u) => {
+    setBusy(true); setError(null);
+    try {
+      await adminSetCreator(u.id, !u.isCreator);
+      setResults((rs) => rs.map((r) => r.id === u.id ? { ...r, isCreator: !r.isCreator } : r));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addCredits = async (u) => {
+    const raw = creditInputs[u.id];
+    const cents = Math.round(Number(raw) * 100);
+    if (!raw || !Number.isFinite(cents) || cents === 0) {
+      setError("Enter a dollar amount, e.g. 5 or -2.50.");
+      return;
+    }
+    setBusy(true); setError(null);
+    try {
+      const newBalance = await adminAddCredits(u.id, cents);
+      setResults((rs) => rs.map((r) => r.id === u.id ? { ...r, balance: newBalance } : r));
+      setCreditInputs((c) => ({ ...c, [u.id]: "" }));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 20px" }}>
+        Search matches part of a display name, username, or email. Toggling creator status and
+        adjusting credits both take effect immediately — there is no confirmation step, since this is
+        an admin-only tool already.
+      </p>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        <input style={{ ...inputStyle, flex: 1 }} value={query} onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && search()} placeholder="wei, @lily-4356, someone@example.com" />
+        <Btn kind="solid" disabled={busy} onClick={search}>Search</Btn>
+      </div>
+
+      {error && <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, marginBottom: 16 }}>{error}</p>}
+
+      {results !== null && (
+        !results.length ? (
+          <p style={{ fontFamily: T.mono, fontSize: 12, color: T.boneDim }}>No matches.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {results.map((u) => (
+              <div key={u.id} style={{ border: "1px solid " + T.edge, borderRadius: 4, padding: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                  <div style={{ fontFamily: T.serif, fontSize: 16 }}>{u.name}</div>
+                  <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>{money(u.balance)}</div>
+                </div>
+                <div style={{ fontFamily: T.mono, fontSize: 11.5, color: T.boneDim, marginBottom: 12 }}>
+                  {u.username ? `@${u.username} \u00b7 ` : ""}{u.email}{u.isAdmin ? " \u00b7 admin" : ""}
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <Btn kind={u.isCreator ? "ghost" : "solid"} disabled={busy} onClick={() => toggleCreator(u)}>
+                    {u.isCreator ? "Remove creator" : "Make creator"}
+                  </Btn>
+                  <input style={{ ...inputStyle, width: 100 }} value={creditInputs[u.id] ?? ""}
+                    onChange={(e) => setCreditInputs((c) => ({ ...c, [u.id]: e.target.value }))}
+                    placeholder="5.00" />
+                  <Btn kind="ghost" disabled={busy} onClick={() => addCredits(u)}>Add credits</Btn>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
     </div>
   );
 }

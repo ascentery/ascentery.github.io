@@ -17,7 +17,7 @@ export const PRICE_CENTS = { flux: 11, pixel: 5 }
 
 export async function loadMe(userId) {
   const [{ data: profile, error: pe }, { data: credits }] = await Promise.all([
-    supabase.from('profiles').select('id, display_name, gamer_tag, username, is_creator, is_admin, bio, avatar_path, avatar_mode, avatar_bg_color, avatar_letter_color, avatar_prompt, avatar_engine, prev_avatar_path').eq('id', userId).single(),
+    supabase.from('profiles').select('id, display_name, gamer_tag, username, is_creator, is_admin, bio, avatar_path, avatar_mode, avatar_bg_color, avatar_bg_color2, avatar_letter_color, avatar_prompt, avatar_engine, prev_avatar_path').eq('id', userId).single(),
     supabase.from('credits').select('balance_cents, cap_cents').eq('user_id', userId).single(),
   ])
 
@@ -36,6 +36,7 @@ export async function loadMe(userId) {
     avatarPrevUrl: artUrl(profile.prev_avatar_path),
     avatarMode: profile.avatar_mode ?? 'default',
     avatarBgColor: profile.avatar_bg_color,
+    avatarBgColor2: profile.avatar_bg_color2,
     avatarLetterColor: profile.avatar_letter_color,
     avatarPrompt: profile.avatar_prompt ?? '',
     avatarEngine: profile.avatar_engine ?? 'pixel',
@@ -66,9 +67,9 @@ export async function setAvatarMode(userId, mode) {
     'default' — it is what actually decides which avatar shows, separate
     from whatever image may still be sitting in avatar_path from an
     earlier generated picture. */
-export async function saveDefaultAvatar(userId, { bgColor, letterColor }) {
+export async function saveDefaultAvatar(userId, { bgColor, bgColor2, letterColor }) {
   const { error } = await supabase.from('profiles')
-    .update({ avatar_mode: 'default', avatar_bg_color: bgColor, avatar_letter_color: letterColor })
+    .update({ avatar_mode: 'default', avatar_bg_color: bgColor, avatar_bg_color2: bgColor2, avatar_letter_color: letterColor })
     .eq('id', userId)
   if (error) throw error
 }
@@ -891,7 +892,7 @@ export async function loadFollowStatus(creatorId) {
 export async function loadFollowing(userId) {
   const { data, error } = await supabase
     .from('follows')
-    .select('followed_id, profiles!follows_followed_id_fkey(id, username, display_name, avatar_path, avatar_mode, avatar_bg_color, avatar_letter_color)')
+    .select('followed_id, profiles!follows_followed_id_fkey(id, username, display_name, avatar_path, avatar_mode, avatar_bg_color, avatar_bg_color2, avatar_letter_color)')
     .eq('follower_id', userId)
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -902,8 +903,32 @@ export async function loadFollowing(userId) {
     avatarMode: r.profiles.avatar_mode ?? 'default',
     avatarUrl: artUrl(r.profiles.avatar_path),
     avatarBgColor: r.profiles.avatar_bg_color,
+    avatarBgColor2: r.profiles.avatar_bg_color2,
     avatarLetterColor: r.profiles.avatar_letter_color,
   }))
+}
+
+/* ---------- admin: user management ---------- */
+
+export async function adminSearchUsers(query) {
+  const { data, error } = await supabase.rpc('admin_search_users', { p_query: query })
+  if (error) throw new Error(error.message.replace(/^.*?:\s*/, ''))
+  return (data ?? []).map((r) => ({
+    id: r.id, username: r.username, name: r.display_name, email: r.email,
+    isCreator: Boolean(r.is_creator), isAdmin: Boolean(r.is_admin), balance: r.balance_cents,
+  }))
+}
+
+export async function adminSetCreator(userId, isCreator) {
+  const { error } = await supabase.rpc('admin_set_creator', { p_user_id: userId, p_is_creator: isCreator })
+  if (error) throw new Error(error.message.replace(/^.*?:\s*/, ''))
+}
+
+/** cents can be negative to deduct. Returns the new balance. */
+export async function adminAddCredits(userId, cents) {
+  const { data, error } = await supabase.rpc('admin_add_credits', { p_user_id: userId, p_cents: cents })
+  if (error) throw new Error(error.message.replace(/^.*?:\s*/, ''))
+  return data
 }
 
 /* ---------- public creator profiles ---------- */
@@ -913,7 +938,7 @@ export async function loadFollowing(userId) {
 export async function loadCreatorProfile(username) {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, username, display_name, is_creator, avatar_path, avatar_mode, avatar_bg_color, avatar_letter_color, bio')
+    .select('id, username, display_name, is_creator, avatar_path, avatar_mode, avatar_bg_color, avatar_bg_color2, avatar_letter_color, bio')
     .eq('username', username)
     .single()
   if (error) throw new Error('That creator could not be found.')
@@ -925,6 +950,7 @@ export async function loadCreatorProfile(username) {
     avatarMode: data.avatar_mode ?? 'default',
     avatarUrl: artUrl(data.avatar_path),
     avatarBgColor: data.avatar_bg_color,
+    avatarBgColor2: data.avatar_bg_color2,
     avatarLetterColor: data.avatar_letter_color,
     bio: data.bio ?? '',
   }

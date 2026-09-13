@@ -87,14 +87,16 @@ export const Empty = ({ title, line, action }) => (
 /* One breakpoint, used for the handful of places where a phone needs a
    different layout rather than a narrower one. */
 
-export const Avatar = ({ name, tag, size = 32, src, bgColor, letterColor }) =>
+export const Avatar = ({ name, tag, size = 32, src, bgColor, bgColor2, letterColor }) =>
   src ? (
     <img src={src} alt="" style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, objectFit: "cover" }} />
   ) : (
     <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, display: "grid", placeItems: "center",
       fontFamily: T.serif, fontSize: size * 0.44, color: letterColor || undefined,
-      background: bgColor
-        || `linear-gradient(140deg, hsl(${hash(tag) % 360} 30% 30%), hsl(${(hash(tag) + 60) % 360} 34% 44%))` }}>
+      // Always a two-tone gradient, same as the original hash-derived
+      // look — a chosen colour replaces one of the two hues fed into it
+      // rather than flattening the style into a single flat fill.
+      background: `linear-gradient(140deg, ${bgColor || `hsl(${hash(tag) % 360} 30% 30%)`}, ${bgColor2 || bgColor || `hsl(${(hash(tag) + 60) % 360} 34% 44%)`})` }}>
       {name[0]}
     </div>
   );

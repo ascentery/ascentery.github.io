@@ -70,6 +70,7 @@ export function Profile({ me, setMe, chars, setChars, go }) {
           <Avatar name={me.name} tag={me.tag} size={62}
             src={me.avatarMode === "generated" ? me.avatarUrl : undefined}
             bgColor={me.avatarMode === "default" ? me.avatarBgColor : undefined}
+            bgColor2={me.avatarMode === "default" ? me.avatarBgColor2 : undefined}
             letterColor={me.avatarMode === "default" ? me.avatarLetterColor : undefined} />
         </button>
         <div>

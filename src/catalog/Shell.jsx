@@ -182,6 +182,7 @@ export function TopBar({ me, view, go }) {
             <Avatar name={me.name} tag={me.tag}
               src={me.avatarMode === "generated" ? me.avatarUrl : undefined}
               bgColor={me.avatarMode === "default" ? me.avatarBgColor : undefined}
+              bgColor2={me.avatarMode === "default" ? me.avatarBgColor2 : undefined}
               letterColor={me.avatarMode === "default" ? me.avatarLetterColor : undefined} />
           </button>
 
@@ -191,14 +192,12 @@ export function TopBar({ me, view, go }) {
             <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 41,
               background: T.raised, border: `1px solid ${T.edge}`, borderRadius: 4, minWidth: 170,
               display: "flex", flexDirection: "column", padding: 6, gap: 2 }}>
-              {me.isCreator && (
-                <button onClick={() => { setMenuOpen(false); go("create"); }} className="pf-btn"
-                  style={{ background: T.ochre, border: "none", borderRadius: 2, cursor: "pointer",
-                    padding: "9px 12px", textAlign: "left", fontFamily: T.mono, fontSize: 12.5,
-                    color: "#241a08", fontWeight: 600, marginBottom: 2 }}>
-                  Create a game
-                </button>
-              )}
+              <button onClick={() => { setMenuOpen(false); go(me.isCreator ? "create" : "creator"); }} className="pf-btn"
+                style={{ background: T.ochre, border: "none", borderRadius: 2, cursor: "pointer",
+                  padding: "9px 12px", textAlign: "left", fontFamily: T.mono, fontSize: 12.5,
+                  color: "#241a08", fontWeight: 600, marginBottom: 2 }}>
+                Create a game
+              </button>
               {[["profile", "Profile Page"], ["settings", "Settings"]].map(([k, label]) => (
                 <button key={k} onClick={() => { setMenuOpen(false); go(k); }} className="pf-btn"
                   style={{ background: "none", border: "none", borderRadius: 2, cursor: "pointer",

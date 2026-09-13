@@ -91,6 +91,7 @@ export function CreatorProfile({ username, me, go }) {
         <Avatar name={profile.name} tag={profile.username} size={62}
           src={profile.avatarMode === "generated" ? profile.avatarUrl : undefined}
           bgColor={profile.avatarMode === "default" ? profile.avatarBgColor : undefined}
+          bgColor2={profile.avatarMode === "default" ? profile.avatarBgColor2 : undefined}
           letterColor={profile.avatarMode === "default" ? profile.avatarLetterColor : undefined} />
         <div style={{ flex: 1 }}>
           <div style={{ fontFamily: T.serif, fontSize: 22 }}>{profile.name}</div>
@@ -128,6 +129,7 @@ export function CreatorProfile({ username, me, go }) {
                   <Avatar name={f.name} tag={f.username} size={28}
                     src={f.avatarMode === "generated" ? f.avatarUrl : undefined}
                     bgColor={f.avatarMode === "default" ? f.avatarBgColor : undefined}
+                    bgColor2={f.avatarMode === "default" ? f.avatarBgColor2 : undefined}
                     letterColor={f.avatarMode === "default" ? f.avatarLetterColor : undefined} />
                   <span style={{ fontFamily: T.mono, fontSize: 12, color: T.bone }}>{f.name}</span>
                   {f.username && <span style={{ fontFamily: T.mono, fontSize: 11, color: T.ochre }}>@{f.username}</span>}

@@ -21,21 +21,26 @@ export function AvatarPage({ me, setMe, go }) {
   const [mode, setMode] = useState(me.avatarMode ?? "default");
 
   // ---------- letter/colour mode ----------
+  // Two background colours, gradient between them, same as the original
+  // hash-derived look — a flat single colour would be a different style,
+  // not this one with the choice handed over.
   const [bgColor, setBgColor] = useState(me.avatarBgColor || "#2e3347");
+  const [bgColor2, setBgColor2] = useState(me.avatarBgColor2 || "#3c4460");
   const [letterColor, setLetterColor] = useState(me.avatarLetterColor || "#e8e0cd");
   const [colorBusy, setColorBusy] = useState(false);
   const [colorError, setColorError] = useState(null);
 
   const randomize = () => {
     setBgColor(randomHex());
+    setBgColor2(randomHex());
     setLetterColor(randomHex());
   };
 
   const saveColors = async () => {
     setColorBusy(true); setColorError(null);
     try {
-      await saveDefaultAvatar(me.id, { bgColor, letterColor });
-      setMe((m) => ({ ...m, avatarMode: "default", avatarBgColor: bgColor, avatarLetterColor: letterColor }));
+      await saveDefaultAvatar(me.id, { bgColor, bgColor2, letterColor });
+      setMe((m) => ({ ...m, avatarMode: "default", avatarBgColor: bgColor, avatarBgColor2: bgColor2, avatarLetterColor: letterColor }));
       go("profile");
     } catch (e) {
       setColorError(e.message);
@@ -46,6 +51,7 @@ export function AvatarPage({ me, setMe, go }) {
 
   const cancelColors = () => {
     setBgColor(me.avatarBgColor || "#2e3347");
+    setBgColor2(me.avatarBgColor2 || "#3c4460");
     setLetterColor(me.avatarLetterColor || "#e8e0cd");
     go("profile");
   };
@@ -122,11 +128,16 @@ export function AvatarPage({ me, setMe, go }) {
 
       {mode === "default" && (<>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 26 }}>
-          <Avatar name={me.name} tag={me.tag} size={140} bgColor={bgColor} letterColor={letterColor} />
+          <Avatar name={me.name} tag={me.tag} size={140} bgColor={bgColor} bgColor2={bgColor2} letterColor={letterColor} />
         </div>
 
-        <Field label="Background colour">
+        <Field label="Background colour 1">
           <input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)}
+            style={{ width: "100%", height: 44, padding: 0, border: "1px solid " + T.edge, borderRadius: 2, cursor: "pointer", background: "none" }} />
+        </Field>
+
+        <Field label="Background colour 2">
+          <input type="color" value={bgColor2} onChange={(e) => setBgColor2(e.target.value)}
             style={{ width: "100%", height: 44, padding: 0, border: "1px solid " + T.edge, borderRadius: 2, cursor: "pointer", background: "none" }} />
         </Field>
 
