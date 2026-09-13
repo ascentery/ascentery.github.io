@@ -1,6 +1,6 @@
 import React from "react";
 import { T, grid } from "../theme";
-import { Empty } from "../ui/primitives";
+import { Empty, H1 } from "../ui/primitives";
 import { GameCard } from "./Browse";
 
 /** Computed entirely from data already sitting in React state — games and
@@ -31,6 +31,8 @@ export function Home({ games, saves, go }) {
 
   return (
     <div className="pf-in">
+      <H1 sub="Games you have recently played.">Recently played</H1>
+
       {recentlyPlayed.length > 0 && (
         <div style={{ marginBottom: 32 }}>
           <div style={{ fontFamily: T.serif, fontSize: 19, marginBottom: 14 }}>Recently played</div>
