@@ -35,7 +35,6 @@ export function Home({ games, saves, go }) {
 
       {recentlyPlayed.length > 0 && (
         <div style={{ marginBottom: 32 }}>
-          <div style={{ fontFamily: T.serif, fontSize: 19, marginBottom: 14 }}>Recently played</div>
           <div style={grid}>
             {recentlyPlayed.map((g) => (
               <GameCard key={g.id} g={g} go={go} onClick={() => go("game", { id: g.id, from: "home" })} />
