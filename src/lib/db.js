@@ -915,7 +915,7 @@ export async function adminSearchUsers(query) {
   if (error) throw new Error(error.message.replace(/^.*?:\s*/, ''))
   return (data ?? []).map((r) => ({
     id: r.id, username: r.username, name: r.display_name, email: r.email,
-    isCreator: Boolean(r.is_creator), isAdmin: Boolean(r.is_admin), balance: r.balance_cents,
+    isCreator: Boolean(r.is_creator), isAdmin: Boolean(r.is_admin), balance: Number(r.balance_cents),
   }))
 }
 
@@ -928,7 +928,7 @@ export async function adminSetCreator(userId, isCreator) {
 export async function adminAddCredits(userId, cents) {
   const { data, error } = await supabase.rpc('admin_add_credits', { p_user_id: userId, p_cents: cents })
   if (error) throw new Error(error.message.replace(/^.*?:\s*/, ''))
-  return data
+  return Number(data)
 }
 
 /* ---------- public creator profiles ---------- */
