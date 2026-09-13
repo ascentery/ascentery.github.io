@@ -11,3 +11,24 @@ body,
      changed, this should be updated to match it by hand. */
   background: #14161f;
 }
+
+/* Chrome (and other WebKit browsers) paint an autofilled field with their
+   own internal yellow — #fffcc8 or similar — via the :-webkit-autofill
+   pseudo-class, at a specificity normal CSS can't override directly, not
+   even with !important on background-color itself. The standard
+   workaround: a huge inset box-shadow the same color as the field's real
+   background effectively paints over the browser's own fill color, and a
+   very long background-color transition delay stops it flashing back in
+   after that. This targets every text input in the app, not just login —
+   matches the color login/signup happen to use today, but would need
+   updating by hand if that ever changes. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #14161f inset !important;
+  box-shadow: 0 0 0 1000px #14161f inset !important;
+  -webkit-text-fill-color: #e8e0cd !important;
+  caret-color: #e8e0cd;
+  transition: background-color 5000s ease-in-out 0s;
+}
