@@ -9,11 +9,15 @@ import React from "react";
     rather than rendering — never breaks, just looks a little plainer. */
 
 function renderInline(text, keyPrefix) {
-  // Splits on **bold** only — the one inline style the prompt asks for.
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  // One combined split for both styles — bold's pattern is checked first
+  // in the alternation, so **text** is never mistaken for two single
+  // asterisks wrapping something with an empty middle.
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
   return parts.map((part, i) => {
-    const m = part.match(/^\*\*([^*]+)\*\*$/);
-    if (m) return <strong key={`${keyPrefix}-${i}`}>{m[1]}</strong>;
+    const bold = part.match(/^\*\*([^*]+)\*\*$/);
+    if (bold) return <strong key={`${keyPrefix}-${i}`}>{bold[1]}</strong>;
+    const italic = part.match(/^\*([^*]+)\*$/);
+    if (italic) return <em key={`${keyPrefix}-${i}`}>{italic[1]}</em>;
     return <React.Fragment key={`${keyPrefix}-${i}`}>{part}</React.Fragment>;
   });
 }
@@ -67,6 +71,19 @@ export function renderMarkdown(text, styles) {
     const line = lines[i];
 
     if (!line.trim()) { flushList(); i++; continue; }
+
+    // Fenced code blocks — the room map's ASCII diagram is the reason
+    // this exists. Rendered as monospace with whitespace preserved
+    // exactly, since that alignment is the entire point of an ASCII
+    // diagram and a plain paragraph would collapse it into nothing.
+    if (line.trim().startsWith("```")) {
+      flushList();
+      const block = [];
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim().startsWith("```")) { block.push(lines[j]); j++; }
+      out.push(<pre key={`code-${i}`} style={styles.code}>{block.join("\n")}</pre>);
+      i = j + 1; continue; // skip the closing fence too
+    }
 
     const heading = line.match(/^(#{1,3})\s+(.*)$/);
     if (heading) {
