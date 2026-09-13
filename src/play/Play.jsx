@@ -519,7 +519,7 @@ export function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
             flex: typing ? "1 1 auto" : "0 0 auto",
           }}>
             {currentRoomImg && (
-              <div style={{ position: "relative", minHeight: 0, display: "flex", background: P.ink }}>
+              <div style={{ position: "relative", minHeight: 0, display: "flex", background: P.paperDeep }}>
                 <img
                   src={currentRoomImg}
                   alt=""
@@ -527,7 +527,7 @@ export function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                   onError={(e) => { e.currentTarget.style.display = "none"; }}
                   style={{
                     display: "block", width: "100%", objectFit: "cover",
-                    imageRendering: "pixelated", background: P.ink,
+                    imageRendering: "pixelated", background: P.paperDeep,
                     opacity: roomImgLoaded ? 1 : 0, transition: "opacity 120ms ease-out",
                     ...(typing
                       ? { flex: 1, minHeight: 0 }
@@ -550,13 +550,13 @@ export function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                             title={verb ? `${verb} ${who}` : held ? `Give the ${itemName(held)} to ${who}` : `Look at ${who}`}
                             onClick={() => tapTarget("mob", id)}
                             {...keepFocus}
-                            style={{ padding: 0, background: P.ink, cursor: busy ? "default" : "pointer",
+                            style={{ padding: 0, background: P.paperDeep, cursor: busy ? "default" : "pointer",
                               border: `1px solid ${held ? P.ochre : P.paper}`, lineHeight: 0,
                               boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
                             <img src={url} alt=""
                               onError={(e) => { e.currentTarget.style.display = "none"; }}
                               style={{ width: 46, height: 46, objectFit: "cover", objectPosition: "50% 25%",
-                                imageRendering: "pixelated", display: "block", background: P.ink }} />
+                                imageRendering: "pixelated", display: "block", background: P.paperDeep }} />
                           </button>
                         );
                       })}
@@ -579,13 +579,13 @@ export function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                                room shows through and the tile reads as
                                half-there. A lever you have pulled is still a
                                lever, so nothing here is dimmed on purpose. */
-                            style={{ padding: 0, background: P.ink, cursor: busy ? "default" : "pointer",
+                            style={{ padding: 0, background: P.paperDeep, cursor: busy ? "default" : "pointer",
                               border: `1px solid ${P.paper}`, lineHeight: 0,
                               boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
                             <img src={url} alt=""
                               onError={(e) => { e.currentTarget.style.display = "none"; }}
                               style={{ width: 46, height: 46, objectFit: "cover",
-                                imageRendering: "pixelated", display: "block", background: P.ink }} />
+                                imageRendering: "pixelated", display: "block", background: P.paperDeep }} />
                           </button>
                         );
                       })}
@@ -598,13 +598,13 @@ export function Play({ world, art = {}, char, save, onSave, onExit, onHome }) {
                             title={verb ? `${verb} ${itemName(id)}` : `Take the ${itemName(id)}`}
                             onClick={() => tapTarget("item", id)}
                             {...keepFocus}
-                            style={{ padding: 0, background: P.ink, cursor: busy ? "default" : "pointer",
+                            style={{ padding: 0, background: P.paperDeep, cursor: busy ? "default" : "pointer",
                               border: `1px solid ${P.paper}`, lineHeight: 0,
                               boxShadow: "0 1px 3px rgba(0,0,0,.4)" }}>
                             <img src={url} alt=""
                               onError={(e) => { e.currentTarget.style.display = "none"; }}
                               style={{ width: 46, height: 46, objectFit: "cover",
-                                imageRendering: "pixelated", display: "block", background: P.ink }} />
+                                imageRendering: "pixelated", display: "block", background: P.paperDeep }} />
                           </button>
                         );
                       })}

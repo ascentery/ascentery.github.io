@@ -15,12 +15,18 @@ export const T = {
   serif: "Newsreader, Georgia, serif",
   mono: "'IBM Plex Mono', ui-monospace, monospace",
 };
-/* the game runs on paper — stepping in is a change of light */
+/* Switched from a light "paper and ink" look to a dark one matching the
+   rest of the app, per explicit direction — the paper/ink naming stays
+   (every component references these exact keys), but the values are now
+   inverted: paper/paperDeep are backgrounds again, just dark ones now,
+   and ink/inkSoft are text colors again, just light ones now. Matches T's
+   own values throughout, for one consistent dark palette across the
+   whole app rather than two unrelated ones. */
 
 export const P = {
-  paper: "#DCDFD7", paperDeep: "#CDD2C8",
-  ink: "#232A1F", inkSoft: "#5A6353",
-  ochre: "#9A7B18", rust: "#8C4A2F", moss: "#4A5D3F",
+  paper: "#14161f", paperDeep: "#1c1f2b",
+  ink: "#e8e0cd", inkSoft: "#9a937f",
+  ochre: "#e3a44f", rust: "#c75545", moss: "#8da876",
 };
 
 

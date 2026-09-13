@@ -21,7 +21,7 @@ export function LogLine({ entry }) {
               // same objects in two places.
               width: 74, height: 74, flexShrink: 0, objectFit: "cover",
               objectPosition: "50% 25%",   // portraits are tall; keep the head
-              imageRendering: "pixelated", background: P.ink,
+              imageRendering: "pixelated", background: P.paperDeep,
               border: `1px solid ${P.paper}`, boxShadow: "0 1px 3px rgba(0,0,0,.35)",
             }}
           />
@@ -52,7 +52,7 @@ export function LogLine({ entry }) {
                   onError={(e) => { e.currentTarget.style.display = "none"; }}
                   style={{
                     width: 74, height: 74, objectFit: "cover", display: "block",
-                    imageRendering: "pixelated", background: P.ink,
+                    imageRendering: "pixelated", background: P.paperDeep,
                     border: `1px solid ${P.paper}`, boxShadow: "0 1px 3px rgba(0,0,0,.35)",
                   }}
                 />
