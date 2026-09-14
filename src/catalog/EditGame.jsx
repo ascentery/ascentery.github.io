@@ -525,6 +525,20 @@ function RepairTab({ worldId, title, isAdmin }) {
               {result.status === "modified" ? "repaired \u2014 the world was changed" : "unchanged"}
             </div>
             <p style={{ fontFamily: T.serif, fontSize: 15, lineHeight: 1.6, margin: 0 }}>{result.reply}</p>
+
+            {isAdmin && result.rejected_proposal && (
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid " + T.edge }}>
+                <div style={{ fontFamily: T.mono, fontSize: 10.5, color: T.ochre, marginBottom: 8 }}>
+                  Admin only — what was proposed and rejected
+                </div>
+                <pre style={{ maxHeight: 320, overflow: "auto", margin: 0, padding: 10,
+                  background: T.ground, border: "1px solid " + T.edge, borderRadius: 2,
+                  fontFamily: T.mono, fontSize: 10.5, lineHeight: 1.5, color: T.boneDim,
+                  whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                  {JSON.stringify(result.rejected_proposal, null, 2)}
+                </pre>
+              </div>
+            )}
           </div>
         ) : (
           <p style={{ fontFamily: T.mono, fontSize: 12, color: T.boneDim }}>Nothing asked yet.</p>
