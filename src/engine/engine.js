@@ -785,6 +785,30 @@ function applyEffects(prev, effects) {
       s.roomItems[s.player.room] = s.roomItems[s.player.room].filter((x) => x !== id);
       s.player.inventory.push(id);
       note(`Taken: ${itemName(id)}.`, "gain");
+
+      /* A guarded item can be taken freely once its condition is true.
+         Taking it before then still succeeds — the item is genuinely,
+         briefly held, matching what actually happens narratively (you do
+         get your hands on it) — but has a consequence immediately after,
+         rather than simply being blocked outright. This is the one
+         "reactive punishment" shape the rest of the effects vocabulary
+         has no equivalent for: everything else here only ever unlocks
+         forward, never punishes taking something without a prerequisite. */
+      const guard = WORLD.guardedItems?.[id];
+      if (guard && !stageMet(s, guard.requires)) {
+        const fail = guard.onFail ?? {};
+        if (fail.message) note(fail.message, "system");
+        if (fail.moveTo && WORLD.rooms[fail.moveTo]) {
+          s.player.room = fail.moveTo;
+        }
+        for (const dropId of fail.dropHeld ?? []) {
+          const idx = s.player.inventory.indexOf(dropId);
+          if (idx !== -1) {
+            s.player.inventory.splice(idx, 1);
+            (s.roomItems[s.player.room] ??= []).push(dropId);
+          }
+        }
+      }
       continue;
     }
 
