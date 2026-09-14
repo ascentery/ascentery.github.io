@@ -77,7 +77,7 @@ export function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
       )}
 
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24, flexWrap: "wrap" }}>
-        {[["art", "Pictures"], ["world", "World"], ["details", "Details"], ["walkthrough", "Walkthrough"], ["repair", "Repair"], ["settings", "Settings"]].map(([k, label]) => (
+        {[["art", "Pictures"], ["world", "World"], ["details", "Details"], ["walkthrough", "Walkthrough"], ["repair", "Changes / Repairs"], ["settings", "Settings"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className="pf-btn"
             style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px", fontFamily: T.mono, fontSize: 12,
               color: tab === k ? T.bone : T.boneDim, boxShadow: tab === k ? "inset 0 -2px 0 " + T.ochre : "none" }}>
@@ -485,12 +485,13 @@ function RepairTab({ worldId, title, isAdmin }) {
   return (
     <div style={{ maxWidth: 720 }}>
       <p style={{ fontFamily: T.serif, fontSize: 15, color: T.boneDim, lineHeight: 1.6, margin: "0 0 20px" }}>
-        Describe what is going wrong, in plain words — "once inside the room there is no exit and
-        the door is locked." The model reads the whole world and tries a fix, but nothing is ever
-        applied unless it passes the same check every generated world already has to pass, so a
-        proposed fix that breaks something else is refused rather than saved. Costs {money(10)}
-        whether or not anything actually changes, since the attempt happens either way. Every
-        change here is undoable from the World tab, the same as any other amendment.
+        Describe a bug to fix, or a change you want made on purpose — "once inside the room there
+        is no exit and the door is locked," or "swap the flute puzzle for a rubber-mouse decoy."
+        The model reads the whole world and makes the change, but nothing is ever applied unless it
+        passes the same check every generated world already has to pass, so a change that breaks
+        something else is refused rather than saved. Costs {money(10)} whether or not anything
+        actually changes, since the attempt happens either way. Every change here is undoable from
+        the World tab, the same as any other amendment.
       </p>
 
       {isAdmin && (
@@ -559,9 +560,9 @@ function RepairTab({ worldId, title, isAdmin }) {
         </div>
       )}
 
-      <Field label="What's going wrong">
+      <Field label="What you want changed">
         <textarea value={query} onChange={(e) => setQuery(e.target.value)} rows={4}
-          placeholder="Once inside the room there is no exit and the door is locked."
+          placeholder="Once inside the room there is no exit and the door is locked. Or: instead of the flute, let the player find a rubber mouse to distract the cat with."
           style={{ ...inputStyle, lineHeight: 1.6, resize: "vertical" }} />
       </Field>
 
