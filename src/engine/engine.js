@@ -25,6 +25,8 @@ export function buildWalkthrough(WORLD) {
   const mobs = WORLD.mobs ?? {};
   const items = WORLD.items ?? {};
   const props = WORLD.props ?? {};
+  const dropTriggers = WORLD.dropTriggers ?? {};
+  const guardedItems = WORLD.guardedItems ?? {};
 
   const itemLabel = (id) => items[id]?.short ?? items[id]?.name ?? id;
   const mobLabel = (id) => mobs[id]?.name ?? id;
@@ -178,6 +180,32 @@ export function buildWalkthrough(WORLD) {
      any side unblock any other. A handful of passes covers any realistic
      chain without risking a loop if something genuinely cannot be
      resolved. */
+
+  /* Tries to make a flag true by whichever means actually exists for it —
+     working a prop that sets it, or (the newer case) dropping a specific
+     item in a specific room. Shared by the door/exit gate resolution
+     below and by guard-satisfaction, since both are the same underlying
+     problem: something is waiting on a flag, and this looks for
+     whatever would actually raise it. */
+  const satisfyFlag = (flag, open) => {
+    if (flags.has(flag)) return true;
+    const propEntry = Object.entries(props).find(([, pr]) =>
+      pr?.sets === flag && open.has(pr.room) && (!pr.requires || inv.has(pr.requires) || tryObtain(pr.requires, open)));
+    if (propEntry) { flags.add(flag); return true; }
+    const dtEntry = Object.entries(dropTriggers).find(([, t]) => t?.sets === flag);
+    if (dtEntry) {
+      const [itemKey, trig] = dtEntry;
+      if (open.has(trig.inRoom) && (inv.has(itemKey) || tryObtain(itemKey, open))) {
+        // Dropped, not kept — the item leaves the player's hands as part
+        // of triggering this, the same as it would in a real playthrough.
+        inv.delete(itemKey);
+        flags.add(flag);
+        return true;
+      }
+    }
+    return false;
+  };
+
   const collectFetchablePrereqs = () => {
     for (let pass = 0; pass < 6; pass++) {
       const open = reachableNow();
@@ -189,14 +217,7 @@ export function buildWalkthrough(WORLD) {
           if (lock && !inv.has(lock) && tryObtain(lock, open)) gained = true;
 
           const need = typeof ex === "object" ? ex.needs : null;
-          if (need && !flags.has(need)) {
-            const propEntry = Object.entries(props).find(([, pr]) =>
-              pr?.sets === need && open.has(pr.room) && (!pr.requires || inv.has(pr.requires) || tryObtain(pr.requires, open)));
-            if (propEntry) {
-              flags.add(need);
-              gained = true;
-            }
-          }
+          if (need && !flags.has(need) && satisfyFlag(need, open)) gained = true;
         }
       }
       if (!gained) break;
@@ -254,11 +275,43 @@ export function buildWalkthrough(WORLD) {
           if (source) {
             const path = travel(source);
             if (path) {
-              inv.add(item);
-              everHeld.add(item);
-              roomItems[source]?.delete(item);
-              entry = { ...entry, room: source, roomName: roomLabel(source), path,
-                action: `take ${itemLabel(item)}` };
+              const guard = guardedItems[item];
+              let guardOk = true;
+              if (guard) {
+                const when = guard.requires ?? {};
+                const openHere = reachableNow();
+                if (when.flag) guardOk = satisfyFlag(when.flag, openHere);
+                else if (when.playerHas) {
+                  guardOk = inv.has(when.playerHas) || everHeld.has(when.playerHas) || tryObtain(when.playerHas, openHere);
+                }
+                else if (when.inRoom) guardOk = source === when.inRoom;
+                else if (when.mobHas) {
+                  guardOk = Boolean(mobInv[when.mobHas.mob]?.has(when.mobHas.item));
+                }
+                else guardOk = false;
+              }
+
+              if (guard && !guardOk) {
+                // Refuses to claim this stage is satisfiable by walking
+                // into a guard nothing has actually cleared first — doing
+                // so would mean the walkthrough calls a lethal trap or a
+                // forced setback "completable" via the exact path that
+                // triggers it, which is worse than reporting a stage as
+                // stuck when it may in fact be reachable some other way
+                // this pass did not find.
+                const lethal = typeof guard.onFail?.damage === "number" && guard.onFail.damage > 0;
+                entry.note = lethal
+                  ? `Taking ${itemLabel(item)} here is guarded, and nothing sets what it requires first — ` +
+                    `this looks fatal as written. Check this stage by hand.`
+                  : `Taking ${itemLabel(item)} here is guarded, and nothing sets what it requires first — ` +
+                    `check this stage by hand.`;
+              } else {
+                inv.add(item);
+                everHeld.add(item);
+                roomItems[source]?.delete(item);
+                entry = { ...entry, room: source, roomName: roomLabel(source), path,
+                  action: `take ${itemLabel(item)}` };
+              }
             }
           } else {
             // offered in a trade we can currently afford — "afford" now
