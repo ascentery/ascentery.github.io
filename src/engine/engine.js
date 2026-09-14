@@ -802,7 +802,7 @@ function applyEffects(prev, effects) {
          the end of this whole turn rather than the instant this take is
          processed (see the comment on takenGuarded above for why). */
       const guard = WORLD.guardedItems?.[id];
-      if (guard) takenGuarded.push({ id, guard });
+      if (guard) takenGuarded.push({ id, guard, takenInRoom: s.player.room });
       continue;
     }
 
@@ -965,7 +965,7 @@ function applyEffects(prev, effects) {
      condition being satisfied by a later effect in the same turn (or an
      earlier one processed after the take, in whatever order the model
      happened to list them) is correctly recognised either way. */
-  for (const { id, guard } of takenGuarded) {
+  for (const { id, guard, takenInRoom } of takenGuarded) {
     if (s.player.hp <= 0) break; // already dead from an earlier guard this same turn
     if (stageMet(s, guard.requires)) continue;
     const fail = guard.onFail ?? {};
@@ -977,15 +977,18 @@ function applyEffects(prev, effects) {
     // dead player drop something afterward makes no sense, and the
     // death check just below is what actually sets s.over = "dead".
     if (s.player.hp > 0) {
-      if (fail.moveTo && WORLD.rooms[fail.moveTo]) {
-        s.player.room = fail.moveTo;
-      }
+      // Dropped items stay behind in the room the guard actually caught
+      // you in, before the room field below is overwritten by moveTo —
+      // you flee empty-handed, the cheese never leaves the kitchen.
       for (const dropId of fail.dropHeld ?? []) {
         const idx = s.player.inventory.indexOf(dropId);
         if (idx !== -1) {
           s.player.inventory.splice(idx, 1);
-          (s.roomItems[s.player.room] ??= []).push(dropId);
+          (s.roomItems[takenInRoom] ??= []).push(dropId);
         }
+      }
+      if (fail.moveTo && WORLD.rooms[fail.moveTo]) {
+        s.player.room = fail.moveTo;
       }
     }
   }
