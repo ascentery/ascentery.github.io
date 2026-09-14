@@ -235,6 +235,19 @@ export function buildWalkthrough(WORLD) {
           entry.action = `have the ${itemLabel(item)}`;
         } else {
           collectFetchablePrereqs();
+          // Re-checked here on purpose: collectFetchablePrereqs can obtain
+          // this exact item as a side effect of eagerly resolving some
+          // unrelated downstream gate (a prop elsewhere that happens to
+          // require it, chasing a lock this stage never asked about) —
+          // the check above ran before that happened, against the old,
+          // still-empty everHeld, and without this second check the item
+          // being genuinely obtained gets reported as unresolved because
+          // the code below that looks for it in roomItems now finds
+          // nothing there, since it was already picked up and consumed.
+          if (everHeld.has(item)) {
+            entry.already = true;
+            entry.action = `have the ${itemLabel(item)}`;
+          } else {
           const open = reachableNow();
           // lying in a room already open to us
           let source = Object.entries(roomItems).find(([rk, set]) => open.has(rk) && set.has(item))?.[0];
@@ -278,6 +291,7 @@ export function buildWalkthrough(WORLD) {
             } else {
               entry.note = "could not be resolved automatically — check this stage by hand";
             }
+          }
           }
         }
       } else if (when.mobHas) {
