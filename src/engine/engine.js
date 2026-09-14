@@ -798,14 +798,24 @@ function applyEffects(prev, effects) {
       if (guard && !stageMet(s, guard.requires)) {
         const fail = guard.onFail ?? {};
         if (fail.message) note(fail.message, "system");
-        if (fail.moveTo && WORLD.rooms[fail.moveTo]) {
-          s.player.room = fail.moveTo;
+        if (typeof fail.damage === "number" && fail.damage > 0) {
+          s.player.hp -= fail.damage;
         }
-        for (const dropId of fail.dropHeld ?? []) {
-          const idx = s.player.inventory.indexOf(dropId);
-          if (idx !== -1) {
-            s.player.inventory.splice(idx, 1);
-            (s.roomItems[s.player.room] ??= []).push(dropId);
+        // Lethal damage ends things right here — moving the body or
+        // making a dead player drop something afterward makes no sense,
+        // and the general "did that kill the player" check at the end of
+        // this function is what actually sets s.over = "dead" and stops
+        // everything else, the same way it already does for combat.
+        if (s.player.hp > 0) {
+          if (fail.moveTo && WORLD.rooms[fail.moveTo]) {
+            s.player.room = fail.moveTo;
+          }
+          for (const dropId of fail.dropHeld ?? []) {
+            const idx = s.player.inventory.indexOf(dropId);
+            if (idx !== -1) {
+              s.player.inventory.splice(idx, 1);
+              (s.roomItems[s.player.room] ??= []).push(dropId);
+            }
           }
         }
       }
