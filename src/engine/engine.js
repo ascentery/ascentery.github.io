@@ -752,6 +752,15 @@ function applyEffects(prev, effects) {
   const s = JSON.parse(JSON.stringify(prev));
   const log = [];
   const note = (text, kind = "system") => log.push({ kind, text });
+  // A guard's check is deferred to the end of the turn rather than fired
+  // the instant a take happens — a single message like "use stick on
+  // trap" can produce both a work effect and a take effect in the same
+  // turn, and the order the model lists them in is not guaranteed to
+  // match the order that makes narrative sense. Checking only once,
+  // against the turn's final state, means "disarm then take" and "take
+  // while also disarming" both resolve the same correct way, regardless
+  // of which effect happened to be listed first.
+  const takenGuarded = [];
 
   for (const e of (effects || []).slice(0, 4)) {
     const room = WORLD.rooms[s.player.room];
@@ -789,36 +798,11 @@ function applyEffects(prev, effects) {
       /* A guarded item can be taken freely once its condition is true.
          Taking it before then still succeeds — the item is genuinely,
          briefly held, matching what actually happens narratively (you do
-         get your hands on it) — but has a consequence immediately after,
-         rather than simply being blocked outright. This is the one
-         "reactive punishment" shape the rest of the effects vocabulary
-         has no equivalent for: everything else here only ever unlocks
-         forward, never punishes taking something without a prerequisite. */
+         get your hands on it) — but has a consequence, checked once at
+         the end of this whole turn rather than the instant this take is
+         processed (see the comment on takenGuarded above for why). */
       const guard = WORLD.guardedItems?.[id];
-      if (guard && !stageMet(s, guard.requires)) {
-        const fail = guard.onFail ?? {};
-        if (fail.message) note(fail.message, "system");
-        if (typeof fail.damage === "number" && fail.damage > 0) {
-          s.player.hp -= fail.damage;
-        }
-        // Lethal damage ends things right here — moving the body or
-        // making a dead player drop something afterward makes no sense,
-        // and the general "did that kill the player" check at the end of
-        // this function is what actually sets s.over = "dead" and stops
-        // everything else, the same way it already does for combat.
-        if (s.player.hp > 0) {
-          if (fail.moveTo && WORLD.rooms[fail.moveTo]) {
-            s.player.room = fail.moveTo;
-          }
-          for (const dropId of fail.dropHeld ?? []) {
-            const idx = s.player.inventory.indexOf(dropId);
-            if (idx !== -1) {
-              s.player.inventory.splice(idx, 1);
-              (s.roomItems[s.player.room] ??= []).push(dropId);
-            }
-          }
-        }
-      }
+      if (guard) takenGuarded.push({ id, guard });
       continue;
     }
 
@@ -974,6 +958,36 @@ function applyEffects(prev, effects) {
        log the shape so it can be handled above. */
     console.warn("unrecognised effect", JSON.stringify(e));
     note("Nothing about the world actually changed.");
+  }
+
+  /* Checked once here, against the state as it stands at the end of the
+     whole turn — not the instant each take happened — so a guard's
+     condition being satisfied by a later effect in the same turn (or an
+     earlier one processed after the take, in whatever order the model
+     happened to list them) is correctly recognised either way. */
+  for (const { id, guard } of takenGuarded) {
+    if (s.player.hp <= 0) break; // already dead from an earlier guard this same turn
+    if (stageMet(s, guard.requires)) continue;
+    const fail = guard.onFail ?? {};
+    if (fail.message) note(fail.message, "system");
+    if (typeof fail.damage === "number" && fail.damage > 0) {
+      s.player.hp -= fail.damage;
+    }
+    // Lethal damage ends things right here — moving the body or making a
+    // dead player drop something afterward makes no sense, and the
+    // death check just below is what actually sets s.over = "dead".
+    if (s.player.hp > 0) {
+      if (fail.moveTo && WORLD.rooms[fail.moveTo]) {
+        s.player.room = fail.moveTo;
+      }
+      for (const dropId of fail.dropHeld ?? []) {
+        const idx = s.player.inventory.indexOf(dropId);
+        if (idx !== -1) {
+          s.player.inventory.splice(idx, 1);
+          (s.roomItems[s.player.room] ??= []).push(dropId);
+        }
+      }
+    }
   }
 
   advanceQuests(s, note);
