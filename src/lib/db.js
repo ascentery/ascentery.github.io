@@ -481,11 +481,12 @@ export function watchGeneration(worldId, onStage) {
   return () => { stopped = true }
 }
 
-export async function createWorld({ userId, title, brief, roomMin = null, roomMax = null }) {
+export async function createWorld({ userId, title, brief, gameBrief = null, storyDetails = null, roomMin = null, roomMax = null }) {
   const { data, error } = await supabase
     .from('worlds')
     .insert({
       owner_id: userId, title, brief, status: 'generating',
+      game_brief: gameBrief, story_details: storyDetails,
       room_min: roomMin, room_max: roomMax,
     })
     .select('id')

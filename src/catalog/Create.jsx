@@ -209,6 +209,8 @@ export function Create({ me, refreshWorlds, go }) {
           userId: me.id,
           title: title.trim() || "Untitled world",
           brief: gameDetails.trim() || storyDetails.trim() || desc.trim(),
+          gameBrief: desc.trim() || null,
+          storyDetails: storyDetails.trim() || null,
           roomMin: null,
           roomMax: null,
         });
