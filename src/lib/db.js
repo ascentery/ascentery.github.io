@@ -442,13 +442,9 @@ export async function saveWorldDetails(worldId, { title, brief }) {
     gated on this: a world half full of placeholder art is not ready to
     show strangers. */
 export async function isFullyIllustrated(worldId) {
-  const { count, error } = await supabase
-    .from('world_art')
-    .select('id', { count: 'exact', head: true })
-    .eq('world_id', worldId)
-    .is('image_path', null)
+  const { data, error } = await supabase.rpc('world_is_fully_illustrated', { p_world_id: worldId })
   if (error) throw error
-  return (count ?? 0) === 0
+  return Boolean(data)
 }
 
 /** Polls gen_stage while a world is being built, so progress can be shown
