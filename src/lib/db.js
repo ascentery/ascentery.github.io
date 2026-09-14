@@ -330,7 +330,7 @@ export function sortWorlds(worlds, key) {
 export async function loadWorlds(userId) {
   const { data, error } = await supabase
     .from('worlds')
-    .select('id, owner_id, title, brief, blurb, status, published, plays, room_count, mob_count, cover_path, failure_note, created_at, updated_at')
+    .select('id, owner_id, title, brief, game_brief, story_details, blurb, status, published, plays, room_count, mob_count, cover_path, failure_note, created_at, updated_at')
     .or(`published.eq.true,owner_id.eq.${userId}`)
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -360,6 +360,8 @@ export async function loadWorlds(userId) {
     id: w.id,
     title: w.title,
     brief: w.brief ?? '',
+    gameBrief: w.game_brief ?? '',
+    storyDetails: w.story_details ?? '',
     blurb: w.blurb ?? '',
     status: w.status,
     published: w.published,

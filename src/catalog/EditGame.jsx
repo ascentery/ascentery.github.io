@@ -12,13 +12,12 @@ import {
 } from "../lib/db";
 import { buildWalkthrough } from "../engine/engine";
 import { ArtTab } from "./ArtTab";
-import { WorldTab } from "./WorldTab";
 import { T, inputStyle } from "../theme";
 import { Btn, Chip, Empty, Field } from "../ui/primitives";
 import { renderMarkdown } from "../ui/markdownLite";
 
-export function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
-  const [tab, setTab] = useState("art");
+export function EditGame({ game, refreshWorlds, me, setMe, go, chars, initialTab }) {
+  const [tab, setTab] = useState(initialTab ?? "details");
   const [art, setArt] = useState(null);
   const [illustrated, setIllustrated] = useState(false);
   const [pubError, setPubError] = useState(null);
@@ -77,7 +76,7 @@ export function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
       )}
 
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid " + T.edge, marginBottom: 24, flexWrap: "wrap" }}>
-        {[["art", "Pictures"], ["world", "World"], ["details", "Details"], ["walkthrough", "Walkthrough"], ["repair", "Changes / Repairs"], ["settings", "Settings"]].map(([k, label]) => (
+        {[["details", "Details"], ["art", "Pictures"], ["walkthrough", "Walkthrough"], ["repair", "Changes / Repairs"], ["settings", "Settings"]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className="pf-btn"
             style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px", fontFamily: T.mono, fontSize: 12,
               color: tab === k ? T.bone : T.boneDim, boxShadow: tab === k ? "inset 0 -2px 0 " + T.ochre : "none" }}>
@@ -92,12 +91,6 @@ export function EditGame({ game, refreshWorlds, me, setMe, go, chars }) {
           : art.length
             ? <ArtTab entries={art} setEntries={setArt} me={me} setMe={setMe} worldId={game.id} onDrawn={checkIllustrated} title={game.title} />
             : <Empty title="Nothing to draw yet." line="Pictures appear once the world has been built." />
-      )}
-
-      {tab === "world" && (
-        game.status === "ready"
-          ? <WorldTab game={game} refreshWorlds={refreshWorlds} me={me} setMe={setMe} go={go} />
-          : <Empty title="Nothing to change yet." line="This world has not finished building." />
       )}
 
       {tab === "details" && <DetailsTab game={game} refreshWorlds={refreshWorlds} />}
@@ -214,7 +207,28 @@ export function DetailsTab({ game, refreshWorlds }) {
           onBlur={() => save({ title })} style={inputStyle} />
       </Field>
 
-      <Field label="Brief" hint="What you originally described. This is not shown to players, but it is what an amendment reads for context.">
+      {/* The next three follow the Create wizard's own order — what was
+          typed, what it became, what it became again — so reading down
+          the page traces the same path building the world once did.
+          Only the last one is still live; the first two are a historical
+          record, kept purely so the story, goals, and tone don't get
+          lost once the wizard that produced them is gone. Neither is
+          shown at all for a world built before this was tracked. */}
+      {game.gameBrief && (
+        <Field label="The Game Brief" hint="What was originally typed into the first step of the Create wizard.">
+          <textarea value={game.gameBrief} readOnly rows={6}
+            style={{ ...inputStyle, lineHeight: 1.6, resize: "vertical", opacity: 0.75, cursor: "default" }} />
+        </Field>
+      )}
+
+      {game.storyDetails && (
+        <Field label="The Story Details" hint="What the brief above became after the wizard's second step expanded it.">
+          <textarea value={game.storyDetails} readOnly rows={8}
+            style={{ ...inputStyle, lineHeight: 1.6, resize: "vertical", opacity: 0.75, cursor: "default" }} />
+        </Field>
+      )}
+
+      <Field label="The Game Details" hint="What actually went on to build the world. This is not shown to players, but it is what an amendment or repair reads for context.">
         <textarea value={brief} onChange={(e) => setBrief(e.target.value)}
           onBlur={() => save({ brief })} rows={10}
           style={{ ...inputStyle, lineHeight: 1.6, resize: "vertical" }} />

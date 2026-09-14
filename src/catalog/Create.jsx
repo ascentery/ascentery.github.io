@@ -439,7 +439,7 @@ export function Create({ me, refreshWorlds, go }) {
           The next real step is illustrating it, in the Pictures tab — a world can be published once
           every room, character, item and prop has a picture.
         </p>
-        <Btn kind="solid" onClick={() => go("edit", { id: worldId })}>Go to Pictures</Btn>
+        <Btn kind="solid" onClick={() => go("edit", { id: worldId, tab: "art" })}>Go to Pictures</Btn>
       </>)}
 
       {step === 4 && phase === "failed" && (<>

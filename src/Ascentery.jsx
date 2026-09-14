@@ -183,7 +183,7 @@ export default function Ascentery() {
         {view.name === "avatar" && <AvatarPage me={me} setMe={setMe} go={go} />}
 
         {view.name === "settings" && <SettingsPage me={me} go={go} />}
-        {view.name === "edit" && <EditGame game={games.find((g) => g.id === view.id)} refreshWorlds={refreshWorlds} me={me} setMe={setMe} go={go} chars={chars} />}
+        {view.name === "edit" && <EditGame game={games.find((g) => g.id === view.id)} refreshWorlds={refreshWorlds} me={me} setMe={setMe} go={go} chars={chars} initialTab={view.tab} />}
       </main>
     </Shell>
   );
