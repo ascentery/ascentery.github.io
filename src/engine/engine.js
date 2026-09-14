@@ -828,6 +828,17 @@ function applyEffects(prev, effects) {
       s.player.inventory = s.player.inventory.filter((x) => x !== id);
       (s.roomItems[s.player.room] ??= []).push(id);
       note(`Dropped: ${itemName(id)}.`);
+
+      /* The only other place a flag gets set is a prop's own "sets"
+         field, triggered by working it — nothing has ever let a plain
+         drop set one. This is the one narrow exception: a specific item,
+         dropped in a specific room, sets a flag, exactly like a prop
+         does, just triggered by "drop" instead of "work". */
+      const trigger = WORLD.dropTriggers?.[id];
+      if (trigger && trigger.inRoom === s.player.room && trigger.sets) {
+        (s.flags ??= {})[trigger.sets] = true;
+        if (trigger.message) note(trigger.message, "system");
+      }
       continue;
     }
 
