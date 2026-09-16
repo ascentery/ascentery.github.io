@@ -1282,6 +1282,28 @@ export async function drawArt(artId) {
   return body   // { url, balance_cents, cost_cents, engine }
 }
 
+/** Admin only — computes and returns the exact final prompt (and, for the
+    pixel engine, the negative prompt and the LoRA settings) without
+    drawing or charging anything. Reuses the art function's own real
+    prompt-assembly logic rather than a second, client-side copy that
+    could quietly drift out of sync with it. */
+export async function previewArtPrompt(artId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/art`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ artId, dryRun: true }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `Could not preview the prompt (${res.status})`)
+  return body   // { engine, prompt, negative, settings? }
+}
+
 /** Admin only, enforced server-side regardless of what this function lets
     you attempt. Reads the file as a data URL client-side and posts it as
     JSON, matching every other call in this file — no multipart handling
@@ -1478,7 +1500,17 @@ export async function loadArtConfig(worldId) {
   // Worlds configured before the two-engine split stored one `style`.
   if (saved.style && !saved.style_pixel) saved.style_pixel = saved.style
   delete saved.style
-  return { ...DEFAULT_ART, ...saved }
+  // DEFAULT_ART is deliberately NOT merged in here. This used to return
+  // {...DEFAULT_ART, ...saved}, which meant every box the creator had
+  // never touched silently showed the platform's own default wording —
+  // even in Custom mode, whose entire point is that a blank box stays
+  // blank and sends nothing. What actually gets sent when drawing
+  // already resolves defaults correctly server-side; this was purely a
+  // display bug, showing text that was never really what Custom would
+  // have sent. DEFAULT_ART's only real job is in saveArtConfig below,
+  // deciding what is redundant to persist — not deciding what a box
+  // displays.
+  return saved
 }
 
 export async function saveArtConfig(worldId, config) {

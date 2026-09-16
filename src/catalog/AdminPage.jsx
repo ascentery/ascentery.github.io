@@ -599,6 +599,50 @@ function ArtPresetList({ engine }) {
             style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
         </Field>
 
+        {engine === "pixel" && (
+          <div style={{ borderTop: "1px solid " + T.edge, paddingTop: 16, marginTop: 4 }}>
+            <p style={{ fontFamily: T.serif, fontSize: 13.5, color: T.boneDim, lineHeight: 1.6, margin: "0 0 14px" }}>
+              The pixel/SDXL+LoRA engine's own numeric settings. These have no equivalent for a
+              creator — nobody outside admin ever sees or changes them, alongside this preset's
+              own prompt text above. Left blank, each falls through to the platform's own default.
+            </p>
+
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 4 }}>
+              <Field label="LoRA scale" hint="Platform default: 0.5">
+                <input type="number" step="0.05" style={{ ...inputStyle, width: 110 }}
+                  value={config.lora_scale ?? ""} onChange={(e) => field("lora_scale", e.target.value)} />
+              </Field>
+              <Field label="Guidance scale" hint="Platform default: 7.5">
+                <input type="number" step="0.5" style={{ ...inputStyle, width: 110 }}
+                  value={config.guidance_scale ?? ""} onChange={(e) => field("guidance_scale", e.target.value)} />
+              </Field>
+              <Field label="Inference steps" hint="Platform default: 20">
+                <input type="number" step="1" style={{ ...inputStyle, width: 110 }}
+                  value={config.num_inference_steps ?? ""} onChange={(e) => field("num_inference_steps", e.target.value)} />
+              </Field>
+              <Field label="Safety checker version" hint="Platform default: v2">
+                <input style={{ ...inputStyle, width: 110 }}
+                  value={config.safety_checker_version ?? ""} onChange={(e) => field("safety_checker_version", e.target.value)} />
+              </Field>
+            </div>
+
+            <Field label="Expand prompt" hint="Platform default: off">
+              <div style={{ display: "flex", gap: 6 }}>
+                {["", "true", "false"].map((v) => (
+                  <button key={v || "default"} className="pf-btn"
+                    onClick={() => field("expand_prompt", v)}
+                    style={{ padding: "7px 12px", borderRadius: 2, cursor: "pointer", background: "transparent",
+                      fontFamily: T.mono, fontSize: 12,
+                      color: (config.expand_prompt ?? "") === v ? T.bone : T.boneDim,
+                      border: "1px solid " + ((config.expand_prompt ?? "") === v ? T.ochre : T.edge) }}>
+                    {v === "" ? "Platform default" : v === "true" ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          </div>
+        )}
+
         {error && (
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, marginBottom: 12 }}>{error}</p>
         )}

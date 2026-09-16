@@ -10,6 +10,7 @@ import {
   loadArtPresetLabels,
   loadDefaultArtPreset,
   money,
+  previewArtPrompt,
   saveArtConfig,
   setArtLock,
   setArtPrompt,
@@ -63,13 +64,14 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
   const [editing, setEditing] = useState(null);   // artId whose prompt is open
   const [artPresets, setArtPresets] = useState([]);          // { id, label, sort_order } — no content, ever, for non-admins
   const [preview, setPreview] = useState(null);               // { id, config } — admin-only, read-only
+  const [finalPreview, setFinalPreview] = useState({});       // { [artId]: { prompt, negative, settings } | "loading" | error string } — admin-only
 
   useEffect(() => {
     if (!worldId) return;
     let cancelled = false;
     loadArtConfig(worldId)
       .then((c) => { if (!cancelled) setConfig(c); })
-      .catch(() => { if (!cancelled) setConfig({ ...DEFAULT_ART }); });
+      .catch(() => { if (!cancelled) setConfig({}); });
     return () => { cancelled = true; };
   }, [worldId]);
 
@@ -243,6 +245,31 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
   const savePrompt = async (entry, prompt) => {
     setEntries((es) => es.map((e) => e.id === entry.id ? { ...e, prompt } : e));
     try { await setArtPrompt(entry.id, prompt); } catch (e) { console.error(e); }
+    // The preview reflects what is actually saved, the same thing a real
+    // draw would use — refreshed here so it never shows stale text after
+    // an edit, if it is currently open for this entry.
+    if (finalPreview[entry.id] !== undefined) fetchFinalPreview(entry);
+  };
+
+  const fetchFinalPreview = async (entry) => {
+    setFinalPreview((p) => ({ ...p, [entry.id]: "loading" }));
+    try {
+      const result = await previewArtPrompt(entry.id);
+      setFinalPreview((p) => ({ ...p, [entry.id]: result }));
+    } catch (e) {
+      setFinalPreview((p) => ({ ...p, [entry.id]: e.message }));
+    }
+  };
+
+  const toggleFinalPreview = (entry) => {
+    setFinalPreview((p) => {
+      if (p[entry.id] !== undefined) {
+        const { [entry.id]: _drop, ...rest } = p;
+        return rest;
+      }
+      return p;
+    });
+    if (finalPreview[entry.id] === undefined) fetchFinalPreview(entry);
   };
 
   const toggleLock = async (entry) => {
@@ -569,6 +596,43 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
             style={{ ...inputStyle, fontSize: 12.5, lineHeight: 1.5, marginTop: 6, resize: "vertical" }} />
         );
 
+        // Admin only — the exact text the model actually receives, joined
+        // together from style + framing + this box, computed server-side
+        // by the same real code a draw uses rather than a second copy of
+        // the stitching logic here that could quietly drift out of sync.
+        const finalPromptBlock = isAdmin && kind !== "orphan" && (
+          <div style={{ marginTop: 6 }}>
+            <button onClick={() => toggleFinalPreview(e)} className="pf-btn"
+              style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 10.5,
+                color: T.ochre, cursor: "pointer" }}>
+              {finalPreview[e.id] !== undefined ? "hide final prompt" : "show final prompt"}
+            </button>
+            {finalPreview[e.id] !== undefined && (
+              <div style={{ marginTop: 6, padding: "10px 12px", border: "1px solid " + T.ochre + "66",
+                borderRadius: 2, fontFamily: T.mono, fontSize: 11, lineHeight: 1.7, color: T.boneDim }}>
+                {finalPreview[e.id] === "loading" ? (
+                  "loading\u2026"
+                ) : typeof finalPreview[e.id] === "string" ? (
+                  <span style={{ color: T.clay }}>{finalPreview[e.id]}</span>
+                ) : (<>
+                  <div><b style={{ color: T.ochre }}>Prompt:</b> {finalPreview[e.id].prompt || "—"}</div>
+                  {finalPreview[e.id].negative && (
+                    <div style={{ marginTop: 4 }}>
+                      <b style={{ color: T.ochre }}>Negative:</b> {finalPreview[e.id].negative || "—"}
+                    </div>
+                  )}
+                  {finalPreview[e.id].settings && (
+                    <div style={{ marginTop: 4 }}>
+                      <b style={{ color: T.ochre }}>Settings:</b>{" "}
+                      {Object.entries(finalPreview[e.id].settings).map(([k, v]) => `${k}: ${v}`).join(", ")}
+                    </div>
+                  )}
+                </>)}
+              </div>
+            )}
+          </div>
+        );
+
         const useRow = layout === "list" || kind === "cover" || kind === "ending";
 
         if (useRow) {
@@ -616,6 +680,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
                 {nameRow}
                 {promptRow}
                 {textarea}
+                {finalPromptBlock}
               </div>
             </div>
           );
@@ -631,6 +696,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
             {nameRow}
             {promptRow}
             {editing === e.id && textarea}
+            {editing === e.id && finalPromptBlock}
           </div>
         );
       })}
