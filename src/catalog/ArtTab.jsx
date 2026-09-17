@@ -568,11 +568,12 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
       </p>
     )}
 
-    {/* The splash screen is the one entry that matters most, and a grid
-        cell never made sense for something there is only ever one of — it
-        always renders as a full-width row, the same shape as list mode,
-        regardless of the grid/list toggle above. */}
-    <div style={(layout === "grid" && kind !== "cover" && kind !== "ending")
+    {/* Splash screen, ending, and badge are each the one entry that ever
+        exists of their kind — a grid cell never made sense for something
+        there is only ever one of. All three always render as a
+        full-width row, the same shape as list mode, regardless of the
+        grid/list toggle above. */}
+    <div style={(layout === "grid" && kind !== "cover" && kind !== "ending" && kind !== "badge")
       ? { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 18 }
       : { display: "flex", flexDirection: "column", gap: 12 }}>
       {shown.map((e) => {
