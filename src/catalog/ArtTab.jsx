@@ -622,10 +622,10 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
           </div>
         );
 
-        // Its own row, below redraw/upload rather than sharing space with
-        // them — regenerating a prompt is a materially different, rarer
-        // action than drawing or uploading a picture, and crowding it
-        // into the same row made it easy to miss or mis-click.
+        // Below the prompt textarea, not up near title/redraw/upload —
+        // keeps the top row clean for the actions someone uses on every
+        // picture, and puts this rarer, admin-only action next to the
+        // text it actually changes instead of sharing space above it.
         const promptToolsRow = isAdmin && (kind === "ending" || kind === "badge") && (
           <div style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: 4 }}>
             <button onClick={() => regeneratePrompt(e, kind)} disabled={regeneratingPromptFor === e.id}
@@ -761,9 +761,9 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
               </div>
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
                 {nameRow}
-                {promptToolsRow}
                 {promptRow}
                 {textarea}
+                {promptToolsRow}
                 {finalPromptBlock}
               </div>
             </div>
@@ -778,9 +778,9 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
               {lockButton}
             </div>
             {nameRow}
-            {promptToolsRow}
             {promptRow}
             {editing === e.id && textarea}
+            {editing === e.id && promptToolsRow}
             {editing === e.id && finalPromptBlock}
           </div>
         );
