@@ -1304,6 +1304,28 @@ export async function previewArtPrompt(artId) {
   return body   // { engine, prompt, negative, settings? }
 }
 
+/** Admin only — retroactively generates endingScene/badgeEssence for a
+    world built before those fields existed, and writes them straight
+    into the ending/badge world_art rows. Only changes the stored
+    prompt text; a creator still needs to redraw from the Pictures tab
+    to see it reflected in an actual image. */
+export async function generateEndingArt(worldId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ending-art`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ worldId }),
+  })
+  const body2 = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body2.error || `Could not generate ending art (${res.status})`)
+  return body2   // { endingScene, badgeEssence }
+}
+
 /** Admin only, enforced server-side regardless of what this function lets
     you attempt. Reads the file as a data URL client-side and posts it as
     JSON, matching every other call in this file — no multipart handling

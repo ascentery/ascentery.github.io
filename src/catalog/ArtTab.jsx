@@ -10,6 +10,7 @@ import {
   loadArtPresetLabels,
   loadDefaultArtPreset,
   money,
+  generateEndingArt,
   previewArtPrompt,
   saveArtConfig,
   setArtLock,
@@ -196,6 +197,8 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
   };
 
   const [uploading, setUploading] = useState(null);
+  const [regeneratingEndingArt, setRegeneratingEndingArt] = useState(false);
+  const [endingArtNote, setEndingArtNote] = useState(null);
 
   const upload = async (entry, file) => {
     if (!file) return;
@@ -209,6 +212,30 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
       setError(e.message);
     } finally {
       setUploading(null);
+    }
+  };
+
+  /* For a world built before endingScene/badgeEssence existed — writes
+     new prompts straight into the ending/badge rows from the world's
+     actual premise and quest structure. Only the stored text changes;
+     an already-drawn picture keeps showing the old one until redrawn. */
+  const regenerateEndingArt = async () => {
+    setRegeneratingEndingArt(true);
+    setEndingArtNote(null);
+    setError(null);
+    try {
+      const { endingScene, badgeEssence } = await generateEndingArt(worldId);
+      setEntries((es) => es.map((e) => {
+        if (e.kind === "ending") return { ...e, prompt: endingScene };
+        if (e.kind === "badge") return { ...e, prompt: `An emblem: ${badgeEssence}` };
+        return e;
+      }));
+      setRevision((r) => r + 1); // the prompt boxes are uncontrolled — this remounts them with the new text
+      setEndingArtNote("New prompts written. Redraw the ending and badge pictures to see them reflected.");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setRegeneratingEndingArt(false);
     }
   };
 
@@ -578,6 +605,18 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
                   disabled={uploading === e.id}
                   onChange={(ev) => { upload(e, ev.target.files?.[0]); ev.target.value = ""; }} />
               </label>
+            )}
+            {isAdmin && kind === "ending" && (
+              <button onClick={regenerateEndingArt} disabled={regeneratingEndingArt} className="pf-btn"
+                style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
+                  color: T.ochre, cursor: regeneratingEndingArt ? "default" : "pointer" }}>
+                {regeneratingEndingArt ? "writing new prompts\u2026" : "regenerate ending + badge prompts"}
+              </button>
+            )}
+            {isAdmin && kind === "ending" && endingArtNote && (
+              <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.moss, marginLeft: 10 }}>
+                {endingArtNote}
+              </span>
             )}
           </div>
         );
