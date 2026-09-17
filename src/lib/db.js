@@ -546,7 +546,10 @@ export async function loadDraft(userId) {
     title: row.title ?? '',
     desc: row.game_brief ?? '',
     storyDetails: row.story_details ?? '',
-    gameDetails: row.brief ?? '',
+    // brief is NOT NULL, so at steps 1-2 it holds a fallback placeholder
+    // (see saveDraft), not real game-details text — only trust it as
+    // gameDetails once step 3 was actually reached.
+    gameDetails: (row.draft_step ?? 1) >= 3 ? (row.brief ?? '') : '',
     step: row.draft_step ?? 1,
     titles: row.draft_titles ?? [],
     suggestedRoomCount: row.draft_suggested_room_count ?? null,
@@ -578,7 +581,14 @@ export async function saveDraft({
     title: title || null,
     game_brief: desc || null,
     story_details: storyDetails || null,
-    brief: gameDetails || null,
+    // worlds.brief is NOT NULL — at steps 1-2, gameDetails genuinely
+    // doesn't exist yet (it's only written in step 3), so this falls
+    // back through whatever's actually available, same chain build()
+    // itself uses. A placeholder only if even desc is somehow empty,
+    // which step 1's own validation shouldn't allow but this guards
+    // against regardless, since a failed insert here is exactly the
+    // silent-data-loss bug this whole feature exists to prevent.
+    brief: gameDetails || storyDetails || desc || "(untitled draft)",
     draft_step: step,
     draft_titles: titles?.length ? titles : null,
     draft_suggested_room_count: suggestedRoomCount ?? null,
