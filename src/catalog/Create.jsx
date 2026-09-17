@@ -139,16 +139,16 @@ export function Create({ me, refreshWorlds, go }) {
   };
 
   // The hint-driven version — same generator, but the creator's own free
-  // text steers genre/mode/subject wherever it says something specific,
-  // rather than leaving everything to the random pick.
+  // text steers genre/mode/subject wherever it says something specific.
+  // An empty box is allowed on purpose: it just behaves like "generate an
+  // example" below, since the server already treats an empty hint as no
+  // hint at all and falls through to the fully random path.
   const generateFromHint = async () => {
-    if (!hint.trim()) return;
     setHintBusy(true); setHintError(null);
     try {
       const res = await generateBriefFromPreset(null, hint.trim());
       setTitle(res.title || title);
       setDesc(res.brief);
-      setGenFrom(null);
       setBreakdown(res.breakdown ?? null);
     } catch (e) {
       setHintError(e.message);
@@ -317,7 +317,7 @@ export function Create({ me, refreshWorlds, go }) {
               style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
           </Field>
           <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
-            <Btn kind="ghost" disabled={hintBusy || !hint.trim()} onClick={generateFromHint}>
+            <Btn kind="ghost" disabled={hintBusy} onClick={generateFromHint}>
               {hintBusy ? "writing\u2026" : "generate"}
             </Btn>
             <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>$0.01</span>
@@ -332,7 +332,7 @@ export function Create({ me, refreshWorlds, go }) {
         </Field>
         <Field label="Describe the world"
           hint="Places, who is in them, what they want, and above all what cannot be talked around. The rules you write here are the ones the game will enforce.">
-          <textarea value={desc} onChange={(e) => { setDesc(e.target.value); setGenFrom(null); }} rows={10}
+          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={10}
             placeholder="Somewhere real enough to walk around in"
             style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
         </Field>
