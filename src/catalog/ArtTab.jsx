@@ -627,24 +627,28 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
         // picture, and puts this rarer, admin-only action next to the
         // text it actually changes instead of sharing space above it.
         const promptToolsRow = isAdmin && (kind === "ending" || kind === "badge") && (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: 4 }}>
-            <button onClick={() => regeneratePrompt(e, kind)} disabled={regeneratingPromptFor === e.id}
-              className="pf-btn"
-              style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
-                color: T.ochre, cursor: regeneratingPromptFor === e.id ? "default" : "pointer" }}>
-              {regeneratingPromptFor === e.id
-                ? "writing\u2026"
-                : kind === "ending" ? "regenerate ending prompt" : "generate badge prompt"}
-            </button>
-            {e.prevPrompt != null && (
-              <button onClick={() => undoPrompt(e)} className="pf-btn"
+          <div style={{ paddingTop: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
+              {e.prevPrompt != null && (
+                <button onClick={() => undoPrompt(e)} className="pf-btn"
+                  style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
+                    color: T.boneDim, cursor: "pointer" }}>
+                  undo prompt
+                </button>
+              )}
+              <button onClick={() => regeneratePrompt(e, kind)} disabled={regeneratingPromptFor === e.id}
+                className="pf-btn"
                 style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
-                  color: T.boneDim, cursor: "pointer" }}>
-                undo prompt
+                  color: T.ochre, cursor: regeneratingPromptFor === e.id ? "default" : "pointer" }}>
+                {regeneratingPromptFor === e.id
+                  ? "writing\u2026"
+                  : kind === "ending" ? "regenerate ending prompt" : "generate badge prompt"}
               </button>
-            )}
+            </div>
             {promptNote[e.id] && (
-              <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.moss }}>{promptNote[e.id]}</span>
+              <div style={{ textAlign: "right", marginTop: 4 }}>
+                <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.moss }}>{promptNote[e.id]}</span>
+              </div>
             )}
           </div>
         );
