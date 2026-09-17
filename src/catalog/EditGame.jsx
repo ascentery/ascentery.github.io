@@ -17,7 +17,7 @@ import { Btn, Chip, Empty, Field } from "../ui/primitives";
 import { renderMarkdown } from "../ui/markdownLite";
 
 export function EditGame({ game, refreshWorlds, me, setMe, go, chars, initialTab }) {
-  const [tab, setTab] = useState(initialTab ?? "details");
+  const [tab, setTab] = useState(initialTab ?? "art");
   const [art, setArt] = useState(null);
   const [illustrated, setIllustrated] = useState(false);
   const [pubError, setPubError] = useState(null);

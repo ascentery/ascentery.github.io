@@ -15,6 +15,7 @@ import {
   deletePreset,
   deleteTheme,
   loadArtPresets,
+  setArtPresetPublished,
   loadDefaultArtPreset,
   loadDefaultPreset,
   loadDefaultTheme,
@@ -514,6 +515,18 @@ function ArtPresetList({ engine }) {
     }
   };
 
+  const togglePublished = async (row) => {
+    setBusy(true);
+    try {
+      await setArtPresetPublished(row.id, !row.published);
+      setRows((rs) => rs.map((r) => r.id === row.id ? { ...r, published: !row.published } : r));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const field = (key, patch) => setConfig((c) => ({ ...c, [key]: patch }));
 
   return (
@@ -541,7 +554,13 @@ function ArtPresetList({ engine }) {
                 {defaultId === r.id && (
                   <span style={{ fontFamily: T.mono, fontSize: 10, color: T.ochre }}>default</span>
                 )}
+                {!r.published && (
+                  <span style={{ fontFamily: T.mono, fontSize: 10, color: T.clay }}>unpublished — creators don't see this</span>
+                )}
               </div>
+              <Btn kind="ghost" disabled={busy} onClick={() => togglePublished(r)}>
+                {r.published ? "unpublish" : "publish"}
+              </Btn>
               {defaultId === r.id ? (
                 <Btn kind="ghost" disabled={busy} onClick={removeDefault}>remove default</Btn>
               ) : (

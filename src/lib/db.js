@@ -1407,11 +1407,16 @@ export const DEFAULT_ART = {
 export async function loadArtPresets(engine) {
   const { data, error } = await supabase
     .from('art_presets')
-    .select('id, label, config, sort_order')
+    .select('id, label, config, sort_order, published')
     .eq('engine', engine)
     .order('sort_order', { ascending: true })
   if (error) throw error
   return data ?? []
+}
+
+export async function setArtPresetPublished(id, published) {
+  const { error } = await supabase.from('art_presets').update({ published }).eq('id', id)
+  if (error) throw error
 }
 
 /** Describe a problem in plain words; the model reads the world's own
