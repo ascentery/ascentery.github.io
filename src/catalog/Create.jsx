@@ -109,7 +109,10 @@ export function Create({ me, refreshWorlds, go }) {
 
   // step 3: game details
   const [gameDetails, setGameDetails] = useState("");
+  const [suggestedRoomCount, setSuggestedRoomCount] = useState(null);
+  const [roomCount, setRoomCount] = useState("");   // string, so an empty box is a real, distinct state
   const [titles, setTitles] = useState([]);
+  const [originalTitle, setOriginalTitle] = useState("");
   const [altTitlesOpen, setAltTitlesOpen] = useState(false);
   const [detailPresets, setDetailPresets] = useState([]);
   const [chosenDetailPreset, setChosenDetailPreset] = useState("");
@@ -196,6 +199,8 @@ export function Create({ me, refreshWorlds, go }) {
       const res = await generateGameDetails({ mode: "full", title, brief: desc, storyDetails });
       setGameDetails(res.gameDetails ?? "");
       setTitles(res.titles ?? []);
+      setOriginalTitle(title);
+      setSuggestedRoomCount(res.suggestedRoomCount ?? null);
       setStep(3);
     } catch (e) {
       setDetailsError(e.message);
@@ -244,14 +249,19 @@ export function Create({ me, refreshWorlds, go }) {
         // progress, even though it is genuinely still running.
         await resetWorldForRetry(id);
       } else {
+        // User's own number wins if they typed one; otherwise fall back to
+        // whatever the AI suggested in step 3. Both are already clamped
+        // (the input itself won't accept outside 1-20, and the server
+        // clamps its own suggestion before it ever reaches this state).
+        const effectiveRoomCount = roomCount.trim() ? Number(roomCount) : suggestedRoomCount;
         id = await createWorld({
           userId: me.id,
           title: title.trim() || "Untitled world",
           brief: gameDetails.trim() || storyDetails.trim() || desc.trim(),
           gameBrief: desc.trim() || null,
           storyDetails: storyDetails.trim() || null,
-          roomMin: null,
-          roomMax: null,
+          roomMin: effectiveRoomCount || null,
+          roomMax: effectiveRoomCount || null,
         });
       }
       setWorldId(id);
@@ -426,7 +436,14 @@ export function Create({ me, refreshWorlds, go }) {
           {altTitlesOpen ? "\u2212" : "+"} Alternative titles
         </button>
         {altTitlesOpen && (<>
-          <div style={{ marginBottom: 10 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+            <button className="pf-btn" onClick={() => setTitle(originalTitle)}
+              style={{ padding: "6px 10px", borderRadius: 2, cursor: "pointer", background: "transparent",
+                fontFamily: T.mono, fontSize: 11.5,
+                color: title === originalTitle ? T.bone : T.boneDim,
+                border: "1px solid " + (title === originalTitle ? T.ochre : T.edge) }}>
+              {originalTitle} (original)
+            </button>
             <button className="pf-btn" disabled={titlesBusy}
               onClick={regenerateTitles}
               style={{ background: "none", border: "1px solid " + T.edge, borderRadius: 2,
@@ -476,6 +493,21 @@ export function Create({ me, refreshWorlds, go }) {
         {detailsError && (
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 12px" }}>{detailsError}</p>
         )}
+
+        <Field label="How many rooms?"
+          hint={suggestedRoomCount
+            ? `The AI suggests ${suggestedRoomCount} for this story. Leave blank to use that, or set your own (max 20) — more rooms means a bigger map to explore.`
+            : "Leave blank for a newcomer-friendly size (6-10 rooms), or set your own (max 20)."}>
+          <input type="number" min={1} max={20} value={roomCount}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "") { setRoomCount(""); return; }
+              const n = Math.min(20, Math.max(1, Math.round(Number(v) || 1)));
+              setRoomCount(String(n));
+            }}
+            placeholder={suggestedRoomCount ? String(suggestedRoomCount) : "6-10"}
+            style={{ ...inputStyle, width: 100 }} />
+        </Field>
 
         <p style={{ fontFamily: T.mono, fontSize: 11, lineHeight: 1.7, color: T.boneDim, margin: "16px 0 20px" }}>
           Pictures are separate and optional. You have {money(me.balance)}.
