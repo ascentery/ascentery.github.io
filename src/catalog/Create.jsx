@@ -288,10 +288,11 @@ export function Create({ me, refreshWorlds, go }) {
           <div style={{ margin: "0 0 14px", padding: "10px 12px", border: "1px solid " + T.ochre + "66",
             borderRadius: 2, fontFamily: T.mono, fontSize: 11, lineHeight: 1.8, color: T.boneDim }}>
             <div style={{ color: T.ochre, marginBottom: 2 }}>Admin only — how this was assembled</div>
+            <div><b style={{ color: T.bone }}>Story shape:</b> {breakdown.story_shape || "\u2014"}</div>
             <div><b style={{ color: T.bone }}>Genre:</b> {breakdown.genre || "\u2014"}</div>
             <div><b style={{ color: T.bone }}>Focal point type:</b> {breakdown.focal_type || "\u2014"}</div>
             <div><b style={{ color: T.bone }}>Focal point:</b> {breakdown.focal_point || "\u2014"}</div>
-            <div><b style={{ color: T.bone }}>What makes it special:</b> {breakdown.what_makes_it_special || "\u2014"}</div>
+            <div><b style={{ color: T.bone }}>What drives it:</b> {breakdown.what_drives_it || "\u2014"}</div>
             <div><b style={{ color: T.bone }}>Plot:</b> {breakdown.plot || "\u2014"}</div>
             <div><b style={{ color: T.bone }}>Conclusion style:</b> {breakdown.conclusion_style || "\u2014"}</div>
           </div>
