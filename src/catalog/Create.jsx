@@ -2,15 +2,18 @@ import React, { useState, useEffect } from "react";
 import {
   GEN_FLAT_CENTS,
   createWorld,
+  deleteBriefRecord,
   discardDraft,
   generateBriefFromPreset,
   generateGameDetails,
   generateStoryDetails,
   generateWorld,
+  loadBriefRecords,
   loadDraft,
   loadPresets,
   money,
   resetWorldForRetry,
+  saveBriefRecord,
   saveDraft,
   setPublished,
   watchGeneration,
@@ -98,6 +101,13 @@ export function Create({ me, refreshWorlds, go }) {
   const [pendingDraft, setPendingDraft] = useState(null);
   const [draftChecked, setDraftChecked] = useState(false);
   const [draftSaveError, setDraftSaveError] = useState(false);
+  // Admin's own saved-brief library — a small, explicit collection kept
+  // indefinitely, separate from draft autosave above. Loaded lazily, only
+  // once the section is actually opened.
+  const [savedBriefs, setSavedBriefs] = useState(null);   // null = not loaded yet
+  const [savedBriefsOpen, setSavedBriefsOpen] = useState(false);
+  const [savingBrief, setSavingBrief] = useState(false);
+  const [briefSaveError, setBriefSaveError] = useState(null);
   const [stage, setStage] = useState(null);        // map | plot | prose | done, while building
   const [buildResult, setBuildResult] = useState(null);
 
@@ -122,6 +132,12 @@ export function Create({ me, refreshWorlds, go }) {
   const [gameDetails, setGameDetails] = useState("");
   const [suggestedRoomCount, setSuggestedRoomCount] = useState(null);
   const [roomCount, setRoomCount] = useState("");   // string, so an empty box is a real, distinct state
+  const [suggestedCharacterCount, setSuggestedCharacterCount] = useState(null);
+  const [characterCount, setCharacterCount] = useState("");
+  const [suggestedPropCount, setSuggestedPropCount] = useState(null);
+  const [propCount, setPropCount] = useState("");
+  const [suggestedItemCount, setSuggestedItemCount] = useState(null);
+  const [itemCount, setItemCount] = useState("");
   const [titles, setTitles] = useState([]);
   const [originalTitle, setOriginalTitle] = useState("");
   const [altTitlesOpen, setAltTitlesOpen] = useState(false);
@@ -157,6 +173,12 @@ export function Create({ me, refreshWorlds, go }) {
     setTitles(d.titles);
     setSuggestedRoomCount(d.suggestedRoomCount);
     setRoomCount(d.roomCount ? String(d.roomCount) : "");
+    setSuggestedCharacterCount(d.suggestedCharacterCount);
+    setCharacterCount(d.characterCount ? String(d.characterCount) : "");
+    setSuggestedPropCount(d.suggestedPropCount);
+    setPropCount(d.propCount ? String(d.propCount) : "");
+    setSuggestedItemCount(d.suggestedItemCount);
+    setItemCount(d.itemCount ? String(d.itemCount) : "");
     setOriginalTitle(d.originalTitle || d.title);
     setStep(d.step);
     setPendingDraft(null);
@@ -179,11 +201,48 @@ export function Create({ me, refreshWorlds, go }) {
       saveDraft({
         id: draftId, userId: me.id, step, title, desc, storyDetails, gameDetails, titles,
         suggestedRoomCount, roomCount: roomCount.trim() ? Number(roomCount) : null, originalTitle,
+        suggestedCharacterCount, characterCount: characterCount.trim() ? Number(characterCount) : null,
+        suggestedPropCount, propCount: propCount.trim() ? Number(propCount) : null,
+        suggestedItemCount, itemCount: itemCount.trim() ? Number(itemCount) : null,
       }).then(() => setDraftSaveError(false))
         .catch((e) => { console.error("could not autosave draft", e); setDraftSaveError(true); });
     }, 2000);
     return () => clearTimeout(t);
-  }, [draftId, step, title, storyDetails, gameDetails, roomCount]);
+  }, [draftId, step, title, storyDetails, gameDetails, roomCount, characterCount, propCount, itemCount]);
+
+  const saveBrief = async () => {
+    if (!desc.trim()) return;
+    setSavingBrief(true); setBriefSaveError(null);
+    try {
+      await saveBriefRecord({ title, brief: desc });
+      if (savedBriefs) setSavedBriefs(await loadBriefRecords());   // refresh only if the list is already showing
+    } catch (e) {
+      setBriefSaveError(e.message);
+    } finally {
+      setSavingBrief(false);
+    }
+  };
+
+  const toggleSavedBriefs = async () => {
+    const opening = !savedBriefsOpen;
+    setSavedBriefsOpen(opening);
+    if (opening && savedBriefs === null) {
+      try { setSavedBriefs(await loadBriefRecords()); } catch { setSavedBriefs([]); }
+    }
+  };
+
+  const applySavedBrief = (b) => {
+    setTitle(b.title || "");
+    setDesc(b.brief);
+    setBreakdown(null);
+  };
+
+  const removeSavedBrief = async (id) => {
+    try {
+      await deleteBriefRecord(id);
+      setSavedBriefs((list) => (list ?? []).filter((b) => b.id !== id));
+    } catch (e) { setBriefSaveError(e.message); }
+  };
 
   const generate = async () => {
     setGenBusy(true); setGenError(null);
@@ -226,11 +285,17 @@ export function Create({ me, refreshWorlds, go }) {
       const newStoryDetails = res.storyDetails ?? "";
       setStoryDetails(newStoryDetails);
       setSuggestedRoomCount(res.suggestedRoomCount ?? null);
+      setSuggestedCharacterCount(res.suggestedCharacterCount ?? null);
+      setSuggestedPropCount(res.suggestedPropCount ?? null);
+      setSuggestedItemCount(res.suggestedItemCount ?? null);
       setStep(2);
       try {
         const id = await saveDraft({
           id: draftId, userId: me.id, step: 2, title, desc, storyDetails: newStoryDetails,
           suggestedRoomCount: res.suggestedRoomCount ?? null,
+          suggestedCharacterCount: res.suggestedCharacterCount ?? null,
+          suggestedPropCount: res.suggestedPropCount ?? null,
+          suggestedItemCount: res.suggestedItemCount ?? null,
         });
         setDraftId(id);
         setDraftSaveError(false);
@@ -260,16 +325,23 @@ export function Create({ me, refreshWorlds, go }) {
   // titles in the same call. gameDetails, not the short step-1 brief and
   // not the story arc on its own, is what actually becomes the world's
   // brief once built — the creator can read and edit the richer version
-  // before anything is generated. Room count is settled by now (step 2),
-  // not changeable here — the plot this call writes is built to fit it,
-  // so letting it change afterward would risk contradicting content
-  // that's already been generated around a specific number of locations.
+  // before anything is generated. All four counts are settled by now
+  // (step 2), not changeable here — the plot this call writes is built
+  // to fit them, so letting any change afterward would risk contradicting
+  // content already generated around specific numbers.
   const advanceToDetails = async () => {
     setDetailsBusy(true); setDetailsError(null);
     try {
       const effectiveRoomCount = roomCount.trim() ? Number(roomCount) : suggestedRoomCount;
+      const effectiveCharacterCount = characterCount.trim() ? Number(characterCount) : suggestedCharacterCount;
+      const effectivePropCount = propCount.trim() ? Number(propCount) : suggestedPropCount;
+      const effectiveItemCount = itemCount.trim() ? Number(itemCount) : suggestedItemCount;
       const res = await generateGameDetails({
-        mode: "full", title, brief: desc, storyDetails, roomCount: effectiveRoomCount || undefined,
+        mode: "full", title, brief: desc, storyDetails,
+        roomCount: effectiveRoomCount || undefined,
+        characterCount: effectiveCharacterCount || undefined,
+        propCount: effectivePropCount || undefined,
+        itemCount: effectiveItemCount || undefined,
       });
       const newGameDetails = res.gameDetails ?? "";
       const newTitles = res.titles ?? [];
@@ -281,7 +353,11 @@ export function Create({ me, refreshWorlds, go }) {
         const id = await saveDraft({
           id: draftId, userId: me.id, step: 3, title, desc, storyDetails,
           gameDetails: newGameDetails, titles: newTitles,
-          suggestedRoomCount, roomCount: effectiveRoomCount || null, originalTitle: title,
+          suggestedRoomCount, roomCount: effectiveRoomCount || null,
+          suggestedCharacterCount, characterCount: effectiveCharacterCount || null,
+          suggestedPropCount, propCount: effectivePropCount || null,
+          suggestedItemCount, itemCount: effectiveItemCount || null,
+          originalTitle: title,
         });
         setDraftId(id);
         setDraftSaveError(false);
@@ -334,10 +410,13 @@ export function Create({ me, refreshWorlds, go }) {
         await resetWorldForRetry(id);
       } else {
         // User's own number wins if they typed one; otherwise fall back to
-        // whatever the AI suggested in step 3. Both are already clamped
-        // (the input itself won't accept outside 1-20, and the server
-        // clamps its own suggestion before it ever reaches this state).
+        // whatever the AI suggested in step 2. All already clamped (each
+        // input won't accept outside its own max, and the server clamps
+        // its own suggestion before it ever reaches this state).
         const effectiveRoomCount = roomCount.trim() ? Number(roomCount) : suggestedRoomCount;
+        const effectiveCharacterCount = characterCount.trim() ? Number(characterCount) : suggestedCharacterCount;
+        const effectivePropCount = propCount.trim() ? Number(propCount) : suggestedPropCount;
+        const effectiveItemCount = itemCount.trim() ? Number(itemCount) : suggestedItemCount;
         id = await createWorld({
           userId: me.id,
           title: title.trim() || "Untitled world",
@@ -346,6 +425,12 @@ export function Create({ me, refreshWorlds, go }) {
           storyDetails: storyDetails.trim() || null,
           roomMin: effectiveRoomCount || null,
           roomMax: effectiveRoomCount || null,
+          characterMin: effectiveCharacterCount || null,
+          characterMax: effectiveCharacterCount || null,
+          propMin: effectivePropCount || null,
+          propMax: effectivePropCount || null,
+          itemMin: effectiveItemCount || null,
+          itemMax: effectiveItemCount || null,
           existingId: draftId,
         });
       }
@@ -460,10 +545,59 @@ export function Create({ me, refreshWorlds, go }) {
             {genBusy ? "writing\u2026" : desc.trim() ? "generate another" : "generate an example"}
           </Btn>
           <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>$0.01</span>
+          {me?.isAdmin && (
+            <Btn kind="ghost" disabled={savingBrief || !desc.trim()} onClick={saveBrief}>
+              {savingBrief ? "saving\u2026" : "save"}
+            </Btn>
+          )}
           <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginLeft: "auto" }}>
             {desc.trim().split(/\s+/).filter(Boolean).length} words
           </span>
         </div>
+        {briefSaveError && (
+          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 8px" }}>{briefSaveError}</p>
+        )}
+
+        {me?.isAdmin && (<>
+          <button onClick={toggleSavedBriefs} className="pf-btn"
+            style={{ background: "none", border: "none", padding: 0, marginBottom: savedBriefsOpen ? 10 : 14,
+              cursor: "pointer", fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
+            {savedBriefsOpen ? "\u2212 hide" : "+ show"} my saved briefs
+          </button>
+          {savedBriefsOpen && (
+            <div style={{ marginBottom: 16 }}>
+              {savedBriefs === null ? (
+                <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>loading\u2026</p>
+              ) : savedBriefs.length === 0 ? (
+                <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>Nothing saved yet.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {savedBriefs.map((b) => (
+                    <div key={b.id} style={{ display: "flex", gap: 10, alignItems: "flex-start",
+                      padding: "10px 12px", border: "1px solid " + T.edge, borderRadius: 2 }}>
+                      <button onClick={() => applySavedBrief(b)} className="pf-btn"
+                        style={{ flex: 1, textAlign: "left", background: "none", border: "none", padding: 0,
+                          cursor: "pointer" }}>
+                        <div style={{ fontFamily: T.serif, fontSize: 14, color: T.bone, marginBottom: 2 }}>
+                          {b.title || "(untitled)"}
+                        </div>
+                        <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, lineHeight: 1.5,
+                          overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                          {b.brief}
+                        </div>
+                      </button>
+                      <button onClick={() => removeSavedBrief(b.id)} className="pf-btn"
+                        style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
+                          fontFamily: T.mono, fontSize: 11, color: T.clay, flexShrink: 0 }}>
+                        remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>)}
 
         {me?.isAdmin && breakdown && (
           <div style={{ margin: "0 0 14px", padding: "10px 12px", border: "1px solid " + T.ochre + "66",
@@ -519,20 +653,35 @@ export function Create({ me, refreshWorlds, go }) {
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 12px" }}>{storyError}</p>
         )}
 
-        <Field label="How many rooms?"
-          hint={suggestedRoomCount
-            ? `The AI suggests ${suggestedRoomCount} for this story. Leave blank to use that, or set your own (max 20) — more rooms means a bigger map to explore. Settled here, not changeable later, since Game Details writes its plot to fit whatever is chosen.`
-            : "Leave blank for a newcomer-friendly size (6-10 rooms), or set your own (max 20). Settled here, not changeable later, since Game Details writes its plot to fit whatever is chosen."}>
-          <input type="number" min={1} max={20} value={roomCount}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === "") { setRoomCount(""); return; }
-              const n = Math.min(20, Math.max(1, Math.round(Number(v) || 1)));
-              setRoomCount(String(n));
-            }}
-            placeholder={suggestedRoomCount ? String(suggestedRoomCount) : "6-10"}
-            style={{ ...inputStyle, width: 100 }} />
-        </Field>
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontFamily: T.serif, fontSize: 15, marginBottom: 8 }}>How much should this world hold?</div>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
+            {[
+              { label: "Rooms", value: roomCount, set: setRoomCount, suggested: suggestedRoomCount, max: 20 },
+              { label: "Characters", value: characterCount, set: setCharacterCount, suggested: suggestedCharacterCount, max: 12 },
+              { label: "Props", value: propCount, set: setPropCount, suggested: suggestedPropCount, max: 15 },
+              { label: "Items", value: itemCount, set: setItemCount, suggested: suggestedItemCount, max: 20 },
+            ].map((f) => (
+              <label key={f.label} style={{ display: "block" }}>
+                <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginBottom: 4 }}>{f.label}</div>
+                <input type="text" inputMode="numeric" value={f.value}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^0-9]/g, "");
+                    if (v === "") { f.set(""); return; }
+                    f.set(String(Math.min(f.max, Math.max(1, Number(v)))));
+                  }}
+                  placeholder={f.suggested ? String(f.suggested) : "\u2014"}
+                  style={{ ...inputStyle, width: 72 }} />
+              </label>
+            ))}
+          </div>
+          <p style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, margin: "8px 0 0", lineHeight: 1.6 }}>
+            {suggestedRoomCount ? `${suggestedRoomCount} rooms is suggested` : "A newcomer-friendly size is suggested"} for
+            this story, with characters, props and items suggested to match. Leave any of them blank to use
+            what's suggested, or set your own — more rooms means a bigger map to explore. Settled here, not
+            changeable later, since Game Details writes its plot to fit whatever is chosen.
+          </p>
+        </div>
 
         {detailsError && (
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 12px" }}>{detailsError}</p>

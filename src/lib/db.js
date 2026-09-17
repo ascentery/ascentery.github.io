@@ -489,13 +489,23 @@ export function watchGeneration(worldId, onStage) {
     rather than inserting a second, duplicate row. Without one, a fresh
     row is created as before (the pre-draft-saving behavior, still used
     if the wizard was never actually saved as a draft for some reason). */
-export async function createWorld({ userId, title, brief, gameBrief = null, storyDetails = null, roomMin = null, roomMax = null, existingId = null }) {
+export async function createWorld({
+  userId, title, brief, gameBrief = null, storyDetails = null,
+  roomMin = null, roomMax = null, characterMin = null, characterMax = null,
+  propMin = null, propMax = null, itemMin = null, itemMax = null, existingId = null,
+}) {
   const payload = {
     owner_id: userId, title, brief, status: 'generating',
     game_brief: gameBrief, story_details: storyDetails,
     room_min: roomMin, room_max: roomMax,
+    character_min: characterMin, character_max: characterMax,
+    prop_min: propMin, prop_max: propMax,
+    item_min: itemMin, item_max: itemMax,
     draft_step: null, draft_titles: null,
     draft_suggested_room_count: null, draft_room_count: null, draft_original_title: null,
+    draft_suggested_character_count: null, draft_character_count: null,
+    draft_suggested_prop_count: null, draft_prop_count: null,
+    draft_suggested_item_count: null, draft_item_count: null,
   }
   if (existingId) {
     const { error } = await supabase.from('worlds').update(payload).eq('id', existingId)
@@ -519,7 +529,11 @@ export async function createWorld({ userId, title, brief, gameBrief = null, stor
 export async function loadDraft(userId) {
   const { data, error } = await supabase
     .from('worlds')
-    .select('id, title, game_brief, story_details, brief, draft_step, draft_titles, draft_suggested_room_count, draft_room_count, draft_original_title, updated_at')
+    .select(`id, title, game_brief, story_details, brief, draft_step, draft_titles, updated_at,
+      draft_suggested_room_count, draft_room_count, draft_original_title,
+      draft_suggested_character_count, draft_character_count,
+      draft_suggested_prop_count, draft_prop_count,
+      draft_suggested_item_count, draft_item_count`)
     .eq('owner_id', userId)
     .eq('status', 'draft')
     .order('updated_at', { ascending: false })
@@ -538,6 +552,12 @@ export async function loadDraft(userId) {
     suggestedRoomCount: row.draft_suggested_room_count ?? null,
     roomCount: row.draft_room_count ?? null,
     originalTitle: row.draft_original_title ?? '',
+    suggestedCharacterCount: row.draft_suggested_character_count ?? null,
+    characterCount: row.draft_character_count ?? null,
+    suggestedPropCount: row.draft_suggested_prop_count ?? null,
+    propCount: row.draft_prop_count ?? null,
+    suggestedItemCount: row.draft_suggested_item_count ?? null,
+    itemCount: row.draft_item_count ?? null,
     updatedAt: row.updated_at,
   }
 }
@@ -548,7 +568,12 @@ export async function loadDraft(userId) {
     after that updates the same row in place. Called at natural pause
     points (a step completing, a generation finishing) and debounced
     while the creator is actively typing — never on every keystroke. */
-export async function saveDraft({ id = null, userId, step, title, desc, storyDetails, gameDetails, titles, suggestedRoomCount, roomCount, originalTitle }) {
+export async function saveDraft({
+  id = null, userId, step, title, desc, storyDetails, gameDetails, titles,
+  suggestedRoomCount, roomCount, originalTitle,
+  suggestedCharacterCount, characterCount, suggestedPropCount, propCount,
+  suggestedItemCount, itemCount,
+}) {
   const payload = {
     title: title || null,
     game_brief: desc || null,
@@ -559,6 +584,12 @@ export async function saveDraft({ id = null, userId, step, title, desc, storyDet
     draft_suggested_room_count: suggestedRoomCount ?? null,
     draft_room_count: roomCount ?? null,
     draft_original_title: originalTitle || null,
+    draft_suggested_character_count: suggestedCharacterCount ?? null,
+    draft_character_count: characterCount ?? null,
+    draft_suggested_prop_count: suggestedPropCount ?? null,
+    draft_prop_count: propCount ?? null,
+    draft_suggested_item_count: suggestedItemCount ?? null,
+    draft_item_count: itemCount ?? null,
   }
   if (id) {
     const { error } = await supabase.from('worlds').update(payload).eq('id', id)
@@ -922,6 +953,37 @@ export async function generateBriefFromPreset(presetId = null, hint = null) {
   return body   // { title, brief, preset_label, breakdown? }
 }
 
+/** Admin's own personal library of title+brief pairs worth reusing —
+    explicitly saved, kept indefinitely, entirely separate from the
+    draft-autosave system (which is ephemeral, one-per-user in-progress
+    wizard state). RLS enforces the admin-only, owner-only access
+    directly, so no edge function is needed for any of these three. */
+export async function saveBriefRecord({ title, brief }) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+  const { data, error } = await supabase
+    .from('saved_briefs')
+    .insert({ owner_id: session.user.id, title: title || '', brief })
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+export async function loadBriefRecords() {
+  const { data, error } = await supabase
+    .from('saved_briefs')
+    .select('id, title, brief, created_at')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function deleteBriefRecord(id) {
+  const { error } = await supabase.from('saved_briefs').delete().eq('id', id)
+  if (error) throw error
+}
+
 /** Step 2 of Create: flesh the brief out into a story arc. Two modes:
       full       -> { storyDetails }   the initial call after step 1
       regenerate -> { storyDetails }   admin only, free
@@ -947,7 +1009,10 @@ export async function generateStoryDetails({ mode, title, brief, storyDetails, p
     presetId is honoured only for admins, same as generateBriefFromPreset.
     storyDetails, once step 2 exists, is the richer context this reads from
     instead of the short step-1 brief. */
-export async function generateGameDetails({ mode, title, brief, storyDetails, gameDetails, presetId, roomCount }) {
+export async function generateGameDetails({
+  mode, title, brief, storyDetails, gameDetails, presetId,
+  roomCount, characterCount, propCount, itemCount,
+}) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Not signed in')
 
@@ -956,7 +1021,9 @@ export async function generateGameDetails({ mode, title, brief, storyDetails, ga
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
     body: JSON.stringify({
       mode, title, brief, storyDetails, gameDetails,
-      ...(presetId ? { presetId } : {}), ...(roomCount ? { roomCount } : {}),
+      ...(presetId ? { presetId } : {}),
+      ...(roomCount ? { roomCount } : {}), ...(characterCount ? { characterCount } : {}),
+      ...(propCount ? { propCount } : {}), ...(itemCount ? { itemCount } : {}),
     }),
   })
   const body = await res.json().catch(() => ({}))
