@@ -61,6 +61,24 @@ function PresetPicker({ what, presets, chosen, onChoose }) {
   );
 }
 
+// Reference copy of generate-brief's own GENRES/MODES/SUBJECT_TYPES lists,
+// shown to a creator so they know what the generator actually picks from
+// and can steer it with the hint box below. Kept in sync by hand with
+// that function — this is display-only and never sent anywhere itself.
+const REFERENCE_GENRES = [
+  "sci-fi", "children's", "teen/YA", "noir", "high fantasy", "cyberpunk",
+  "post-apocalyptic", "pirate/nautical", "wild west", "steampunk",
+  "mythology retold", "urban fantasy", "heist/caper", "fairy tale",
+  "historical", "romance", "slice-of-life", "horror", "comedy", "cozy",
+];
+const REFERENCE_MODES = [
+  "mystery", "adventure", "task/action", "sensory", "drama", "wit/comedy",
+  "surreal", "hauntings", "survival",
+];
+const REFERENCE_SUBJECT_TYPES = [
+  "an object", "a location", "1 person", "2 people", "3 to 4 people", "an animal or animals",
+];
+
 export function Create({ me, refreshWorlds, go }) {
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState("");
@@ -73,12 +91,14 @@ export function Create({ me, refreshWorlds, go }) {
   const [buildResult, setBuildResult] = useState(null);
 
   // step 1: brief
-  const [briefPresets, setBriefPresets] = useState([]);
-  const [chosenBriefPreset, setChosenBriefPreset] = useState("");
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState(null);
   const [genFrom, setGenFrom] = useState(null);
   const [breakdown, setBreakdown] = useState(null);   // admin only — how the model arrived at the brief
+  const [hint, setHint] = useState("");
+  const [hintBusy, setHintBusy] = useState(false);
+  const [hintError, setHintError] = useState(null);
+  const [referenceOpen, setReferenceOpen] = useState(false);
 
   // step 2: story details — the arc, before Game Details turns it into
   // concrete characters, wants and trades
@@ -100,15 +120,14 @@ export function Create({ me, refreshWorlds, go }) {
 
   useEffect(() => {
     if (!me?.isAdmin) return;
-    loadPresets("game_brief").then(setBriefPresets).catch(() => setBriefPresets([]));
     loadPresets("story_details").then(setStoryPresets).catch(() => setStoryPresets([]));
     loadPresets("game_details").then(setDetailPresets).catch(() => setDetailPresets([]));
   }, [me?.isAdmin]);
 
-  const generate = async (presetId) => {
+  const generate = async () => {
     setGenBusy(true); setGenError(null);
     try {
-      const res = await generateBriefFromPreset(presetId || null);
+      const res = await generateBriefFromPreset();
       setTitle(res.title || title);
       setDesc(res.brief);
       setGenFrom(res.preset_label ?? null);
@@ -117,6 +136,25 @@ export function Create({ me, refreshWorlds, go }) {
       setGenError(e.message);
     } finally {
       setGenBusy(false);
+    }
+  };
+
+  // The hint-driven version — same generator, but the creator's own free
+  // text steers genre/mode/subject wherever it says something specific,
+  // rather than leaving everything to the random pick.
+  const generateFromHint = async () => {
+    if (!hint.trim()) return;
+    setHintBusy(true); setHintError(null);
+    try {
+      const res = await generateBriefFromPreset(null, hint.trim());
+      setTitle(res.title || title);
+      setDesc(res.brief);
+      setGenFrom(null);
+      setBreakdown(res.breakdown ?? null);
+    } catch (e) {
+      setHintError(e.message);
+    } finally {
+      setHintBusy(false);
     }
   };
 
@@ -254,10 +292,6 @@ export function Create({ me, refreshWorlds, go }) {
       </div>
 
       {step === 1 && (<>
-        {me?.isAdmin && briefPresets.length > 0 && (
-          <PresetPicker what="brief" presets={briefPresets} chosen={chosenBriefPreset} onChoose={setChosenBriefPreset} />
-        )}
-
         <Field label="Title">
           <input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="The Lamp Room" />
         </Field>
@@ -268,13 +302,11 @@ export function Create({ me, refreshWorlds, go }) {
             style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
         </Field>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
-          <Btn kind="ghost" disabled={genBusy} onClick={() => generate(chosenBriefPreset)}>
+          <Btn kind="ghost" disabled={genBusy} onClick={generate}>
             {genBusy ? "writing\u2026" : desc.trim() ? "generate another" : "generate an example"}
           </Btn>
-          <Btn kind="ghost" onClick={() => { setDesc(EXAMPLE); setTitle("The Lamp Room"); setGenFrom(null); }}>
-            use a fixed example
-          </Btn>
-          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
+          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>free</span>
+          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginLeft: "auto" }}>
             {desc.trim().split(/\s+/).filter(Boolean).length} words
           </span>
         </div>
@@ -292,10 +324,47 @@ export function Create({ me, refreshWorlds, go }) {
             <div><b style={{ color: T.bone }}>Mode (picked in code):</b> {breakdown.mode || "\u2014"}</div>
             <div><b style={{ color: T.bone }}>Subject type (picked in code):</b> {breakdown.subject_type || "\u2014"}</div>
             <div><b style={{ color: T.bone }}>Subject (the model's own choice):</b> {breakdown.subject || "\u2014"}</div>
+            {breakdown.hint && (
+              <div><b style={{ color: T.bone }}>Your hint (overrides the above):</b> {breakdown.hint}</div>
+            )}
           </div>
         )}
         {genError && (
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 8px" }}>{genError}</p>
+        )}
+
+        <button onClick={() => setReferenceOpen((o) => !o)} className="pf-btn"
+          style={{ background: "none", border: "none", padding: 0, marginBottom: 10, cursor: "pointer",
+            fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
+          {referenceOpen ? "\u2212 hide" : "+ show"} the genres and modes the generator picks from
+        </button>
+        {referenceOpen && (
+          <div style={{ marginBottom: 14, padding: "12px 14px", border: "1px solid " + T.edge, borderRadius: 2,
+            fontFamily: T.mono, fontSize: 11.5, lineHeight: 1.9, color: T.boneDim }}>
+            <div><b style={{ color: T.bone }}>Genres:</b> {REFERENCE_GENRES.join(", ")}</div>
+            <div style={{ marginTop: 6 }}>
+              <b style={{ color: T.bone }}>Modes</b> (one or two combine, like survival/adventure):{" "}
+              {REFERENCE_MODES.join(", ")}
+            </div>
+            <div style={{ marginTop: 6 }}>
+              <b style={{ color: T.bone }}>Subject types:</b> {REFERENCE_SUBJECT_TYPES.join(", ")}
+            </div>
+          </div>
+        )}
+
+        <Field label="Or steer it yourself" hint="Name a genre, a mode, a subject — anything from the list above or not. Whatever you say here overrides the random pick for that one thing; anything you don't mention still gets picked at random.">
+          <textarea value={hint} onChange={(e) => setHint(e.target.value)} rows={2}
+            placeholder="e.g. cyberpunk, and make it a comedy"
+            style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
+        </Field>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
+          <Btn kind="ghost" disabled={hintBusy || !hint.trim()} onClick={generateFromHint}>
+            {hintBusy ? "writing\u2026" : "generate"}
+          </Btn>
+          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>free</span>
+        </div>
+        {hintError && (
+          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 8px" }}>{hintError}</p>
         )}
         {storyError && (
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 8px" }}>{storyError}</p>

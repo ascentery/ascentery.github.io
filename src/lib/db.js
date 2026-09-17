@@ -822,18 +822,18 @@ export async function saveDefaultPreset(type, id) {
 /** Calls the edge function that writes a fresh brief from a preset.
     presetId is honoured only if the caller is an admin; anyone else gets
     the platform default, or a random preset if none is set. Free. */
-export async function generateBriefFromPreset(presetId = null) {
+export async function generateBriefFromPreset(presetId = null, hint = null) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Not signed in')
 
   const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-brief`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-    body: JSON.stringify(presetId ? { presetId } : {}),
+    body: JSON.stringify({ ...(presetId ? { presetId } : {}), ...(hint ? { hint } : {}) }),
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(body.error || `Could not generate a brief (${res.status})`)
-  return body   // { title, brief, preset_label }
+  return body   // { title, brief, preset_label, breakdown? }
 }
 
 /** Step 2 of Create: flesh the brief out into a story arc. Two modes:
