@@ -608,16 +608,6 @@ function ArtPresetList({ engine }) {
             style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
         </Field>
 
-        <Field label="Avoid, everywhere" hint="Laid under whatever the creator's own global negative says.">
-          <textarea value={config.neg ?? ""} onChange={(e) => field("neg", e.target.value)} rows={2}
-            style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
-        </Field>
-
-        <Field label={`Avoid, ${(KIND_LABEL[kind] ?? kind).toLowerCase()} only`}>
-          <textarea value={config[`neg_${kind}`] ?? ""} onChange={(e) => field(`neg_${kind}`, e.target.value)} rows={3}
-            style={{ ...inputStyle, fontSize: 13, lineHeight: 1.5, resize: "vertical" }} />
-        </Field>
-
         {engine === "pixel" && (
           <div style={{ borderTop: "1px solid " + T.edge, paddingTop: 16, marginTop: 4 }}>
             <p style={{ fontFamily: T.serif, fontSize: 13.5, color: T.boneDim, lineHeight: 1.6, margin: "0 0 14px" }}>
