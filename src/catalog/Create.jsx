@@ -111,6 +111,7 @@ export function Create({ me, refreshWorlds, go }) {
   // step 3: game details
   const [gameDetails, setGameDetails] = useState("");
   const [titles, setTitles] = useState([]);
+  const [altTitlesOpen, setAltTitlesOpen] = useState(false);
   const [detailPresets, setDetailPresets] = useState([]);
   const [chosenDetailPreset, setChosenDetailPreset] = useState("");
   const [detailsBusy, setDetailsBusy] = useState(false);
@@ -292,6 +293,42 @@ export function Create({ me, refreshWorlds, go }) {
       </div>
 
       {step === 1 && (<>
+        <button onClick={() => setReferenceOpen((o) => !o)} className="pf-btn"
+          style={{ background: "none", border: "none", padding: 0, marginBottom: 10, cursor: "pointer",
+            fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
+          {referenceOpen ? "\u2212 hide" : "+ show"} the genres and modes the generator picks from
+        </button>
+        {referenceOpen && (
+          <div style={{ marginBottom: 14, padding: "12px 14px", border: "1px solid " + T.edge, borderRadius: 2,
+            fontFamily: T.mono, fontSize: 11.5, lineHeight: 1.9, color: T.boneDim }}>
+            <div><b style={{ color: T.bone }}>Genres:</b> {REFERENCE_GENRES.join(", ")}</div>
+            <div style={{ marginTop: 6 }}>
+              <b style={{ color: T.bone }}>Modes</b> (one or two combine, like survival/adventure):{" "}
+              {REFERENCE_MODES.join(", ")}
+            </div>
+            <div style={{ marginTop: 6 }}>
+              <b style={{ color: T.bone }}>Subject types:</b> {REFERENCE_SUBJECT_TYPES.join(", ")}
+            </div>
+          </div>
+        )}
+
+        {me?.isAdmin && (<>
+          <Field label="Or steer it yourself (admin only)" hint="Name a genre, a mode, a subject — anything from the list above or not. Whatever you say here overrides the random pick for that one thing; anything you don't mention still gets picked at random.">
+            <textarea value={hint} onChange={(e) => setHint(e.target.value)} rows={2}
+              placeholder="e.g. cyberpunk, and make it a comedy"
+              style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
+          </Field>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
+            <Btn kind="ghost" disabled={hintBusy || !hint.trim()} onClick={generateFromHint}>
+              {hintBusy ? "writing\u2026" : "generate"}
+            </Btn>
+            <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>$0.01</span>
+          </div>
+          {hintError && (
+            <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 8px" }}>{hintError}</p>
+          )}
+        </>)}
+
         <Field label="Title">
           <input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="The Lamp Room" />
         </Field>
@@ -305,7 +342,7 @@ export function Create({ me, refreshWorlds, go }) {
           <Btn kind="ghost" disabled={genBusy} onClick={generate}>
             {genBusy ? "writing\u2026" : desc.trim() ? "generate another" : "generate an example"}
           </Btn>
-          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>free</span>
+          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>$0.01</span>
           <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, marginLeft: "auto" }}>
             {desc.trim().split(/\s+/).filter(Boolean).length} words
           </span>
@@ -331,40 +368,6 @@ export function Create({ me, refreshWorlds, go }) {
         )}
         {genError && (
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 8px" }}>{genError}</p>
-        )}
-
-        <button onClick={() => setReferenceOpen((o) => !o)} className="pf-btn"
-          style={{ background: "none", border: "none", padding: 0, marginBottom: 10, cursor: "pointer",
-            fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
-          {referenceOpen ? "\u2212 hide" : "+ show"} the genres and modes the generator picks from
-        </button>
-        {referenceOpen && (
-          <div style={{ marginBottom: 14, padding: "12px 14px", border: "1px solid " + T.edge, borderRadius: 2,
-            fontFamily: T.mono, fontSize: 11.5, lineHeight: 1.9, color: T.boneDim }}>
-            <div><b style={{ color: T.bone }}>Genres:</b> {REFERENCE_GENRES.join(", ")}</div>
-            <div style={{ marginTop: 6 }}>
-              <b style={{ color: T.bone }}>Modes</b> (one or two combine, like survival/adventure):{" "}
-              {REFERENCE_MODES.join(", ")}
-            </div>
-            <div style={{ marginTop: 6 }}>
-              <b style={{ color: T.bone }}>Subject types:</b> {REFERENCE_SUBJECT_TYPES.join(", ")}
-            </div>
-          </div>
-        )}
-
-        <Field label="Or steer it yourself" hint="Name a genre, a mode, a subject — anything from the list above or not. Whatever you say here overrides the random pick for that one thing; anything you don't mention still gets picked at random.">
-          <textarea value={hint} onChange={(e) => setHint(e.target.value)} rows={2}
-            placeholder="e.g. cyberpunk, and make it a comedy"
-            style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} />
-        </Field>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
-          <Btn kind="ghost" disabled={hintBusy || !hint.trim()} onClick={generateFromHint}>
-            {hintBusy ? "writing\u2026" : "generate"}
-          </Btn>
-          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>free</span>
-        </div>
-        {hintError && (
-          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 8px" }}>{hintError}</p>
         )}
         {storyError && (
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 8px" }}>{storyError}</p>
@@ -421,40 +424,48 @@ export function Create({ me, refreshWorlds, go }) {
         )}
 
         <Field label="Title">
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <input style={{ ...inputStyle, flex: 1 }} value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} />
+        </Field>
+
+        <button onClick={() => setAltTitlesOpen((o) => !o)} className="pf-btn"
+          style={{ background: "none", border: "none", padding: 0, marginBottom: altTitlesOpen ? 10 : 20,
+            cursor: "pointer", fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
+          {altTitlesOpen ? "\u2212" : "+"} Alternative titles
+        </button>
+        {altTitlesOpen && (<>
+          <div style={{ marginBottom: 10 }}>
             <button className="pf-btn" disabled={titlesBusy}
               onClick={regenerateTitles}
               style={{ background: "none", border: "1px solid " + T.edge, borderRadius: 2,
-                cursor: titlesBusy ? "default" : "pointer", padding: "8px 12px", flexShrink: 0,
+                cursor: titlesBusy ? "default" : "pointer", padding: "8px 12px",
                 fontFamily: T.mono, fontSize: 11, color: T.boneDim, whiteSpace: "nowrap" }}>
               {titlesBusy ? "\u2026" : `Regenerate \u00b7 ${money(1)}`}
             </button>
           </div>
-        </Field>
 
-        {titlesError && (
-          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "-8px 0 12px" }}>
-            {titlesError}
-            {needsFunds && (
-              <Btn kind="ghost" onClick={() => go("creator")} style={{ marginLeft: 10 }}>Add funds</Btn>
-            )}
-          </p>
-        )}
+          {titlesError && (
+            <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 12px" }}>
+              {titlesError}
+              {needsFunds && (
+                <Btn kind="ghost" onClick={() => go("creator")} style={{ marginLeft: 10 }}>Add funds</Btn>
+              )}
+            </p>
+          )}
 
-        {titles.length > 0 && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "-8px 0 20px" }}>
-            {titles.map((t, i) => (
-              <button key={i} className="pf-btn" onClick={() => setTitle(t)}
-                style={{ padding: "6px 10px", borderRadius: 2, cursor: "pointer", background: "transparent",
-                  fontFamily: T.mono, fontSize: 11.5,
-                  color: title === t ? T.bone : T.boneDim,
-                  border: "1px solid " + (title === t ? T.ochre : T.edge) }}>
-                {t}
-              </button>
-            ))}
-          </div>
-        )}
+          {titles.length > 0 && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "0 0 20px" }}>
+              {titles.map((t, i) => (
+                <button key={i} className="pf-btn" onClick={() => setTitle(t)}
+                  style={{ padding: "6px 10px", borderRadius: 2, cursor: "pointer", background: "transparent",
+                    fontFamily: T.mono, fontSize: 11.5,
+                    color: title === t ? T.bone : T.boneDim,
+                    border: "1px solid " + (title === t ? T.ochre : T.edge) }}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+        </>)}
 
         <Field label="Game details"
           hint="The story turned into concrete content: who wants what, who trades what, and what stands in the way. This, not the brief or the story arc on their own, is what the world actually gets built from — read it over and edit anything that is not right.">
