@@ -78,6 +78,7 @@ export function Create({ me, refreshWorlds, go }) {
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState(null);
   const [genFrom, setGenFrom] = useState(null);
+  const [breakdown, setBreakdown] = useState(null);   // admin only — how the model arrived at the brief
 
   // step 2: story details — the arc, before Game Details turns it into
   // concrete characters, wants and trades
@@ -111,6 +112,7 @@ export function Create({ me, refreshWorlds, go }) {
       setTitle(res.title || title);
       setDesc(res.brief);
       setGenFrom(res.preset_label ?? null);
+      setBreakdown(res.breakdown ?? null);
     } catch (e) {
       setGenError(e.message);
     } finally {
@@ -281,6 +283,18 @@ export function Create({ me, refreshWorlds, go }) {
           <p style={{ fontFamily: T.mono, fontSize: 10.5, color: T.boneDim, margin: "0 0 8px" }}>
             written from "{genFrom}"
           </p>
+        )}
+        {me?.isAdmin && breakdown && (
+          <div style={{ margin: "0 0 14px", padding: "10px 12px", border: "1px solid " + T.ochre + "66",
+            borderRadius: 2, fontFamily: T.mono, fontSize: 11, lineHeight: 1.8, color: T.boneDim }}>
+            <div style={{ color: T.ochre, marginBottom: 2 }}>Admin only — how this was assembled</div>
+            <div><b style={{ color: T.bone }}>Genre:</b> {breakdown.genre || "\u2014"}</div>
+            <div><b style={{ color: T.bone }}>Focal point type:</b> {breakdown.focal_type || "\u2014"}</div>
+            <div><b style={{ color: T.bone }}>Focal point:</b> {breakdown.focal_point || "\u2014"}</div>
+            <div><b style={{ color: T.bone }}>What makes it special:</b> {breakdown.what_makes_it_special || "\u2014"}</div>
+            <div><b style={{ color: T.bone }}>Plot:</b> {breakdown.plot || "\u2014"}</div>
+            <div><b style={{ color: T.bone }}>Conclusion style:</b> {breakdown.conclusion_style || "\u2014"}</div>
+          </div>
         )}
         {genError && (
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 8px" }}>{genError}</p>
