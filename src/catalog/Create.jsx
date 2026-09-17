@@ -93,7 +93,6 @@ export function Create({ me, refreshWorlds, go }) {
   // step 1: brief
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState(null);
-  const [genFrom, setGenFrom] = useState(null);
   const [breakdown, setBreakdown] = useState(null);   // admin only — how the model arrived at the brief
   const [hint, setHint] = useState("");
   const [hintBusy, setHintBusy] = useState(false);
@@ -131,7 +130,6 @@ export function Create({ me, refreshWorlds, go }) {
       const res = await generateBriefFromPreset();
       setTitle(res.title || title);
       setDesc(res.brief);
-      setGenFrom(res.preset_label ?? null);
       setBreakdown(res.breakdown ?? null);
     } catch (e) {
       setGenError(e.message);
@@ -293,26 +291,26 @@ export function Create({ me, refreshWorlds, go }) {
       </div>
 
       {step === 1 && (<>
-        <button onClick={() => setReferenceOpen((o) => !o)} className="pf-btn"
-          style={{ background: "none", border: "none", padding: 0, marginBottom: 10, cursor: "pointer",
-            fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
-          {referenceOpen ? "\u2212 hide" : "+ show"} the genres and modes the generator picks from
-        </button>
-        {referenceOpen && (
-          <div style={{ marginBottom: 14, padding: "12px 14px", border: "1px solid " + T.edge, borderRadius: 2,
-            fontFamily: T.mono, fontSize: 11.5, lineHeight: 1.9, color: T.boneDim }}>
-            <div><b style={{ color: T.bone }}>Genres:</b> {REFERENCE_GENRES.join(", ")}</div>
-            <div style={{ marginTop: 6 }}>
-              <b style={{ color: T.bone }}>Modes</b> (one or two combine, like survival/adventure):{" "}
-              {REFERENCE_MODES.join(", ")}
-            </div>
-            <div style={{ marginTop: 6 }}>
-              <b style={{ color: T.bone }}>Subject types:</b> {REFERENCE_SUBJECT_TYPES.join(", ")}
-            </div>
-          </div>
-        )}
-
         {me?.isAdmin && (<>
+          <button onClick={() => setReferenceOpen((o) => !o)} className="pf-btn"
+            style={{ background: "none", border: "none", padding: 0, marginBottom: 10, cursor: "pointer",
+              fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>
+            {referenceOpen ? "\u2212 hide" : "+ show"} the genres and modes the generator picks from
+          </button>
+          {referenceOpen && (
+            <div style={{ marginBottom: 14, padding: "12px 14px", border: "1px solid " + T.edge, borderRadius: 2,
+              fontFamily: T.mono, fontSize: 11.5, lineHeight: 1.9, color: T.boneDim }}>
+              <div><b style={{ color: T.bone }}>Genres:</b> {REFERENCE_GENRES.join(", ")}</div>
+              <div style={{ marginTop: 6 }}>
+                <b style={{ color: T.bone }}>Modes</b> (one or two combine, like survival/adventure):{" "}
+                {REFERENCE_MODES.join(", ")}
+              </div>
+              <div style={{ marginTop: 6 }}>
+                <b style={{ color: T.bone }}>Subject types:</b> {REFERENCE_SUBJECT_TYPES.join(", ")}
+              </div>
+            </div>
+          )}
+
           <Field label="Or steer it yourself (admin only)" hint="Name a genre, a mode, a subject — anything from the list above or not. Whatever you say here overrides the random pick for that one thing; anything you don't mention still gets picked at random.">
             <textarea value={hint} onChange={(e) => setHint(e.target.value)} rows={2}
               placeholder="e.g. cyberpunk, and make it a comedy"
@@ -348,11 +346,6 @@ export function Create({ me, refreshWorlds, go }) {
           </span>
         </div>
 
-        {genFrom && (
-          <p style={{ fontFamily: T.mono, fontSize: 10.5, color: T.boneDim, margin: "0 0 8px" }}>
-            written from "{genFrom}"
-          </p>
-        )}
         {me?.isAdmin && breakdown && (
           <div style={{ margin: "0 0 14px", padding: "10px 12px", border: "1px solid " + T.ochre + "66",
             borderRadius: 2, fontFamily: T.mono, fontSize: 11, lineHeight: 1.8, color: T.boneDim }}>
