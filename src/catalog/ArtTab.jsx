@@ -39,7 +39,7 @@ export const KINDS = [
 // sprite sheets and fights a single object, and a titled splash needs type
 // the model can actually render.
 
-export const ENGINE_LOCKED = { item: "flux", prop: "flux", cover: "flux" };
+export const ENGINE_LOCKED = { item: "flux", prop: "flux", cover: "flux", ending: "flux" };
 
 // Ending and badge are a creator's choice, same as rooms and characters —
 // just biased toward Adventure v2 by default, since a conclusive scene or
@@ -87,14 +87,15 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
     } catch (e) { console.error(e); }
   };
 
-  // Ending's own default isn't a fixed engine — it follows whatever the
-  // world's rooms are drawn with, since a completion scene reads as a
-  // continuation of the same rooms, not a separate style choice. Badge
-  // keeps its own static default; there's no equivalent "which kind
-  // should it match" for a small emblem.
+  // Ending is locked to Adventure v2 (flux) — a completion scene is a
+  // detailed, camera-directed prompt in its own right now, and flux is
+  // specifically the engine that follows a written art direction closely
+  // rather than reinterpreting it loosely. Badge keeps its own static
+  // default too; there's no equivalent "which kind should it match" for
+  // a small emblem.
   const engine = ENGINE_LOCKED[kind]
     ?? config?.[`engine_${kind}`]
-    ?? (kind === "ending" ? config?.engine_room : DEFAULT_ENGINE[kind])
+    ?? DEFAULT_ENGINE[kind]
     ?? "pixel";
   const COST = PRICE_CENTS[engine] ?? 5;      // cents
   const styleKey = engine === "flux" ? "style_flux" : "style_pixel";
@@ -364,7 +365,9 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
             hint={ENGINE_LOCKED[kind]
               ? (kind === "item" || kind === "prop"
                   ? "Single objects always use Adventure v2. Adventure v1 is trained heavily on sprite sheets and fights one thing on its own."
-                  : "The splash screen always uses Adventure v2, because the title has to be readable.")
+                  : kind === "cover"
+                    ? "The splash screen always uses Adventure v2, because the title has to be readable."
+                    : "The ending screen always uses Adventure v2, since its prompt is a detailed, camera-directed scene that needs an engine which follows written direction closely rather than reinterpreting it loosely.")
               : ENGINES.find((x) => x.key === engine)?.note}>
             <div style={{ display: "flex", gap: 6 }}>
               {ENGINES.map((x) => {
