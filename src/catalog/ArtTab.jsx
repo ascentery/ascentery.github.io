@@ -406,10 +406,23 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
 
           {kind === "cover" && (
             <Field label="Title and byline"
-              hint="Always the world's real title and your real account name — never free text — so a rename or a name change carries through without a redraw. Turning the byline off still keeps the title.">
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              hint="Always the world's real title and your real account name — never free text — so a rename or a name change carries through without a redraw. Turning the title off also drops the byline, since there's no byline without a title to attach it to.">
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: T.mono, fontSize: 12, color: T.boneDim, cursor: "pointer" }}>
                   <input type="checkbox"
+                    checked={config.cover_title !== "false"}
+                    onChange={(e) => writeConfig({
+                      ...config,
+                      cover_title: e.target.checked ? "" : "false",
+                    })} />
+                  Include the title (a clean, textless cover if turned off)
+                </label>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: T.mono, fontSize: 12,
+                  color: config.cover_title === "false" ? T.edge : T.boneDim,
+                  cursor: config.cover_title === "false" ? "default" : "pointer" }}>
+                  <input type="checkbox" disabled={config.cover_title === "false"}
                     checked={config.cover_byline !== "false"}
                     onChange={(e) => writeConfig({
                       ...config,
@@ -424,9 +437,11 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
                 </label>
               </div>
               <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, fontStyle: "italic" }}>
-                {(config.cover_byline === "false" || config.cover_byline === false)
-                  ? `splash screen of a game with the title '${title || "…"}'`
-                  : `splash screen of a game with the title '${title || "…"}' by '${me.name || "…"}'`}
+                {config.cover_title === "false"
+                  ? "(no title text in the image)"
+                  : (config.cover_byline === "false" || config.cover_byline === false)
+                    ? `splash screen of a game with the title '${title || "…"}'`
+                    : `splash screen of a game with the title '${title || "…"}' by '${me.name || "…"}'`}
               </div>
             </Field>
           )}
