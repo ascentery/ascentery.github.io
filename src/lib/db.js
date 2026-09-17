@@ -1236,7 +1236,7 @@ export const artUrl = (path, bucket = 'art') =>
 export async function loadArt(worldId) {
   const { data, error } = await supabase
     .from('world_art')
-    .select('id, kind, entity_key, name, image_prompt, image_path, prev_image_path, bucket, locked, sort, orphaned_at')
+    .select('id, kind, entity_key, name, image_prompt, prev_image_prompt, image_path, prev_image_path, bucket, locked, sort, orphaned_at')
     .eq('world_id', worldId)
     .order('kind')
     .order('sort')
@@ -1247,6 +1247,7 @@ export async function loadArt(worldId) {
     key: r.entity_key,
     name: r.name,
     prompt: r.image_prompt ?? '',
+    prevPrompt: r.prev_image_prompt ?? null,
     url: artUrl(r.image_path, r.bucket ?? 'art'),
     prevUrl: artUrl(r.prev_image_path, r.bucket ?? 'art'),
     art: Boolean(r.image_path),
@@ -1304,12 +1305,12 @@ export async function previewArtPrompt(artId) {
   return body   // { engine, prompt, negative, settings? }
 }
 
-/** Admin only — retroactively generates endingScene/badgeEssence for a
-    world built before those fields existed, and writes them straight
-    into the ending/badge world_art rows. Only changes the stored
-    prompt text; a creator still needs to redraw from the Pictures tab
-    to see it reflected in an actual image. */
-export async function generateEndingArt(worldId) {
+/** Admin only — retroactively generates endingScene or badgeEssence
+    (whichever target is given) for a world built before those fields
+    existed, and writes it straight into that one world_art row. Only
+    changes the stored prompt text; a creator still needs to redraw from
+    the Pictures tab to see it reflected in an actual image. */
+export async function generateEndingArt(worldId, target) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Not signed in')
 
@@ -1319,11 +1320,27 @@ export async function generateEndingArt(worldId) {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${session.access_token}`,
     },
-    body: JSON.stringify({ worldId }),
+    body: JSON.stringify({ worldId, target }),
   })
   const body2 = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(body2.error || `Could not generate ending art (${res.status})`)
-  return body2   // { endingScene, badgeEssence }
+  if (!res.ok) throw new Error(body2.error || `Could not generate the prompt (${res.status})`)
+  return body2   // { target, prompt }
+}
+
+/** Swaps image_prompt and prev_image_prompt for one art entry — the same
+    undo/redo idea the image swap already uses, applied to prompt text
+    instead of the picture itself. Calling it twice in a row is a no-op
+    round trip, exactly like the image version. */
+export async function undoArtPrompt(artId) {
+  const { data: row, error: readError } = await supabase
+    .from('world_art').select('image_prompt, prev_image_prompt').eq('id', artId).single()
+  if (readError) throw readError
+  const { error } = await supabase
+    .from('world_art')
+    .update({ image_prompt: row.prev_image_prompt ?? '', prev_image_prompt: row.image_prompt })
+    .eq('id', artId)
+  if (error) throw error
+  return row.prev_image_prompt ?? ''
 }
 
 /** Admin only, enforced server-side regardless of what this function lets

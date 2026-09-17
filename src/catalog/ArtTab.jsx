@@ -11,6 +11,7 @@ import {
   loadDefaultArtPreset,
   money,
   generateEndingArt,
+  undoArtPrompt,
   previewArtPrompt,
   saveArtConfig,
   setArtLock,
@@ -197,8 +198,8 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
   };
 
   const [uploading, setUploading] = useState(null);
-  const [regeneratingEndingArt, setRegeneratingEndingArt] = useState(false);
-  const [endingArtNote, setEndingArtNote] = useState(null);
+  const [regeneratingPromptFor, setRegeneratingPromptFor] = useState(null); // artId currently regenerating
+  const [promptNote, setPromptNote] = useState({});                         // { [artId]: note text }
 
   const upload = async (entry, file) => {
     if (!file) return;
@@ -215,27 +216,38 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
     }
   };
 
-  /* For a world built before endingScene/badgeEssence existed — writes
-     new prompts straight into the ending/badge rows from the world's
-     actual premise and quest structure. Only the stored text changes;
-     an already-drawn picture keeps showing the old one until redrawn. */
-  const regenerateEndingArt = async () => {
-    setRegeneratingEndingArt(true);
-    setEndingArtNote(null);
+  /* For a world built before endingScene/badgeEssence existed — writes a
+     new prompt straight into this one entry (ending or badge, whichever
+     was clicked) from the world's actual premise and quest structure.
+     The old prompt is kept as prevPrompt rather than discarded, the same
+     way a redrawn image keeps its previous version, so it can be undone.
+     Only the stored text changes; an already-drawn picture keeps showing
+     the old one until redrawn. */
+  const regeneratePrompt = async (entry, target) => {
+    setRegeneratingPromptFor(entry.id);
+    setPromptNote((n) => ({ ...n, [entry.id]: null }));
     setError(null);
     try {
-      const { endingScene, badgeEssence } = await generateEndingArt(worldId);
-      setEntries((es) => es.map((e) => {
-        if (e.kind === "ending") return { ...e, prompt: endingScene };
-        if (e.kind === "badge") return { ...e, prompt: `An emblem: ${badgeEssence}` };
-        return e;
-      }));
-      setRevision((r) => r + 1); // the prompt boxes are uncontrolled — this remounts them with the new text
-      setEndingArtNote("New prompts written. Redraw the ending and badge pictures to see them reflected.");
+      const { prompt } = await generateEndingArt(worldId, target);
+      setEntries((es) => es.map((e) => e.id === entry.id ? { ...e, prompt, prevPrompt: e.prompt } : e));
+      setRevision((r) => r + 1); // uncontrolled textarea — this remounts it with the new text
+      setPromptNote((n) => ({ ...n, [entry.id]: "New prompt written. Redraw to see it reflected." }));
     } catch (e) {
       setError(e.message);
     } finally {
-      setRegeneratingEndingArt(false);
+      setRegeneratingPromptFor(null);
+    }
+  };
+
+  const undoPrompt = async (entry) => {
+    setError(null);
+    try {
+      const restored = await undoArtPrompt(entry.id);
+      setEntries((es) => es.map((e) => e.id === entry.id ? { ...e, prompt: restored, prevPrompt: e.prompt } : e));
+      setRevision((r) => r + 1);
+      setPromptNote((n) => ({ ...n, [entry.id]: null }));
+    } catch (e) {
+      setError(e.message);
     }
   };
 
@@ -606,17 +618,32 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
                   onChange={(ev) => { upload(e, ev.target.files?.[0]); ev.target.value = ""; }} />
               </label>
             )}
-            {isAdmin && kind === "ending" && (
-              <button onClick={regenerateEndingArt} disabled={regeneratingEndingArt} className="pf-btn"
+          </div>
+        );
+
+        // Its own row, below redraw/upload rather than sharing space with
+        // them — regenerating a prompt is a materially different, rarer
+        // action than drawing or uploading a picture, and crowding it
+        // into the same row made it easy to miss or mis-click.
+        const promptToolsRow = isAdmin && (kind === "ending" || kind === "badge") && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: 4 }}>
+            <button onClick={() => regeneratePrompt(e, kind)} disabled={regeneratingPromptFor === e.id}
+              className="pf-btn"
+              style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
+                color: T.ochre, cursor: regeneratingPromptFor === e.id ? "default" : "pointer" }}>
+              {regeneratingPromptFor === e.id
+                ? "writing\u2026"
+                : kind === "ending" ? "regenerate ending prompt" : "generate badge prompt"}
+            </button>
+            {e.prevPrompt != null && (
+              <button onClick={() => undoPrompt(e)} className="pf-btn"
                 style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
-                  color: T.ochre, cursor: regeneratingEndingArt ? "default" : "pointer" }}>
-                {regeneratingEndingArt ? "writing new prompts\u2026" : "regenerate ending + badge prompts"}
+                  color: T.boneDim, cursor: "pointer" }}>
+                undo prompt
               </button>
             )}
-            {isAdmin && kind === "ending" && endingArtNote && (
-              <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.moss, marginLeft: 10 }}>
-                {endingArtNote}
-              </span>
+            {promptNote[e.id] && (
+              <span style={{ fontFamily: T.mono, fontSize: 10.5, color: T.moss }}>{promptNote[e.id]}</span>
             )}
           </div>
         );
@@ -644,6 +671,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
         const textarea = (
           <textarea
             defaultValue={e.prompt}
+            key={`${e.id}:${revision}`}
             rows={layout === "grid" ? 4 : 5}
             onBlur={(ev) => savePrompt(e, ev.target.value)}
             placeholder="What the picture should show"
@@ -687,7 +715,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
           </div>
         );
 
-        const useRow = layout === "list" || kind === "cover" || kind === "ending";
+        const useRow = layout === "list" || kind === "cover" || kind === "ending" || kind === "badge";
 
         if (useRow) {
           // Image beside everything else — the prompt is always visible
@@ -732,6 +760,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
               </div>
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
                 {nameRow}
+                {promptToolsRow}
                 {promptRow}
                 {textarea}
                 {finalPromptBlock}
@@ -748,6 +777,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
               {lockButton}
             </div>
             {nameRow}
+            {promptToolsRow}
             {promptRow}
             {editing === e.id && textarea}
             {editing === e.id && finalPromptBlock}
