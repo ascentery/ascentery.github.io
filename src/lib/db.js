@@ -947,14 +947,17 @@ export async function generateStoryDetails({ mode, title, brief, storyDetails, p
     presetId is honoured only for admins, same as generateBriefFromPreset.
     storyDetails, once step 2 exists, is the richer context this reads from
     instead of the short step-1 brief. */
-export async function generateGameDetails({ mode, title, brief, storyDetails, gameDetails, presetId }) {
+export async function generateGameDetails({ mode, title, brief, storyDetails, gameDetails, presetId, roomCount }) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Not signed in')
 
   const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-details`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-    body: JSON.stringify({ mode, title, brief, storyDetails, gameDetails, ...(presetId ? { presetId } : {}) }),
+    body: JSON.stringify({
+      mode, title, brief, storyDetails, gameDetails,
+      ...(presetId ? { presetId } : {}), ...(roomCount ? { roomCount } : {}),
+    }),
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) {

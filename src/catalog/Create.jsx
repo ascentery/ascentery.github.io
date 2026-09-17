@@ -97,6 +97,7 @@ export function Create({ me, refreshWorlds, go }) {
   const [draftId, setDraftId] = useState(null);
   const [pendingDraft, setPendingDraft] = useState(null);
   const [draftChecked, setDraftChecked] = useState(false);
+  const [draftSaveError, setDraftSaveError] = useState(false);
   const [stage, setStage] = useState(null);        // map | plot | prose | done, while building
   const [buildResult, setBuildResult] = useState(null);
 
@@ -178,7 +179,8 @@ export function Create({ me, refreshWorlds, go }) {
       saveDraft({
         id: draftId, userId: me.id, step, title, desc, storyDetails, gameDetails, titles,
         suggestedRoomCount, roomCount: roomCount.trim() ? Number(roomCount) : null, originalTitle,
-      }).catch((e) => console.error("could not autosave draft", e));
+      }).then(() => setDraftSaveError(false))
+        .catch((e) => { console.error("could not autosave draft", e); setDraftSaveError(true); });
     }, 2000);
     return () => clearTimeout(t);
   }, [draftId, step, title, storyDetails, gameDetails, roomCount]);
@@ -221,14 +223,18 @@ export function Create({ me, refreshWorlds, go }) {
     setStoryBusy(true); setStoryError(null);
     try {
       const res = await generateStoryDetails({ mode: "full", title, brief: desc });
-      setStoryDetails(res.storyDetails ?? "");
+      const newStoryDetails = res.storyDetails ?? "";
+      setStoryDetails(newStoryDetails);
+      setSuggestedRoomCount(res.suggestedRoomCount ?? null);
       setStep(2);
       try {
         const id = await saveDraft({
-          id: draftId, userId: me.id, step: 2, title, desc, storyDetails: res.storyDetails ?? "",
+          id: draftId, userId: me.id, step: 2, title, desc, storyDetails: newStoryDetails,
+          suggestedRoomCount: res.suggestedRoomCount ?? null,
         });
         setDraftId(id);
-      } catch (e) { console.error("could not save draft", e); }
+        setDraftSaveError(false);
+      } catch (e) { console.error("could not save draft", e); setDraftSaveError(true); }
     } catch (e) {
       setStoryError(e.message);
     } finally {
@@ -254,27 +260,32 @@ export function Create({ me, refreshWorlds, go }) {
   // titles in the same call. gameDetails, not the short step-1 brief and
   // not the story arc on its own, is what actually becomes the world's
   // brief once built — the creator can read and edit the richer version
-  // before anything is generated.
+  // before anything is generated. Room count is settled by now (step 2),
+  // not changeable here — the plot this call writes is built to fit it,
+  // so letting it change afterward would risk contradicting content
+  // that's already been generated around a specific number of locations.
   const advanceToDetails = async () => {
     setDetailsBusy(true); setDetailsError(null);
     try {
-      const res = await generateGameDetails({ mode: "full", title, brief: desc, storyDetails });
+      const effectiveRoomCount = roomCount.trim() ? Number(roomCount) : suggestedRoomCount;
+      const res = await generateGameDetails({
+        mode: "full", title, brief: desc, storyDetails, roomCount: effectiveRoomCount || undefined,
+      });
       const newGameDetails = res.gameDetails ?? "";
       const newTitles = res.titles ?? [];
-      const newSuggestedRoomCount = res.suggestedRoomCount ?? null;
       setGameDetails(newGameDetails);
       setTitles(newTitles);
       setOriginalTitle(title);
-      setSuggestedRoomCount(newSuggestedRoomCount);
       setStep(3);
       try {
         const id = await saveDraft({
           id: draftId, userId: me.id, step: 3, title, desc, storyDetails,
           gameDetails: newGameDetails, titles: newTitles,
-          suggestedRoomCount: newSuggestedRoomCount, originalTitle: title,
+          suggestedRoomCount, roomCount: effectiveRoomCount || null, originalTitle: title,
         });
         setDraftId(id);
-      } catch (e) { console.error("could not save draft", e); }
+        setDraftSaveError(false);
+      } catch (e) { console.error("could not save draft", e); setDraftSaveError(true); }
     } catch (e) {
       setDetailsError(e.message);
     } finally {
@@ -380,6 +391,13 @@ export function Create({ me, refreshWorlds, go }) {
             <Btn onClick={dismissDraft}>Start fresh instead</Btn>
           </div>
         </div>
+      )}
+
+      {draftSaveError && (
+        <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 16px", lineHeight: 1.6 }}>
+          Your progress could not be saved just now — if you leave this page, what you've done so far
+          may not be here when you come back. Still safe to keep working; this will keep retrying.
+        </p>
       )}
 
       <div style={{ display: "flex", gap: 18, marginBottom: 28, flexWrap: "wrap" }}>
@@ -500,6 +518,22 @@ export function Create({ me, refreshWorlds, go }) {
         {storyError && (
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 12px" }}>{storyError}</p>
         )}
+
+        <Field label="How many rooms?"
+          hint={suggestedRoomCount
+            ? `The AI suggests ${suggestedRoomCount} for this story. Leave blank to use that, or set your own (max 20) — more rooms means a bigger map to explore. Settled here, not changeable later, since Game Details writes its plot to fit whatever is chosen.`
+            : "Leave blank for a newcomer-friendly size (6-10 rooms), or set your own (max 20). Settled here, not changeable later, since Game Details writes its plot to fit whatever is chosen."}>
+          <input type="number" min={1} max={20} value={roomCount}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "") { setRoomCount(""); return; }
+              const n = Math.min(20, Math.max(1, Math.round(Number(v) || 1)));
+              setRoomCount(String(n));
+            }}
+            placeholder={suggestedRoomCount ? String(suggestedRoomCount) : "6-10"}
+            style={{ ...inputStyle, width: 100 }} />
+        </Field>
+
         {detailsError && (
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 12px" }}>{detailsError}</p>
         )}
@@ -584,21 +618,6 @@ export function Create({ me, refreshWorlds, go }) {
         {detailsError && (
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 12px" }}>{detailsError}</p>
         )}
-
-        <Field label="How many rooms?"
-          hint={suggestedRoomCount
-            ? `The AI suggests ${suggestedRoomCount} for this story. Leave blank to use that, or set your own (max 20) — more rooms means a bigger map to explore.`
-            : "Leave blank for a newcomer-friendly size (6-10 rooms), or set your own (max 20)."}>
-          <input type="number" min={1} max={20} value={roomCount}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === "") { setRoomCount(""); return; }
-              const n = Math.min(20, Math.max(1, Math.round(Number(v) || 1)));
-              setRoomCount(String(n));
-            }}
-            placeholder={suggestedRoomCount ? String(suggestedRoomCount) : "6-10"}
-            style={{ ...inputStyle, width: 100 }} />
-        </Field>
 
         <p style={{ fontFamily: T.mono, fontSize: 11, lineHeight: 1.7, color: T.boneDim, margin: "16px 0 20px" }}>
           Pictures are separate and optional. You have {money(me.balance)}.
