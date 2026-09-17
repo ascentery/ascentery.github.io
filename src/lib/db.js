@@ -483,18 +483,104 @@ export function watchGeneration(worldId, onStage) {
   return () => { stopped = true }
 }
 
-export async function createWorld({ userId, title, brief, gameBrief = null, storyDetails = null, roomMin = null, roomMax = null }) {
+/** Starts real generation. If existingId is given (a draft the wizard has
+    been saving to), that row is turned into the real thing in place —
+    status flips to 'generating' and every draft_* field is cleared —
+    rather than inserting a second, duplicate row. Without one, a fresh
+    row is created as before (the pre-draft-saving behavior, still used
+    if the wizard was never actually saved as a draft for some reason). */
+export async function createWorld({ userId, title, brief, gameBrief = null, storyDetails = null, roomMin = null, roomMax = null, existingId = null }) {
+  const payload = {
+    owner_id: userId, title, brief, status: 'generating',
+    game_brief: gameBrief, story_details: storyDetails,
+    room_min: roomMin, room_max: roomMax,
+    draft_step: null, draft_titles: null,
+    draft_suggested_room_count: null, draft_room_count: null, draft_original_title: null,
+  }
+  if (existingId) {
+    const { error } = await supabase.from('worlds').update(payload).eq('id', existingId)
+    if (error) throw error
+    return existingId
+  }
   const { data, error } = await supabase
     .from('worlds')
-    .insert({
-      owner_id: userId, title, brief, status: 'generating',
-      game_brief: gameBrief, story_details: storyDetails,
-      room_min: roomMin, room_max: roomMax,
-    })
+    .insert(payload)
     .select('id')
     .single()
   if (error) throw error
   return data.id
+}
+
+/** The most recent draft this person left unfinished, if any — checked
+    when Create opens so an interrupted wizard can offer to resume rather
+    than silently starting fresh over it. Drafts have no picture, quest,
+    or anything else that would make more than one meaningfully
+    different, so only the single most recent is ever surfaced. */
+export async function loadDraft(userId) {
+  const { data, error } = await supabase
+    .from('worlds')
+    .select('id, title, game_brief, story_details, brief, draft_step, draft_titles, draft_suggested_room_count, draft_room_count, draft_original_title, updated_at')
+    .eq('owner_id', userId)
+    .eq('status', 'draft')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+  if (error) throw error
+  const row = data?.[0]
+  if (!row) return null
+  return {
+    id: row.id,
+    title: row.title ?? '',
+    desc: row.game_brief ?? '',
+    storyDetails: row.story_details ?? '',
+    gameDetails: row.brief ?? '',
+    step: row.draft_step ?? 1,
+    titles: row.draft_titles ?? [],
+    suggestedRoomCount: row.draft_suggested_room_count ?? null,
+    roomCount: row.draft_room_count ?? null,
+    originalTitle: row.draft_original_title ?? '',
+    updatedAt: row.updated_at,
+  }
+}
+
+/** Saves wizard progress as a real row so it survives a closed tab, a
+    reload, or resuming from a different device entirely. id is null for
+    the very first save (before any world row exists yet); every save
+    after that updates the same row in place. Called at natural pause
+    points (a step completing, a generation finishing) and debounced
+    while the creator is actively typing — never on every keystroke. */
+export async function saveDraft({ id = null, userId, step, title, desc, storyDetails, gameDetails, titles, suggestedRoomCount, roomCount, originalTitle }) {
+  const payload = {
+    title: title || null,
+    game_brief: desc || null,
+    story_details: storyDetails || null,
+    brief: gameDetails || null,
+    draft_step: step,
+    draft_titles: titles?.length ? titles : null,
+    draft_suggested_room_count: suggestedRoomCount ?? null,
+    draft_room_count: roomCount ?? null,
+    draft_original_title: originalTitle || null,
+  }
+  if (id) {
+    const { error } = await supabase.from('worlds').update(payload).eq('id', id)
+    if (error) throw error
+    return id
+  }
+  const { data, error } = await supabase
+    .from('worlds')
+    .insert({ ...payload, owner_id: userId, status: 'draft' })
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+/** Deletes a draft outright — offered as "start fresh instead" alongside
+    the resume prompt. A draft has nothing else pointing at it (no art,
+    no plays, nothing published), so this is a plain delete, not the
+    soft-archive treatment a real world would need. */
+export async function discardDraft(id) {
+  const { error } = await supabase.from('worlds').delete().eq('id', id).eq('status', 'draft')
+  if (error) throw error
 }
 
 export const REPORT_REASONS = [

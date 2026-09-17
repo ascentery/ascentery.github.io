@@ -79,10 +79,17 @@ export const Field = ({ label, hint, children }) => (
    about whether anyone else can see it. Conflating the two showed a
    "published" tag on every freshly-built draft. published is now read
    separately, and only a ready world that is actually published gets that
-   label; a ready-but-unpublished one reads as a draft. */
+   label; a ready-but-unpublished one reads as a draft.
+
+   A genuine status: "draft" row (the Create wizard autosaving mid-way,
+   before anything has been built at all) is a third, different thing
+   again — it used to collapse onto the same "draft" label as a
+   ready-but-unpublished game, which made an unfinished wizard look like
+   a complete, playable game nobody had published yet. "unfinished" is
+   now its own label so the two don't read as the same state. */
 export const Chip = ({ status, published }) => {
-  const key = status === "ready" ? (published ? "published" : "draft") : status;
-  const map = { published: [T.moss, "published"], draft: [T.clay, "draft"], generating: [T.ochre, "building"], failed: [T.clay, "failed"] };
+  const key = status === "draft" ? "unfinished" : status === "ready" ? (published ? "published" : "draft") : status;
+  const map = { published: [T.moss, "published"], draft: [T.clay, "draft"], unfinished: [T.boneDim, "unfinished"], generating: [T.ochre, "building"], failed: [T.clay, "failed"] };
   const [c, label] = map[key] ?? [T.boneDim, status];
   return <span style={{ fontFamily: T.mono, fontSize: 10, letterSpacing: ".04em", color: c,
     border: `1px solid ${c}55`, padding: "2px 7px", borderRadius: 2, whiteSpace: "nowrap" }}>{label}</span>;

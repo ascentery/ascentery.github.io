@@ -2,13 +2,16 @@ import React, { useState, useEffect } from "react";
 import {
   GEN_FLAT_CENTS,
   createWorld,
+  discardDraft,
   generateBriefFromPreset,
   generateGameDetails,
   generateStoryDetails,
   generateWorld,
+  loadDraft,
   loadPresets,
   money,
   resetWorldForRetry,
+  saveDraft,
   setPublished,
   watchGeneration,
 } from "../lib/db";
@@ -87,6 +90,13 @@ export function Create({ me, refreshWorlds, go }) {
   const [error, setError] = useState(null);
   const [worldId, setWorldId] = useState(null);
   const [needsFunds, setNeedsFunds] = useState(false);
+  // Draft autosave: draftId is the worlds row this wizard is saving into
+  // (null until the first save actually happens). pendingDraft holds a
+  // found-but-not-yet-applied draft while the resume/start-fresh prompt
+  // is showing; draftChecked stops the check from running more than once.
+  const [draftId, setDraftId] = useState(null);
+  const [pendingDraft, setPendingDraft] = useState(null);
+  const [draftChecked, setDraftChecked] = useState(false);
   const [stage, setStage] = useState(null);        // map | plot | prose | done, while building
   const [buildResult, setBuildResult] = useState(null);
 
@@ -126,6 +136,52 @@ export function Create({ me, refreshWorlds, go }) {
     loadPresets("story_details").then(setStoryPresets).catch(() => setStoryPresets([]));
     loadPresets("game_details").then(setDetailPresets).catch(() => setDetailPresets([]));
   }, [me?.isAdmin]);
+
+  // Checked once, on the way in — a found draft is offered, never applied
+  // automatically, since the creator may genuinely want to start a
+  // different game instead of resuming the last one.
+  useEffect(() => {
+    if (!me?.id || draftChecked) return;
+    setDraftChecked(true);
+    loadDraft(me.id).then((d) => { if (d) setPendingDraft(d); }).catch(() => {});
+  }, [me?.id, draftChecked]);
+
+  const resumeDraft = () => {
+    const d = pendingDraft;
+    setDraftId(d.id);
+    setTitle(d.title);
+    setDesc(d.desc);
+    setStoryDetails(d.storyDetails);
+    setGameDetails(d.gameDetails);
+    setTitles(d.titles);
+    setSuggestedRoomCount(d.suggestedRoomCount);
+    setRoomCount(d.roomCount ? String(d.roomCount) : "");
+    setOriginalTitle(d.originalTitle || d.title);
+    setStep(d.step);
+    setPendingDraft(null);
+  };
+
+  const dismissDraft = async () => {
+    const d = pendingDraft;
+    setPendingDraft(null);
+    try { await discardDraft(d.id); } catch { /* stale draft, not worth surfacing an error for */ }
+  };
+
+  // Catches manual edits made after a step's own generation already
+  // saved once — tweaking the generated story text, say, right before
+  // navigating away. Only runs once a draft row actually exists (the
+  // first save always happens at a step transition instead); typing in
+  // step 1 alone never creates a row just from typing.
+  useEffect(() => {
+    if (!draftId || step < 2) return;
+    const t = setTimeout(() => {
+      saveDraft({
+        id: draftId, userId: me.id, step, title, desc, storyDetails, gameDetails, titles,
+        suggestedRoomCount, roomCount: roomCount.trim() ? Number(roomCount) : null, originalTitle,
+      }).catch((e) => console.error("could not autosave draft", e));
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [draftId, step, title, storyDetails, gameDetails, roomCount]);
 
   const generate = async () => {
     setGenBusy(true); setGenError(null);
@@ -167,6 +223,12 @@ export function Create({ me, refreshWorlds, go }) {
       const res = await generateStoryDetails({ mode: "full", title, brief: desc });
       setStoryDetails(res.storyDetails ?? "");
       setStep(2);
+      try {
+        const id = await saveDraft({
+          id: draftId, userId: me.id, step: 2, title, desc, storyDetails: res.storyDetails ?? "",
+        });
+        setDraftId(id);
+      } catch (e) { console.error("could not save draft", e); }
     } catch (e) {
       setStoryError(e.message);
     } finally {
@@ -197,11 +259,22 @@ export function Create({ me, refreshWorlds, go }) {
     setDetailsBusy(true); setDetailsError(null);
     try {
       const res = await generateGameDetails({ mode: "full", title, brief: desc, storyDetails });
-      setGameDetails(res.gameDetails ?? "");
-      setTitles(res.titles ?? []);
+      const newGameDetails = res.gameDetails ?? "";
+      const newTitles = res.titles ?? [];
+      const newSuggestedRoomCount = res.suggestedRoomCount ?? null;
+      setGameDetails(newGameDetails);
+      setTitles(newTitles);
       setOriginalTitle(title);
-      setSuggestedRoomCount(res.suggestedRoomCount ?? null);
+      setSuggestedRoomCount(newSuggestedRoomCount);
       setStep(3);
+      try {
+        const id = await saveDraft({
+          id: draftId, userId: me.id, step: 3, title, desc, storyDetails,
+          gameDetails: newGameDetails, titles: newTitles,
+          suggestedRoomCount: newSuggestedRoomCount, originalTitle: title,
+        });
+        setDraftId(id);
+      } catch (e) { console.error("could not save draft", e); }
     } catch (e) {
       setDetailsError(e.message);
     } finally {
@@ -262,6 +335,7 @@ export function Create({ me, refreshWorlds, go }) {
           storyDetails: storyDetails.trim() || null,
           roomMin: effectiveRoomCount || null,
           roomMax: effectiveRoomCount || null,
+          existingId: draftId,
         });
       }
       setWorldId(id);
@@ -291,6 +365,23 @@ export function Create({ me, refreshWorlds, go }) {
   return (
     <div className="pf-in" style={{ maxWidth: 660 }}>
       <H1>Create a game</H1>
+
+      {pendingDraft && (
+        <div style={{ marginBottom: 24, padding: "14px 16px", border: "1px solid " + T.ochre + "66",
+          borderRadius: 2, background: T.ochre + "0d" }}>
+          <div style={{ fontFamily: T.serif, fontSize: 15, marginBottom: 4 }}>
+            You have an unfinished draft{pendingDraft.title ? `: "${pendingDraft.title}"` : ""}
+          </div>
+          <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.boneDim, margin: "0 0 12px", lineHeight: 1.6 }}>
+            Left partway through — pick up where you stopped, or start a new game instead.
+          </p>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn kind="solid" onClick={resumeDraft}>Resume draft</Btn>
+            <Btn onClick={dismissDraft}>Start fresh instead</Btn>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 18, marginBottom: 28, flexWrap: "wrap" }}>
         {steps.map((label, i) => (
           <div key={label} style={{ fontFamily: T.mono, fontSize: 11.5,
