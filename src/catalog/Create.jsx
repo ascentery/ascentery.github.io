@@ -531,6 +531,20 @@ export function Create({ me, refreshWorlds, go }) {
           )}
         </>)}
 
+        {me?.isAdmin && breakdown && (
+          <div style={{ margin: "0 0 14px", padding: "10px 12px", border: "1px solid " + T.ochre + "66",
+            borderRadius: 2, fontFamily: T.mono, fontSize: 11, lineHeight: 1.8, color: T.boneDim }}>
+            <div style={{ color: T.ochre, marginBottom: 2 }}>Admin only — how this was assembled</div>
+            <div><b style={{ color: T.bone }}>Genre (picked in code):</b> {breakdown.genre || "\u2014"}</div>
+            <div><b style={{ color: T.bone }}>Mode (picked in code):</b> {breakdown.mode || "\u2014"}</div>
+            <div><b style={{ color: T.bone }}>Subject type (picked in code):</b> {breakdown.subject_type || "\u2014"}</div>
+            <div><b style={{ color: T.bone }}>Subject (the model's own choice):</b> {breakdown.subject || "\u2014"}</div>
+            {breakdown.hint && (
+              <div><b style={{ color: T.bone }}>Your hint (overrides the above):</b> {breakdown.hint}</div>
+            )}
+          </div>
+        )}
+
         <Field label="Title">
           <input style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="The Lamp Room" />
         </Field>
@@ -599,19 +613,6 @@ export function Create({ me, refreshWorlds, go }) {
           )}
         </>)}
 
-        {me?.isAdmin && breakdown && (
-          <div style={{ margin: "0 0 14px", padding: "10px 12px", border: "1px solid " + T.ochre + "66",
-            borderRadius: 2, fontFamily: T.mono, fontSize: 11, lineHeight: 1.8, color: T.boneDim }}>
-            <div style={{ color: T.ochre, marginBottom: 2 }}>Admin only — how this was assembled</div>
-            <div><b style={{ color: T.bone }}>Genre (picked in code):</b> {breakdown.genre || "\u2014"}</div>
-            <div><b style={{ color: T.bone }}>Mode (picked in code):</b> {breakdown.mode || "\u2014"}</div>
-            <div><b style={{ color: T.bone }}>Subject type (picked in code):</b> {breakdown.subject_type || "\u2014"}</div>
-            <div><b style={{ color: T.bone }}>Subject (the model's own choice):</b> {breakdown.subject || "\u2014"}</div>
-            {breakdown.hint && (
-              <div><b style={{ color: T.bone }}>Your hint (overrides the above):</b> {breakdown.hint}</div>
-            )}
-          </div>
-        )}
         {genError && (
           <p style={{ fontFamily: T.mono, fontSize: 11.5, color: T.clay, margin: "0 0 8px" }}>{genError}</p>
         )}
