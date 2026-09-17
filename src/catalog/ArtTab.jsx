@@ -748,12 +748,15 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
               : wide
                 ? { flex: "0 0 50%" }
                 : { width: 240, flexShrink: 0 };
-          const splashOverride = narrow
-            ? undefined                                    // full width, natural ratio
-            : wide
-              ? { paddingTop: "56.25%" }                    // 16:9, independent of the image's own width now
-              : kind === "badge"
-                ? { paddingTop: 0, height: 220, borderRadius: "50%" }  // round, not square
+          const splashOverride = kind === "badge"
+            ? { paddingTop: 0, height: 220, borderRadius: "50%" }  // round on every layout, narrow included —
+                                                                     // same "fixed regardless of screen" reasoning
+                                                                     // as imgStyle above, checked first for the
+                                                                     // same reason: narrow must not skip it.
+            : narrow
+              ? undefined                                    // full width, natural ratio
+              : wide
+                ? { paddingTop: "56.25%" }                    // 16:9, independent of the image's own width now
                 : (kind === "prop" || kind === "item")
                   ? { paddingTop: 0, height: 220 }             // unchanged from before
                   : undefined;                                 // characters: natural ratio, no forcing
