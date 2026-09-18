@@ -85,7 +85,7 @@ const REFERENCE_SUBJECT_TYPES = [
   "an object", "a location", "1 person", "2 people", "3 to 4 people", "an animal or animals",
 ];
 
-export function Create({ me, refreshWorlds, go }) {
+export function Create({ me, refreshWorlds, go, resumeId }) {
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");           // the step-1 brief
@@ -154,17 +154,24 @@ export function Create({ me, refreshWorlds, go }) {
     loadPresets("game_details").then(setDetailPresets).catch(() => setDetailPresets([]));
   }, [me?.isAdmin]);
 
-  // Checked once, on the way in — a found draft is offered, never applied
-  // automatically, since the creator may genuinely want to start a
-  // different game instead of resuming the last one.
+  // Checked once, on the way in. Arriving with a resumeId (an "edit"
+  // click on an unfinished game from the games list) resumes straight
+  // away — the person already made the choice by clicking that specific
+  // game. Without one (the plain "Create a game" entry point), a found
+  // draft is offered instead, never applied automatically, since the
+  // creator may genuinely want to start something different rather than
+  // resume whatever was last left unfinished.
   useEffect(() => {
     if (!me?.id || draftChecked) return;
     setDraftChecked(true);
-    loadDraft(me.id).then((d) => { if (d) setPendingDraft(d); }).catch(() => {});
-  }, [me?.id, draftChecked]);
+    loadDraft(me.id).then((d) => {
+      if (!d) return;
+      if (resumeId && d.id === resumeId) applyDraft(d);
+      else if (!resumeId) setPendingDraft(d);
+    }).catch(() => {});
+  }, [me?.id, draftChecked, resumeId]);
 
-  const resumeDraft = () => {
-    const d = pendingDraft;
+  const applyDraft = (d) => {
     setDraftId(d.id);
     setTitle(d.title);
     setDesc(d.desc);
@@ -181,6 +188,10 @@ export function Create({ me, refreshWorlds, go }) {
     setItemCount(d.itemCount ? String(d.itemCount) : "");
     setOriginalTitle(d.originalTitle || d.title);
     setStep(d.step);
+  };
+
+  const resumeDraft = () => {
+    applyDraft(pendingDraft);
     setPendingDraft(null);
   };
 

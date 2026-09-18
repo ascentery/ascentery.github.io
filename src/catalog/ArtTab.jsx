@@ -114,7 +114,11 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
     return () => { cancelled = true; };
   }, [engine]);
 
-  const presetKey = `preset_${engine}`;
+  // Badge gets its own key, separate from the shared preset_${engine}
+  // every other kind uses — otherwise a preset chosen for, say, rooms
+  // would silently also apply to badges, and a badge's own first-visit
+  // default couldn't be independent of whatever else the world uses.
+  const presetKey = kind === "badge" ? "preset_badge" : `preset_${engine}`;
   const selectedPreset = config?.[presetKey] ?? null;
 
   /* Three states, not two. "Custom" is a genuine opt-out: nothing is laid
@@ -475,24 +479,11 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
           </Field>
 
           {kind === "cover" && (
-            <Field label="Title and byline"
-              hint="Always the world's real title and your real account name — never free text — so a rename or a name change carries through without a redraw. Turning the title off also drops the byline, since there's no byline without a title to attach it to.">
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+            <Field label="Byline"
+              hint="Always the world's real title and your real account name — never free text — so a rename or a name change carries through without a redraw.">
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: T.mono, fontSize: 12, color: T.boneDim, cursor: "pointer" }}>
                   <input type="checkbox"
-                    checked={config.cover_title !== "false"}
-                    onChange={(e) => writeConfig({
-                      ...config,
-                      cover_title: e.target.checked ? "" : "false",
-                    })} />
-                  Include the title (a clean, textless cover if turned off)
-                </label>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: T.mono, fontSize: 12,
-                  color: config.cover_title === "false" ? T.edge : T.boneDim,
-                  cursor: config.cover_title === "false" ? "default" : "pointer" }}>
-                  <input type="checkbox" disabled={config.cover_title === "false"}
                     checked={config.cover_byline !== "false"}
                     onChange={(e) => writeConfig({
                       ...config,
@@ -507,11 +498,9 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
                 </label>
               </div>
               <div style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim, fontStyle: "italic" }}>
-                {config.cover_title === "false"
-                  ? "(no title text in the image)"
-                  : (config.cover_byline === "false" || config.cover_byline === false)
-                    ? `splash screen of a game with the title '${title || "…"}'`
-                    : `splash screen of a game with the title '${title || "…"}' by '${me.name || "…"}'`}
+                {(config.cover_byline === "false" || config.cover_byline === false)
+                  ? `splash screen of a game with the title '${title || "…"}'`
+                  : `splash screen of a game with the title '${title || "…"}' by '${me.name || "…"}'`}
               </div>
             </Field>
           )}
@@ -641,16 +630,22 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
               {drawing === e.id ? "drawing" : (e.art ? "redraw \u00b7 " : "draw \u00b7 ") + money(COST)}
             </button>
             )}
-            {isAdmin && (kind === "cover" || kind === "ending") && (
-              <label className="pf-btn"
-                style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
-                  color: T.boneDim, cursor: uploading === e.id ? "default" : "pointer" }}>
-                {uploading === e.id ? "uploading\u2026" : "upload image"}
-                <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: "none" }}
-                  disabled={uploading === e.id}
-                  onChange={(ev) => { upload(e, ev.target.files?.[0]); ev.target.value = ""; }} />
-              </label>
-            )}
+          </div>
+        );
+
+        // Beneath the prompt textarea, admin only — lets an admin drop
+        // in a hand-picked or externally-made image directly, bypassing
+        // generation entirely for that one picture.
+        const uploadRow = isAdmin && (kind === "room" || kind === "cover" || kind === "ending") && (
+          <div style={{ paddingTop: 6 }}>
+            <label className="pf-btn"
+              style={{ background: "none", border: "none", padding: 0, fontFamily: T.mono, fontSize: 11,
+                color: T.boneDim, cursor: uploading === e.id ? "default" : "pointer" }}>
+              {uploading === e.id ? "uploading\u2026" : "upload image"}
+              <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: "none" }}
+                disabled={uploading === e.id}
+                onChange={(ev) => { upload(e, ev.target.files?.[0]); ev.target.value = ""; }} />
+            </label>
           </div>
         );
 
@@ -802,6 +797,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
                 {nameRow}
                 {promptRow}
                 {textarea}
+                {uploadRow}
                 {promptToolsRow}
                 {finalPromptBlock}
               </div>
@@ -819,6 +815,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
             {nameRow}
             {promptRow}
             {editing === e.id && textarea}
+            {editing === e.id && uploadRow}
             {editing === e.id && promptToolsRow}
             {editing === e.id && finalPromptBlock}
           </div>
