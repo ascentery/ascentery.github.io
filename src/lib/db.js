@@ -1581,7 +1581,7 @@ export const DEFAULT_ART = {
   style_flux:
     'Pixel art. Strictly limit to 4 colors. Strictly use patterns and dither to create shades. ' +
     'Strictly use 4 colors. No wide angle view and tiny objects. Closeup view.',
-  room: 'wide establishing view of a place, no people, environmental scene,',
+  room: 'wide establishing view of a place, environmental scene,',
   mob: 'character portrait, single figure, head and shoulders, plain dark background,',
   item: 'one single isolated object, studio product shot, centred, filling the frame, ' +
         'flat plain dark background, nothing else in the picture,',
@@ -1590,9 +1590,12 @@ export const DEFAULT_ART = {
   ending: 'a final, conclusive image, warm resolution, the story reaching its conclusion, cinematic composition,',
   badge: 'an achievement badge, emblem or medallion, centred, flat plain background, no scene, no figures,',
 
-  // what to avoid
+  // what to avoid. room's own entry (people, faces, figures, portrait,
+  // character) is deliberately gone — the room's own image_prompt
+  // already reflects who's actually present, so this was fighting
+  // against scenes the room's own content correctly called for, and it
+  // wasn't a widely used field to begin with.
   neg: '3d render, realistic, photo, blurry, sketch, text, watermark, signature, lettering',
-  neg_room: 'people, faces, figures, portrait, character',
   neg_ending: '',
   neg_badge: 'scenery, landscape, room, multiple objects, people, hands, spritesheet, grid, text, watermark',
   neg_mob: 'landscape, wide shot, crowd, multiple people, full body',
