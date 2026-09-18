@@ -54,6 +54,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
   const isAdmin = Boolean(me?.isAdmin);
   const [kind, setKind] = useState("room");
   const [config, setConfig] = useState(null);
+  const [suggestedConfig, setSuggestedConfig] = useState(null);   // the permanent, never-mutated AI suggestion — separate from config itself, so switching presets never loses it
   const [showStyle, setShowStyle] = useState(false);
   const [saved, setSaved] = useState(false);
   /* The prompt boxes are uncontrolled, so React will not repaint them when
@@ -72,7 +73,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
     if (!worldId) return;
     let cancelled = false;
     loadArtConfig(worldId)
-      .then((c) => { if (!cancelled) setConfig(c); })
+      .then((r) => { if (!cancelled) { setConfig(r.config); setSuggestedConfig(r.suggested); } })
       .catch(() => { if (!cancelled) setConfig({}); });
     return () => { cancelled = true; };
   }, [worldId]);
@@ -134,6 +135,24 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
 
   const chooseCustom = () => {
     writeConfig({ ...config, [presetKey]: "custom" });
+    setPreview(null);
+  };
+
+  // Unlike chooseCustom, this actually restores the permanent
+  // suggestion's text into the boxes — clicking it after the creator has
+  // switched away (or edited Custom themselves) genuinely brings the
+  // original AI-written style/framing back, not just the label.
+  const chooseSuggested = () => {
+    if (!suggestedConfig) return;
+    writeConfig({
+      ...config,
+      [presetKey]: "suggested",
+      style_flux: suggestedConfig.style_flux ?? config.style_flux,
+      room: suggestedConfig.room ?? config.room,
+      mob: suggestedConfig.mob ?? config.mob,
+      prop: suggestedConfig.prop ?? config.prop,
+      item: suggestedConfig.item ?? config.item,
+    }, true);   // repaint — the boxes' own text just changed underneath them
     setPreview(null);
   };
 
@@ -400,11 +419,12 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
                   border: `1px solid ${selectedPreset === "custom" ? T.ochre : T.edge}` }}>
                 Custom
               </button>
-              {selectedPreset === "suggested" && (
-                <button className="pf-btn" onClick={chooseCustom}
-                  title="Written by the model for this world specifically when it was built. Behaves exactly like Custom — click to treat it as your own from here."
+              {suggestedConfig && (
+                <button className="pf-btn" onClick={chooseSuggested}
+                  title="Written by the model for this world specifically when it was built. Click to bring that style and framing back into the boxes below, even if you've since switched away from it."
                   style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer", background: "transparent",
-                    fontFamily: T.mono, fontSize: 12, color: T.bone, border: `1px solid ${T.ochre}` }}>
+                    fontFamily: T.mono, fontSize: 12, color: selectedPreset === "suggested" ? T.bone : T.boneDim,
+                    border: `1px solid ${selectedPreset === "suggested" ? T.ochre : T.edge}` }}>
                   Suggested
                 </button>
               )}

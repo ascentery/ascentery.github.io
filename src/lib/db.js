@@ -1702,7 +1702,7 @@ export async function saveDefaultArtPreset(engine, id) {
 export async function loadArtConfig(worldId) {
   const { data, error } = await supabase
     .from('worlds')
-    .select('art_config')
+    .select('art_config, suggested_art_config')
     .eq('id', worldId)
     .single()
   if (error) throw error
@@ -1720,7 +1720,7 @@ export async function loadArtConfig(worldId) {
   // have sent. DEFAULT_ART's only real job is in saveArtConfig below,
   // deciding what is redundant to persist — not deciding what a box
   // displays.
-  return saved
+  return { config: saved, suggested: data?.suggested_art_config ?? null }
 }
 
 export async function saveArtConfig(worldId, config) {
