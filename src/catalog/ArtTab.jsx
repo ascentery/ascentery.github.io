@@ -400,6 +400,14 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
                   border: `1px solid ${selectedPreset === "custom" ? T.ochre : T.edge}` }}>
                 Custom
               </button>
+              {selectedPreset === "suggested" && (
+                <button className="pf-btn" onClick={chooseCustom}
+                  title="Written by the model for this world specifically when it was built. Behaves exactly like Custom — click to treat it as your own from here."
+                  style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer", background: "transparent",
+                    fontFamily: T.mono, fontSize: 12, color: T.bone, border: `1px solid ${T.ochre}` }}>
+                  Suggested
+                </button>
+              )}
               <button className="pf-btn" onClick={chooseDefaultOption}
                 title="Whichever preset the admin has marked default for this engine, or the platform's original wording if none is set."
                 style={{ padding: "8px 12px", borderRadius: 2, cursor: "pointer", background: "transparent",
@@ -584,6 +592,7 @@ export function ArtTab({ entries, setEntries, me, setMe, worldId, onDrawn, title
           <button onClick={() => toggleLock(e)}
             title={e.locked ? "Unlock to allow redraws" : "Lock to protect from redraws"} className="pf-btn"
             style={{ position: "absolute", top: 7, right: 7, width: 27, height: 27, borderRadius: 2, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
               background: e.locked ? T.ochre : "rgba(20,22,17,.72)", border: "1px solid " + (e.locked ? T.ochre : T.edge),
               color: e.locked ? "#221D0C" : T.bone, fontSize: 12, lineHeight: 1 }}>
             {e.locked ? "\ud83d\udd12" : "\ud83d\udd13"}
