@@ -151,7 +151,11 @@ export function Auth() {
 export function TopBar({ me, view, go }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const tabs = [["browse", "Browse"], ["mine", "Your games"], ["friends", "Friends"]];
-  const frac = me.balanceCap ? me.balance / me.balanceCap : 0;
+  // Clamped to 1 — balance can genuinely exceed balanceCap after a
+  // large top-up, and an unclamped fraction here makes the inner bar's
+  // own width percentage exceed its parent's width, visibly overflowing
+  // the fixed-width container to the right.
+  const frac = me.balanceCap ? Math.min(1, me.balance / me.balanceCap) : 0;
   return (
     <header style={{ borderBottom: `1px solid ${T.edge}`, position: "sticky", top: 0, background: T.ground, zIndex: 10 }}>
       <div style={{ maxWidth: 1080, margin: "0 auto", padding: "0 22px", display: "flex", alignItems: "center", gap: 18, height: 58 }}>
@@ -175,7 +179,7 @@ export function TopBar({ me, view, go }) {
           className="pf-btn"
           style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
             background: "none", border: "none", padding: "4px 2px", cursor: "pointer" }}>
-          <span aria-hidden style={{ width: 46, height: 3, background: T.edge, position: "relative", display: "inline-block" }}>
+          <span aria-hidden style={{ width: 46, height: 3, background: T.edge, position: "relative", display: "inline-block", overflow: "hidden" }}>
             <span style={{ position: "absolute", inset: 0, width: `${frac * 100}%`, background: frac > 0.2 ? T.ochre : T.clay }} />
           </span>
           <span style={{ fontFamily: T.mono, fontSize: 11, color: T.boneDim }}>{money(me.balance)}</span>
