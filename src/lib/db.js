@@ -1581,7 +1581,8 @@ export const DEFAULT_ART = {
   style_flux:
     'Pixel art. Strictly limit to 4 colors. Strictly use patterns and dither to create shades. ' +
     'Strictly use 4 colors. No wide angle view and tiny objects. Closeup view.',
-  room: 'wide establishing view of a place, environmental scene,',
+  room: 'wide establishing view of a place, environmental scene, showing any people or ' +
+        'activity described as present exactly as described, not an empty version of the space,',
   mob: 'character portrait, single figure, head and shoulders, plain dark background,',
   item: 'one single isolated object, studio product shot, centred, filling the frame, ' +
         'flat plain dark background, nothing else in the picture,',
