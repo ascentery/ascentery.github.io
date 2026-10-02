@@ -9,7 +9,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
-    <meta name="theme-color" content="#14161f" />
+    <meta name="theme-color" content="#1E2119" />
     <title>Ascentery</title>
     <meta name="description" content="Worlds written by people, played a sentence at a time." />
 
@@ -26,10 +26,21 @@
       href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/index-DHrhztLn.js"></script>
+    <script type="module" crossorigin src="/assets/index-E_RSs14u.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-tJuVIFEO.css">
   </head>
   <body>
     <div id="root"></div>
+    <!-- Restores the path that 404.html encoded into ?p= on direct load
+         of a client-side route (e.g. ascentery.io/browse). Must run
+         before the app boots so the router sees the correct URL. -->
+    <script>
+      (function() {
+        var p = new URLSearchParams(window.location.search).get("p");
+        if (p) {
+          window.history.replaceState(null, "", decodeURIComponent(p));
+        }
+      })();
+    </script>
   </body>
 </html>
