@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ascentery</title>
+  <script>
+    // GitHub Pages serves this 404.html for any path it doesn't recognise
+    // (i.e. every client-side route except the root). Encode the path and
+    // query into a ?p= param and redirect to the root — index.html picks
+    // it up and restores the view before React boots.
+    var l = window.location;
+    l.replace(
+      l.protocol + "//" + l.hostname + (l.port ? ":" + l.port : "") +
+      "/?p=" + encodeURIComponent(l.pathname + l.search) + l.hash
+    );
+  </script>
+</head>
+<body></body>
+</html>
