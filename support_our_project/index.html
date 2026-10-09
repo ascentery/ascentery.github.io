@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Support Ascentery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap">
+<style>
+  :root {
+    --bg: #f7f4ef;
+    --bg-card: #ffffff;
+    --fg: #1e1a16;
+    --fg-muted: #5c5349;
+    --accent: #8b4513;
+    --accent-soft: #c8885f;
+    --border: #d9d0c4;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+
+    --kofi: #ff5e5b;
+    --bmac: #ffdd00;
+    --patreon: #f96854;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16120e;
+      --bg-card: #201c18;
+      --fg: #ede5d8;
+      --fg-muted: #9a9086;
+      --accent: #c8885f;
+      --accent-soft: #a8663e;
+      --border: #312c26;
+      --shadow: 0 2px 16px rgba(0,0,0,0.35);
+      color-scheme: dark;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #16120e;
+    --bg-card: #201c18;
+    --fg: #ede5d8;
+    --fg-muted: #9a9086;
+    --accent: #c8885f;
+    --accent-soft: #a8663e;
+    --border: #312c26;
+    --shadow: 0 2px 16px rgba(0,0,0,0.35);
+    color-scheme: dark;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+  }
+
+  body {
+    font-family: 'EB Garamond', Georgia, 'Times New Roman', serif;
+    background: var(--bg);
+    color: var(--fg);
+    padding-inline: 24px;
+    padding-block: max(env(safe-area-inset-top, 0px), 32px) max(env(safe-area-inset-bottom, 0px), 48px);
+    line-height: 1.6;
+  }
+
+  .page {
+    max-width: 680px;
+    margin-inline: auto;
+  }
+
+  /* ── Header ── */
+  .header {
+    text-align: center;
+    padding-block: 40px 48px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+  }
+
+  .wordmark {
+    font-family: 'Cinzel', 'Palatino Linotype', serif;
+    font-size: clamp(1.2rem, 4vw, 1.5rem);
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+    margin: 0 0 16px;
+  }
+
+  .header h1 {
+    font-family: 'Cinzel', 'Palatino Linotype', serif;
+    font-size: clamp(1.8rem, 6vw, 2.8rem);
+    font-weight: 600;
+    line-height: 1.2;
+    margin: 0 0 20px;
+    text-wrap: balance;
+  }
+
+  .header p {
+    font-size: clamp(1rem, 2.5vw, 1.15rem);
+    color: var(--fg-muted);
+    margin: 0;
+    max-width: 52ch;
+    margin-inline: auto;
+    font-style: italic;
+  }
+
+  /* ── Body copy ── */
+  .lead {
+    font-size: clamp(1rem, 2.5vw, 1.15rem);
+    line-height: 1.75;
+    margin-bottom: 48px;
+  }
+
+  .lead p { margin: 0 0 1.1em; }
+  .lead p:last-child { margin-bottom: 0; }
+
+  /* ── Platform cards ── */
+  .platforms {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-bottom: 48px;
+  }
+
+  .platform-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px 28px 24px;
+    box-shadow: var(--shadow);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 6px 24px;
+    align-items: center;
+    text-decoration: none;
+    color: inherit;
+    transition: box-shadow 0.18s, transform 0.15s;
+  }
+
+  .platform-card:hover {
+    box-shadow: 0 4px 24px rgba(0,0,0,0.13);
+    transform: translateY(-1px);
+  }
+
+  .platform-card:active { transform: translateY(0); }
+
+  .platform-name {
+    font-family: 'Cinzel', 'Palatino Linotype', serif;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .platform-desc {
+    font-size: 0.9rem;
+    color: var(--fg-muted);
+    grid-column: 1;
+    grid-row: 2;
+    line-height: 1.5;
+  }
+
+  .platform-badge {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* Styled badge buttons (no external images) */
+  .badge-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: opacity 0.15s;
+    line-height: 1;
+  }
+
+  .badge-btn:hover { opacity: 0.88; }
+
+  .badge-kofi {
+    background: var(--kofi);
+    color: #fff;
+  }
+
+  .badge-bmac {
+    background: var(--bmac);
+    color: #000;
+  }
+
+  .badge-patreon {
+    background: var(--patreon);
+    color: #fff;
+  }
+
+  /* Icon SVGs inline */
+  .badge-icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  /* ── Divider ── */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 0 0 40px;
+  }
+
+  /* ── Closing note ── */
+  .closing {
+    text-align: center;
+    font-style: italic;
+    color: var(--fg-muted);
+    font-size: 1rem;
+    line-height: 1.8;
+  }
+
+  .closing strong {
+    font-style: normal;
+    color: var(--accent);
+    font-family: 'Cinzel', 'Palatino Linotype', serif;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Mobile tweaks ── */
+  @media (max-width: 480px) {
+    .platform-card {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto auto;
+      padding: 22px 20px;
+    }
+
+    .platform-badge {
+      grid-column: 1;
+      grid-row: 3;
+      justify-content: flex-start;
+      margin-top: 12px;
+    }
+
+    .platform-desc { grid-row: 2; }
+    .platform-name { grid-row: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="header">
+    <p class="wordmark">Ascentery</p>
+    <h1>Support Our Project</h1>
+    <p>Every contribution helps us keep building the world.</p>
+  </header>
+
+  <div class="lead">
+    <p>Ascentery is a small, independent project — a text adventure engine where the world is written and illustrated by AI, shaped entirely by what you say and do.</p>
+    <p>We work on this because we love building it. Supporting us means we can keep the lights on, improve the experience, add new worlds, and spend more time on the things that make Ascentery worth exploring.</p>
+    <p>There's no obligation, and no tier unlocks what you've already earned. If you've enjoyed wandering through a world we built, and you'd like to say thank you — here's how.</p>
+  </div>
+
+  <div class="platforms">
+
+    <!-- Ko-fi -->
+    <a class="platform-card" href="https://ko-fi.com/ascentery" target="_blank" rel="noopener noreferrer">
+      <span class="platform-name">Ko-fi</span>
+      <span class="platform-desc">Buy us a coffee — a one-time tip, no account needed.</span>
+      <span class="platform-badge">
+        <span class="badge-btn badge-kofi">
+          <!-- Coffee cup SVG -->
+          <svg class="badge-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4z"/>
+          </svg>
+          Ko-fi
+        </span>
+      </span>
+    </a>
+
+    <!-- Buy Me a Coffee -->
+    <a class="platform-card" href="https://buymeacoffee.com/ascentery" target="_blank" rel="noopener noreferrer">
+      <span class="platform-name">Buy Me a Coffee</span>
+      <span class="platform-desc">A quick way to show support — one coffee at a time.</span>
+      <span class="platform-badge">
+        <span class="badge-btn badge-bmac">
+          <!-- Cup SVG -->
+          <svg class="badge-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M18.5 3H6c-1.1 0-2 .9-2 2v5.71c0 3.83 2.95 7.18 6.78 7.29 3.96.12 7.22-3.06 7.22-7V5c0-1.1-.9-2-2-2zm-5 13c0 .55-.45 1-1 1s-1-.45-1-1v-2c0-.55.45-1 1-1s1 .45 1 1v2zm4.5-8H6V5h12v3h-.5z"/>
+          </svg>
+          Buy Me a Coffee
+        </span>
+      </span>
+    </a>
+
+    <!-- Patreon -->
+    <a class="platform-card" href="https://patreon.com/Ascentery" target="_blank" rel="noopener noreferrer">
+      <span class="platform-name">Patreon</span>
+      <span class="platform-desc">Become a patron — monthly support for continued development.</span>
+      <span class="platform-badge">
+        <span class="badge-btn badge-patreon">
+          <!-- Patreon P logo shape -->
+          <svg class="badge-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M14.82 2.41c-3.64 0-6.6 2.96-6.6 6.6 0 3.63 2.96 6.59 6.6 6.59 3.63 0 6.59-2.96 6.59-6.59 0-3.64-2.96-6.6-6.59-6.6M2.59 21.59h3.54V2.41H2.59v19.18z"/>
+          </svg>
+          Patreon
+        </span>
+      </span>
+    </a>
+
+  </div>
+
+  <hr class="divider">
+
+  <p class="closing">
+    Thank you for playing. Thank you for exploring.<br>
+    <strong>Ascentery</strong> exists because people like you make it possible.
+  </p>
+
+</div>
+</body>
+</html>
