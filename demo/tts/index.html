@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>eSpeak WASM TTS Demo</title>
+<title>Narrator TTS Demo</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
   :root {
@@ -58,7 +58,7 @@
   .dot.ready   { background: var(--green); }
   .dot.error   { background: var(--red); }
   @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
-  #status-text { color: var(--fg-dim); }
+  #status-text { color: var(--fg-dim); min-width: 0; }
 
   /* Card */
   .card {
@@ -82,7 +82,27 @@
     transition: border-color 0.15s;
   }
   textarea:focus { border-color: var(--accent); }
-  textarea:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Voice selector */
+  .voice-row {
+    display: flex; flex-direction: column; gap: 0.3rem;
+  }
+  .field-label {
+    font-family: var(--font-mono); font-size: 0.7rem;
+    color: var(--fg-dim); letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 5px; color: var(--fg); font-family: var(--font-sans);
+    font-size: 0.88rem; padding: 0.5rem 0.75rem; outline: none;
+    cursor: pointer; transition: border-color 0.15s;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7a8d' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    padding-right: 2rem;
+  }
+  select:focus { border-color: var(--accent); }
 
   /* Controls */
   .controls { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; }
@@ -107,16 +127,6 @@
     background: var(--accent); border: none; cursor: pointer;
   }
 
-  /* Waveform */
-  canvas#waveform {
-    width: 100%; height: 54px; display: block;
-    border-radius: 4px; background: var(--bg); border: 1px solid var(--border);
-  }
-  .viz-label {
-    font-family: var(--font-mono); font-size: 0.68rem;
-    color: var(--fg-dim); text-align: right; letter-spacing: 0.05em;
-  }
-
   /* Buttons */
   .btn {
     font-family: var(--font-mono); font-size: 0.8rem; font-weight: 600;
@@ -128,7 +138,26 @@
   .btn-primary:not(:disabled):hover { opacity: 0.85; }
   .btn-ghost { background: transparent; color: var(--fg-dim); border-color: var(--border); }
   .btn-ghost:not(:disabled):hover { color: var(--fg); border-color: var(--fg-dim); }
-  .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+
+  /* Speaking indicator */
+  .speaking-indicator {
+    display: none; align-items: center; gap: 0.4rem;
+    font-family: var(--font-mono); font-size: 0.72rem; color: var(--green);
+  }
+  .speaking-indicator.active { display: flex; }
+  .speaking-indicator .bars {
+    display: flex; align-items: flex-end; gap: 2px; height: 14px;
+  }
+  .speaking-indicator .bar {
+    width: 3px; background: var(--green); border-radius: 1px;
+    animation: bar-bounce 0.6s ease-in-out infinite;
+  }
+  .speaking-indicator .bar:nth-child(2) { animation-delay: 0.15s; }
+  .speaking-indicator .bar:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes bar-bounce {
+    0%,100% { height: 4px; } 50% { height: 14px; }
+  }
 
   /* Info */
   .info-card {
@@ -142,7 +171,6 @@
     font-family: var(--font-mono); font-size: 0.8em;
     background: var(--bg); padding: 0.1em 0.35em; border-radius: 3px; color: var(--accent);
   }
-  .info-card a { color: var(--accent); }
 
   /* Table */
   h2.section-label {
@@ -169,13 +197,12 @@
   .chip-green  { background: #1a3a20; color: var(--green); }
   .chip-yellow { background: #2e2510; color: var(--yellow); }
   .chip-red    { background: #2e1010; color: var(--red); }
+  .chip-blue   { background: #0d2a4a; color: var(--accent); }
 
   .footnote {
     font-size: 0.78rem; color: var(--fg-dim);
     margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid var(--border); line-height: 1.7;
   }
-  .footnote a { color: var(--accent); text-decoration: none; }
-  .footnote a:hover { text-decoration: underline; }
   .footnote code {
     font-family: var(--font-mono); font-size: 0.85em;
     background: var(--surface); padding: 0.1em 0.3em; border-radius: 3px;
@@ -187,93 +214,106 @@
 
   <header>
     <p class="eyebrow">TTS · Browser Demo</p>
-    <h1>eSpeak-NG WASM</h1>
+    <h1>Narrator Voice Demo</h1>
     <p class="subtitle">
-      A self-contained speech synthesiser — no cloud, no platform voice engine.
-      Runs entirely in this tab via WebAssembly.
+      Platform text-to-speech running entirely in this tab — no downloads, no cloud.
+      Picks the best available female voice on your device.
     </p>
   </header>
 
   <div class="status-bar">
     <div class="dot loading" id="status-dot"></div>
-    <span id="status-text">Loading text2wav (~2 MB)…</span>
+    <span id="status-text">Loading voices…</span>
   </div>
 
   <div class="card">
     <div class="card-header">INPUT · <span>text to speak</span></div>
     <div class="card-body">
-      <textarea id="tts-input" disabled
-        placeholder="Loading eSpeak WASM…"
+
+      <textarea id="tts-input"
       >The forest was quiet tonight. Only the distant creak of branches and the soft breath of wind through the leaves betrayed any life at all.</textarea>
+
+      <div class="voice-row">
+        <label class="field-label" for="voice-select">Voice</label>
+        <select id="voice-select"><option value="">— loading voices —</option></select>
+      </div>
 
       <div class="controls">
         <div class="slider-group">
-          <label class="slider-label" for="rate-slider">SPEED <span id="rate-val">175</span></label>
-          <input type="range" id="rate-slider" min="80" max="350" value="175">
+          <label class="slider-label" for="rate-slider">SPEED <span id="rate-val">0.95×</span></label>
+          <input type="range" id="rate-slider" min="0.5" max="2" step="0.05" value="0.95">
         </div>
         <div class="slider-group">
-          <label class="slider-label" for="pitch-slider">PITCH <span id="pitch-val">50</span></label>
-          <input type="range" id="pitch-slider" min="0" max="99" value="50">
+          <label class="slider-label" for="pitch-slider">PITCH <span id="pitch-val">1.00×</span></label>
+          <input type="range" id="pitch-slider" min="0.5" max="2" step="0.05" value="1.0">
         </div>
         <div class="slider-group">
-          <label class="slider-label" for="amp-slider">AMPLITUDE <span id="amp-val">100</span></label>
-          <input type="range" id="amp-slider" min="0" max="200" value="100">
+          <label class="slider-label" for="vol-slider">VOLUME <span id="vol-val">1.0</span></label>
+          <input type="range" id="vol-slider" min="0" max="1" step="0.05" value="1.0">
         </div>
-      </div>
-
-      <div>
-        <canvas id="waveform" width="600" height="54"></canvas>
-        <p class="viz-label" id="timing-label">&nbsp;</p>
       </div>
 
       <div class="btn-row">
         <button class="btn btn-primary" id="btn-speak" disabled>▶ Speak</button>
         <button class="btn btn-ghost"   id="btn-stop"  disabled>■ Stop</button>
+        <div class="speaking-indicator" id="speaking-indicator">
+          <div class="bars">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+          </div>
+          speaking…
+        </div>
       </div>
+
     </div>
   </div>
 
   <div class="info-card">
-    <strong>How this works.</strong>
-    Uses <a href="https://www.npmjs.com/package/text2wav" target="_blank" rel="noopener">text2wav</a>
-    — eSpeak-NG compiled to WebAssembly via Emscripten. The synthesiser generates a WAV file
-    entirely in-browser (no network calls after first load), which this page decodes with the
-    Web Audio API. First visit downloads <code>~2 MB</code> of WASM + voice data;
-    cached on subsequent visits. Synthesis latency is typically <code>10–50 ms</code>.
+    <strong>How voice selection works.</strong>
+    On load the page requests your browser's available voices and picks the best female English voice
+    using this priority order: <code>Microsoft Jenny</code> → <code>Microsoft Zira</code> →
+    any Microsoft female en-US → any female en-US → any en-US → browser default.
+    You can also pick any voice manually from the dropdown above.
+    All synthesis happens on-device via the <code>Web Speech API</code> — nothing leaves your browser.
   </div>
 
-  <h2 class="section-label">Voice engine comparison</h2>
+  <h2 class="section-label">TTS engine comparison</h2>
   <div style="overflow-x:auto">
     <table class="compare">
       <thead>
         <tr>
           <th>Engine</th><th>Platform</th><th>Quality</th>
-          <th>Latency</th><th>First load</th><th>Cloud</th>
+          <th>Latency</th><th>Download</th><th>Cloud</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td>Web Speech API</td><td>OS voice</td>
           <td><span class="chip chip-green">Good–great</span></td>
-          <td>~0 ms</td><td>0 MB</td>
+          <td><span class="chip chip-blue">~0 ms</span></td>
+          <td>0 MB</td>
           <td><span class="chip chip-yellow">Varies</span></td>
         </tr>
         <tr>
           <td>eSpeak WASM</td><td>Any</td>
           <td><span class="chip chip-yellow">Robotic</span></td>
-          <td>10–50 ms</td><td>~2 MB</td>
+          <td>10–50 ms</td>
+          <td>~2 MB</td>
           <td><span class="chip chip-green">No</span></td>
         </tr>
         <tr>
           <td>Kokoro-js</td><td>Any</td>
           <td><span class="chip chip-green">Natural</span></td>
-          <td>300–800 ms</td><td>~80 MB</td>
+          <td>300–800 ms</td>
+          <td>~80 MB</td>
           <td><span class="chip chip-green">No</span></td>
         </tr>
         <tr>
           <td>Cloud TTS</td><td>Any</td>
           <td><span class="chip chip-green">Excellent</span></td>
-          <td>100–400 ms</td><td>0 MB</td>
+          <td>100–400 ms</td>
+          <td>0 MB</td>
           <td><span class="chip chip-red">Yes</span></td>
         </tr>
       </tbody>
@@ -281,169 +321,140 @@
   </div>
 
   <p class="footnote">
-    Powered by <a href="https://www.npmjs.com/package/text2wav" target="_blank" rel="noopener">text2wav</a>
-    (eSpeak-NG compiled to WebAssembly) ·
-    <a href="https://github.com/espeak-ng/espeak-ng" target="_blank" rel="noopener">eSpeak-NG</a>
-    is open source under GPL 3 ·
-    Served at <code>ascentery.io/demo/tts/</code>
+    Uses the browser's built-in <code>Web Speech API</code> (SpeechSynthesis).
+    Voice availability depends on your OS and browser — Windows users typically get Microsoft voices,
+    macOS gets Siri voices, Android gets Google voices.
+    Served at <code>ascentery.io/demo/tts/</code>.
   </p>
 
 </div>
-
-<!-- text2wav is loaded from jsDelivr as a UMD bundle -->
-<script src="https://cdn.jsdelivr.net/npm/text2wav@0.2.0/out/text2wav.js"></script>
 <script>
-// ── Waveform visualiser ───────────────────────────────────────────────────
-const canvas = document.getElementById("waveform");
-const ctx2d  = canvas.getContext("2d");
-let animId = null, analyserNode = null;
+// ── Voice priority logic ──────────────────────────────────────────────────
+// Priority: MS Jenny → MS Zira → any MS female en-US → any female en-US
+//           → any en-US → first available
 
-function drawIdle() {
-  const W = (canvas.offsetWidth || 600) * devicePixelRatio;
-  const H = (canvas.offsetHeight || 54) * devicePixelRatio;
-  canvas.width = W; canvas.height = H;
-  ctx2d.clearRect(0, 0, W, H);
-  ctx2d.strokeStyle = "#252d3a"; ctx2d.lineWidth = 1;
-  ctx2d.beginPath(); ctx2d.moveTo(0, H/2); ctx2d.lineTo(W, H/2); ctx2d.stroke();
-}
+const PRIORITY = [
+  v => /microsoft.*jenny/i.test(v.name),
+  v => /microsoft.*zira/i.test(v.name),
+  v => /microsoft/i.test(v.name) && /en[-_]US/i.test(v.lang) && /female/i.test(v.name),
+  v => /en[-_]US/i.test(v.lang) && /female/i.test(v.name),
+  v => /en[-_]US/i.test(v.lang),
+  v => /^en/i.test(v.lang),
+  () => true,
+];
 
-function startViz(audioCtx, sourceNode) {
-  if (animId) cancelAnimationFrame(animId);
-  analyserNode = audioCtx.createAnalyser(); analyserNode.fftSize = 1024;
-  sourceNode.connect(analyserNode);
-  const data = new Uint8Array(analyserNode.frequencyBinCount);
-  function loop() {
-    const W = (canvas.offsetWidth || 600) * devicePixelRatio;
-    const H = (canvas.offsetHeight || 54) * devicePixelRatio;
-    canvas.width = W; canvas.height = H;
-    analyserNode.getByteTimeDomainData(data);
-    ctx2d.clearRect(0, 0, W, H);
-    ctx2d.strokeStyle = "#4a9eff"; ctx2d.lineWidth = 1.5;
-    ctx2d.beginPath();
-    const sliceW = W / data.length;
-    for (let i = 0; i < data.length; i++) {
-      const y = (data[i] / 128) * (H / 2);
-      i === 0 ? ctx2d.moveTo(0, y) : ctx2d.lineTo(i * sliceW, y);
-    }
-    ctx2d.lineTo(W, H / 2); ctx2d.stroke();
-    animId = requestAnimationFrame(loop);
+function pickBestVoice(voices) {
+  for (const test of PRIORITY) {
+    const match = voices.find(test);
+    if (match) return match;
   }
-  loop();
+  return voices[0] || null;
 }
-
-function stopViz() {
-  if (animId) { cancelAnimationFrame(animId); animId = null; }
-  drawIdle();
-}
-
-drawIdle();
 
 // ── UI refs ───────────────────────────────────────────────────────────────
-const statusDot  = document.getElementById("status-dot");
-const statusText = document.getElementById("status-text");
-const btnSpeak   = document.getElementById("btn-speak");
-const btnStop    = document.getElementById("btn-stop");
-const textarea   = document.getElementById("tts-input");
-const rateSlider = document.getElementById("rate-slider");
-const pitchSlider= document.getElementById("pitch-slider");
-const ampSlider  = document.getElementById("amp-slider");
-const timingLabel= document.getElementById("timing-label");
+const statusDot   = document.getElementById("status-dot");
+const statusText  = document.getElementById("status-text");
+const btnSpeak    = document.getElementById("btn-speak");
+const btnStop     = document.getElementById("btn-stop");
+const textarea    = document.getElementById("tts-input");
+const voiceSel    = document.getElementById("voice-select");
+const rateSlider  = document.getElementById("rate-slider");
+const pitchSlider = document.getElementById("pitch-slider");
+const volSlider   = document.getElementById("vol-slider");
+const indicator   = document.getElementById("speaking-indicator");
 
-rateSlider.addEventListener("input",  () => document.getElementById("rate-val").textContent  = rateSlider.value);
-pitchSlider.addEventListener("input", () => document.getElementById("pitch-val").textContent = pitchSlider.value);
-ampSlider.addEventListener("input",   () => document.getElementById("amp-val").textContent   = ampSlider.value);
+rateSlider.addEventListener("input",  () => document.getElementById("rate-val").textContent  = parseFloat(rateSlider.value).toFixed(2) + "×");
+pitchSlider.addEventListener("input", () => document.getElementById("pitch-val").textContent = parseFloat(pitchSlider.value).toFixed(2) + "×");
+volSlider.addEventListener("input",   () => document.getElementById("vol-val").textContent   = parseFloat(volSlider.value).toFixed(1));
 
 function setStatus(state, text) {
   statusDot.className = "dot " + state;
   statusText.textContent = text;
 }
 
-// ── Load text2wav ─────────────────────────────────────────────────────────
-// text2wav is a UMD script that exposes window.text2wav as an async function.
-// It lazy-initialises the WASM module on first call.
-let ready = false;
-let audioCtx = null;
-let currentSource = null;
-
-// text2wav initialises lazily — call it once with empty string to warm up
-async function warmup() {
-  try {
-    // First call triggers WASM + voice data download (~2 MB)
-    await window.text2wav("", { speed: 175, pitch: 50, amplitude: 0 });
-    ready = true;
-    setStatus("ready", "eSpeak-NG ready · en-US formant voice");
-    textarea.disabled = false;
-    textarea.placeholder = "Type something to hear…";
-    btnSpeak.disabled = false;
-  } catch (e) {
-    setStatus("error", "Failed to load: " + e.message);
-  }
+function setSpeaking(on) {
+  indicator.classList.toggle("active", on);
+  btnSpeak.disabled = on;
+  btnStop.disabled  = !on;
 }
 
-if (typeof window.text2wav === "function") {
-  warmup();
+// ── Load voices ───────────────────────────────────────────────────────────
+let allVoices = [];
+let chosenVoice = null;
+
+function populateVoices() {
+  allVoices = speechSynthesis.getVoices();
+  if (!allVoices.length) return;
+
+  // Sort: en-US first, then rest
+  const enUS   = allVoices.filter(v => /en[-_]US/i.test(v.lang));
+  const enOther= allVoices.filter(v => /^en/i.test(v.lang) && !/en[-_]US/i.test(v.lang));
+  const rest   = allVoices.filter(v => !/^en/i.test(v.lang));
+  const sorted = [...enUS, ...enOther, ...rest];
+
+  voiceSel.innerHTML = "";
+  sorted.forEach((v, i) => {
+    const opt = document.createElement("option");
+    opt.value = v.voiceURI;
+    opt.textContent = `${v.name} (${v.lang})`;
+    voiceSel.appendChild(opt);
+  });
+
+  chosenVoice = pickBestVoice(allVoices);
+  if (chosenVoice) {
+    voiceSel.value = chosenVoice.voiceURI;
+    setStatus("ready", `Voice: ${chosenVoice.name}`);
+  } else {
+    setStatus("ready", "Voice ready (browser default)");
+  }
+  btnSpeak.disabled = false;
+}
+
+voiceSel.addEventListener("change", () => {
+  chosenVoice = allVoices.find(v => v.voiceURI === voiceSel.value) || null;
+});
+
+if (typeof speechSynthesis === "undefined") {
+  setStatus("error", "Web Speech API not supported in this browser.");
 } else {
-  setStatus("error", "text2wav script failed to load — check network.");
+  populateVoices();
+  if (!allVoices.length) {
+    // Some browsers (Chrome) load voices async
+    speechSynthesis.addEventListener("voiceschanged", populateVoices, { once: false });
+    // Retry a few times in case event never fires
+    let attempts = 0;
+    const poll = setInterval(() => {
+      populateVoices();
+      if (allVoices.length || ++attempts > 10) clearInterval(poll);
+    }, 300);
+  }
 }
 
 // ── Speak ─────────────────────────────────────────────────────────────────
-btnSpeak.addEventListener("click", async () => {
-  if (!ready) return;
+btnSpeak.addEventListener("click", () => {
   const text = textarea.value.trim();
   if (!text) return;
 
-  if (currentSource) { try { currentSource.stop(); } catch(_){} }
-  stopViz();
-  btnSpeak.disabled = true;
-  btnStop.disabled  = false;
+  speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
 
-  try {
-    const t0 = performance.now();
-    const wavData = await window.text2wav(text, {
-      speed:     parseInt(rateSlider.value,  10),
-      pitch:     parseInt(pitchSlider.value, 10),
-      amplitude: parseInt(ampSlider.value,   10),
-    });
-    const t1 = performance.now();
+  if (chosenVoice) utt.voice = chosenVoice;
+  utt.rate   = parseFloat(rateSlider.value);
+  utt.pitch  = parseFloat(pitchSlider.value);
+  utt.volume = parseFloat(volSlider.value);
 
-    if (!audioCtx) audioCtx = new AudioContext();
-    if (audioCtx.state === "suspended") await audioCtx.resume();
+  utt.onstart = () => setSpeaking(true);
+  utt.onend   = () => { setSpeaking(false); setStatus("ready", `Voice: ${chosenVoice ? chosenVoice.name : "default"}`); };
+  utt.onerror = (e) => { setSpeaking(false); setStatus("error", "Speech error: " + e.error); };
 
-    // wavData is a Uint8Array containing a WAV file
-    const arrayBuf = wavData.buffer.slice(wavData.byteOffset, wavData.byteOffset + wavData.byteLength);
-    const audioBuf = await audioCtx.decodeAudioData(arrayBuf);
-
-    timingLabel.textContent =
-      `synth: ${(t1 - t0).toFixed(0)} ms  ·  ` +
-      `${audioBuf.duration.toFixed(2)} s  ·  ` +
-      `${audioBuf.sampleRate} Hz`;
-
-    const source = audioCtx.createBufferSource();
-    source.buffer = audioBuf;
-    startViz(audioCtx, source);
-    source.connect(audioCtx.destination);
-    source.start();
-    currentSource = source;
-
-    source.onended = () => {
-      stopViz();
-      btnSpeak.disabled = false;
-      btnStop.disabled  = true;
-      currentSource = null;
-    };
-  } catch (err) {
-    setStatus("error", "Synthesis error: " + err.message);
-    btnSpeak.disabled = false;
-    btnStop.disabled  = true;
-    stopViz();
-  }
+  setStatus("loading", "Speaking…");
+  speechSynthesis.speak(utt);
 });
 
 btnStop.addEventListener("click", () => {
-  if (currentSource) { try { currentSource.stop(); } catch(_){} currentSource = null; }
-  stopViz();
-  btnSpeak.disabled = false;
-  btnStop.disabled  = true;
+  speechSynthesis.cancel();
+  setSpeaking(false);
+  setStatus("ready", `Voice: ${chosenVoice ? chosenVoice.name : "default"}`);
 });
 </script>
 </body>
