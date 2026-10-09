@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>eSpeak WASM TTS Demo</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg:        #0e1117;
+    --surface:   #161b24;
+    --border:    #252d3a;
+    --fg:        #c9d1d9;
+    --fg-dim:    #6b7a8d;
+    --accent:    #4a9eff;
+    --green:     #3fb950;
+    --yellow:    #d29922;
+    --red:       #f85149;
+    --font-mono: 'IBM Plex Mono', 'Cascadia Code', 'Consolas', monospace;
+    --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--fg);
+    font-family: var(--font-sans); font-size: 15px; line-height: 1.6;
+    min-height: 100%;
+  }
+  body { padding: env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px) 0; }
+
+  .page {
+    max-width: 680px; margin: 0 auto;
+    padding-block: 3rem 4rem; padding-inline: 1.5rem;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono); font-size: 0.72rem;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 0.5rem;
+  }
+  h1 {
+    font-size: clamp(1.5rem, 4vw, 2rem); font-weight: 600;
+    line-height: 1.25; text-wrap: balance; margin: 0 0 0.75rem;
+  }
+  .subtitle { color: var(--fg-dim); font-size: 0.9rem; max-width: 52ch; margin: 0 0 2rem; }
+
+  /* Status */
+  .status-bar {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-family: var(--font-mono); font-size: 0.78rem;
+    padding: 0.6rem 1rem;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    margin-bottom: 1.75rem; min-height: 2.4rem;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--fg-dim); }
+  .dot.loading { background: var(--yellow); animation: pulse 1s ease-in-out infinite; }
+  .dot.ready   { background: var(--green); }
+  .dot.error   { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+  #status-text { color: var(--fg-dim); }
+
+  /* Card */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden; margin-bottom: 1.5rem;
+  }
+  .card-header {
+    padding: 0.75rem 1rem; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 0.5rem;
+    font-family: var(--font-mono); font-size: 0.75rem;
+    color: var(--fg-dim); letter-spacing: 0.04em;
+  }
+  .card-header span { color: var(--fg); }
+  .card-body { padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+
+  textarea {
+    width: 100%; min-height: 100px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+    color: var(--fg); font-family: var(--font-sans); font-size: 0.95rem;
+    line-height: 1.6; padding: 0.75rem; resize: vertical; outline: none;
+    transition: border-color 0.15s;
+  }
+  textarea:focus { border-color: var(--accent); }
+  textarea:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Controls */
+  .controls { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; }
+  .slider-group { display: flex; flex-direction: column; gap: 0.25rem; flex: 1; min-width: 110px; }
+  .slider-label {
+    font-family: var(--font-mono); font-size: 0.7rem;
+    color: var(--fg-dim); letter-spacing: 0.06em; text-transform: uppercase;
+    display: flex; justify-content: space-between;
+  }
+  .slider-label span { color: var(--fg); font-variant-numeric: tabular-nums; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 4px; background: var(--border); border-radius: 2px;
+    outline: none; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px;
+    border-radius: 50%; background: var(--accent); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent); border: none; cursor: pointer;
+  }
+
+  /* Waveform */
+  canvas#waveform {
+    width: 100%; height: 54px; display: block;
+    border-radius: 4px; background: var(--bg); border: 1px solid var(--border);
+  }
+  .viz-label {
+    font-family: var(--font-mono); font-size: 0.68rem;
+    color: var(--fg-dim); text-align: right; letter-spacing: 0.05em;
+  }
+
+  /* Buttons */
+  .btn {
+    font-family: var(--font-mono); font-size: 0.8rem; font-weight: 600;
+    padding: 0.55rem 1.1rem; border-radius: 5px; border: 1px solid transparent;
+    cursor: pointer; transition: opacity 0.15s; white-space: nowrap; letter-spacing: 0.03em;
+  }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #000; border-color: var(--accent); }
+  .btn-primary:not(:disabled):hover { opacity: 0.85; }
+  .btn-ghost { background: transparent; color: var(--fg-dim); border-color: var(--border); }
+  .btn-ghost:not(:disabled):hover { color: var(--fg); border-color: var(--fg-dim); }
+  .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+  /* Info */
+  .info-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid #1e3a5f; border-radius: 6px;
+    padding: 1rem 1.1rem; font-size: 0.875rem; color: var(--fg-dim); line-height: 1.65;
+    margin-bottom: 1.5rem;
+  }
+  .info-card strong { color: var(--fg); }
+  .info-card code {
+    font-family: var(--font-mono); font-size: 0.8em;
+    background: var(--bg); padding: 0.1em 0.35em; border-radius: 3px; color: var(--accent);
+  }
+  .info-card a { color: var(--accent); }
+
+  /* Table */
+  h2.section-label {
+    font-size: 0.75rem; font-family: var(--font-mono); letter-spacing: .08em;
+    text-transform: uppercase; color: var(--fg-dim); margin: 2rem 0 0.75rem; font-weight: 400;
+  }
+  .compare { width: 100%; border-collapse: collapse; font-size: 0.83rem; font-variant-numeric: tabular-nums; }
+  .compare thead tr { border-bottom: 1px solid var(--border); }
+  .compare th {
+    font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--fg-dim); text-align: left;
+    padding: 0.4rem 0.6rem 0.6rem; font-weight: 400;
+  }
+  .compare td {
+    padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--border);
+    color: var(--fg); vertical-align: top;
+  }
+  .compare tr:last-child td { border-bottom: none; }
+  .compare td:first-child { color: var(--fg-dim); font-family: var(--font-mono); font-size: 0.8em; }
+  .chip {
+    display: inline-block; font-size: 0.7rem; font-family: var(--font-mono);
+    padding: 0.1em 0.45em; border-radius: 3px; line-height: 1.6;
+  }
+  .chip-green  { background: #1a3a20; color: var(--green); }
+  .chip-yellow { background: #2e2510; color: var(--yellow); }
+  .chip-red    { background: #2e1010; color: var(--red); }
+
+  .footnote {
+    font-size: 0.78rem; color: var(--fg-dim);
+    margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid var(--border); line-height: 1.7;
+  }
+  .footnote a { color: var(--accent); text-decoration: none; }
+  .footnote a:hover { text-decoration: underline; }
+  .footnote code {
+    font-family: var(--font-mono); font-size: 0.85em;
+    background: var(--surface); padding: 0.1em 0.3em; border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <p class="eyebrow">TTS · Browser Demo</p>
+    <h1>eSpeak-NG WASM</h1>
+    <p class="subtitle">
+      A self-contained speech synthesiser — no cloud, no platform voice engine.
+      Runs entirely in this tab via WebAssembly.
+    </p>
+  </header>
+
+  <div class="status-bar">
+    <div class="dot loading" id="status-dot"></div>
+    <span id="status-text">Loading text2wav (~2 MB)…</span>
+  </div>
+
+  <div class="card">
+    <div class="card-header">INPUT · <span>text to speak</span></div>
+    <div class="card-body">
+      <textarea id="tts-input" disabled
+        placeholder="Loading eSpeak WASM…"
+      >The forest was quiet tonight. Only the distant creak of branches and the soft breath of wind through the leaves betrayed any life at all.</textarea>
+
+      <div class="controls">
+        <div class="slider-group">
+          <label class="slider-label" for="rate-slider">SPEED <span id="rate-val">175</span></label>
+          <input type="range" id="rate-slider" min="80" max="350" value="175">
+        </div>
+        <div class="slider-group">
+          <label class="slider-label" for="pitch-slider">PITCH <span id="pitch-val">50</span></label>
+          <input type="range" id="pitch-slider" min="0" max="99" value="50">
+        </div>
+        <div class="slider-group">
+          <label class="slider-label" for="amp-slider">AMPLITUDE <span id="amp-val">100</span></label>
+          <input type="range" id="amp-slider" min="0" max="200" value="100">
+        </div>
+      </div>
+
+      <div>
+        <canvas id="waveform" width="600" height="54"></canvas>
+        <p class="viz-label" id="timing-label">&nbsp;</p>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-speak" disabled>▶ Speak</button>
+        <button class="btn btn-ghost"   id="btn-stop"  disabled>■ Stop</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="info-card">
+    <strong>How this works.</strong>
+    Uses <a href="https://www.npmjs.com/package/text2wav" target="_blank" rel="noopener">text2wav</a>
+    — eSpeak-NG compiled to WebAssembly via Emscripten. The synthesiser generates a WAV file
+    entirely in-browser (no network calls after first load), which this page decodes with the
+    Web Audio API. First visit downloads <code>~2 MB</code> of WASM + voice data;
+    cached on subsequent visits. Synthesis latency is typically <code>10–50 ms</code>.
+  </div>
+
+  <h2 class="section-label">Voice engine comparison</h2>
+  <div style="overflow-x:auto">
+    <table class="compare">
+      <thead>
+        <tr>
+          <th>Engine</th><th>Platform</th><th>Quality</th>
+          <th>Latency</th><th>First load</th><th>Cloud</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Web Speech API</td><td>OS voice</td>
+          <td><span class="chip chip-green">Good–great</span></td>
+          <td>~0 ms</td><td>0 MB</td>
+          <td><span class="chip chip-yellow">Varies</span></td>
+        </tr>
+        <tr>
+          <td>eSpeak WASM</td><td>Any</td>
+          <td><span class="chip chip-yellow">Robotic</span></td>
+          <td>10–50 ms</td><td>~2 MB</td>
+          <td><span class="chip chip-green">No</span></td>
+        </tr>
+        <tr>
+          <td>Kokoro-js</td><td>Any</td>
+          <td><span class="chip chip-green">Natural</span></td>
+          <td>300–800 ms</td><td>~80 MB</td>
+          <td><span class="chip chip-green">No</span></td>
+        </tr>
+        <tr>
+          <td>Cloud TTS</td><td>Any</td>
+          <td><span class="chip chip-green">Excellent</span></td>
+          <td>100–400 ms</td><td>0 MB</td>
+          <td><span class="chip chip-red">Yes</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="footnote">
+    Powered by <a href="https://www.npmjs.com/package/text2wav" target="_blank" rel="noopener">text2wav</a>
+    (eSpeak-NG compiled to WebAssembly) ·
+    <a href="https://github.com/espeak-ng/espeak-ng" target="_blank" rel="noopener">eSpeak-NG</a>
+    is open source under GPL 3 ·
+    Served at <code>ascentery.io/demo/tts/</code>
+  </p>
+
+</div>
+
+<!-- text2wav is loaded from jsDelivr as a UMD bundle -->
+<script src="https://cdn.jsdelivr.net/npm/text2wav@0.2.0/out/text2wav.js"></script>
+<script>
+// ── Waveform visualiser ───────────────────────────────────────────────────
+const canvas = document.getElementById("waveform");
+const ctx2d  = canvas.getContext("2d");
+let animId = null, analyserNode = null;
+
+function drawIdle() {
+  const W = (canvas.offsetWidth || 600) * devicePixelRatio;
+  const H = (canvas.offsetHeight || 54) * devicePixelRatio;
+  canvas.width = W; canvas.height = H;
+  ctx2d.clearRect(0, 0, W, H);
+  ctx2d.strokeStyle = "#252d3a"; ctx2d.lineWidth = 1;
+  ctx2d.beginPath(); ctx2d.moveTo(0, H/2); ctx2d.lineTo(W, H/2); ctx2d.stroke();
+}
+
+function startViz(audioCtx, sourceNode) {
+  if (animId) cancelAnimationFrame(animId);
+  analyserNode = audioCtx.createAnalyser(); analyserNode.fftSize = 1024;
+  sourceNode.connect(analyserNode);
+  const data = new Uint8Array(analyserNode.frequencyBinCount);
+  function loop() {
+    const W = (canvas.offsetWidth || 600) * devicePixelRatio;
+    const H = (canvas.offsetHeight || 54) * devicePixelRatio;
+    canvas.width = W; canvas.height = H;
+    analyserNode.getByteTimeDomainData(data);
+    ctx2d.clearRect(0, 0, W, H);
+    ctx2d.strokeStyle = "#4a9eff"; ctx2d.lineWidth = 1.5;
+    ctx2d.beginPath();
+    const sliceW = W / data.length;
+    for (let i = 0; i < data.length; i++) {
+      const y = (data[i] / 128) * (H / 2);
+      i === 0 ? ctx2d.moveTo(0, y) : ctx2d.lineTo(i * sliceW, y);
+    }
+    ctx2d.lineTo(W, H / 2); ctx2d.stroke();
+    animId = requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+function stopViz() {
+  if (animId) { cancelAnimationFrame(animId); animId = null; }
+  drawIdle();
+}
+
+drawIdle();
+
+// ── UI refs ───────────────────────────────────────────────────────────────
+const statusDot  = document.getElementById("status-dot");
+const statusText = document.getElementById("status-text");
+const btnSpeak   = document.getElementById("btn-speak");
+const btnStop    = document.getElementById("btn-stop");
+const textarea   = document.getElementById("tts-input");
+const rateSlider = document.getElementById("rate-slider");
+const pitchSlider= document.getElementById("pitch-slider");
+const ampSlider  = document.getElementById("amp-slider");
+const timingLabel= document.getElementById("timing-label");
+
+rateSlider.addEventListener("input",  () => document.getElementById("rate-val").textContent  = rateSlider.value);
+pitchSlider.addEventListener("input", () => document.getElementById("pitch-val").textContent = pitchSlider.value);
+ampSlider.addEventListener("input",   () => document.getElementById("amp-val").textContent   = ampSlider.value);
+
+function setStatus(state, text) {
+  statusDot.className = "dot " + state;
+  statusText.textContent = text;
+}
+
+// ── Load text2wav ─────────────────────────────────────────────────────────
+// text2wav is a UMD script that exposes window.text2wav as an async function.
+// It lazy-initialises the WASM module on first call.
+let ready = false;
+let audioCtx = null;
+let currentSource = null;
+
+// text2wav initialises lazily — call it once with empty string to warm up
+async function warmup() {
+  try {
+    // First call triggers WASM + voice data download (~2 MB)
+    await window.text2wav("", { speed: 175, pitch: 50, amplitude: 0 });
+    ready = true;
+    setStatus("ready", "eSpeak-NG ready · en-US formant voice");
+    textarea.disabled = false;
+    textarea.placeholder = "Type something to hear…";
+    btnSpeak.disabled = false;
+  } catch (e) {
+    setStatus("error", "Failed to load: " + e.message);
+  }
+}
+
+if (typeof window.text2wav === "function") {
+  warmup();
+} else {
+  setStatus("error", "text2wav script failed to load — check network.");
+}
+
+// ── Speak ─────────────────────────────────────────────────────────────────
+btnSpeak.addEventListener("click", async () => {
+  if (!ready) return;
+  const text = textarea.value.trim();
+  if (!text) return;
+
+  if (currentSource) { try { currentSource.stop(); } catch(_){} }
+  stopViz();
+  btnSpeak.disabled = true;
+  btnStop.disabled  = false;
+
+  try {
+    const t0 = performance.now();
+    const wavData = await window.text2wav(text, {
+      speed:     parseInt(rateSlider.value,  10),
+      pitch:     parseInt(pitchSlider.value, 10),
+      amplitude: parseInt(ampSlider.value,   10),
+    });
+    const t1 = performance.now();
+
+    if (!audioCtx) audioCtx = new AudioContext();
+    if (audioCtx.state === "suspended") await audioCtx.resume();
+
+    // wavData is a Uint8Array containing a WAV file
+    const arrayBuf = wavData.buffer.slice(wavData.byteOffset, wavData.byteOffset + wavData.byteLength);
+    const audioBuf = await audioCtx.decodeAudioData(arrayBuf);
+
+    timingLabel.textContent =
+      `synth: ${(t1 - t0).toFixed(0)} ms  ·  ` +
+      `${audioBuf.duration.toFixed(2)} s  ·  ` +
+      `${audioBuf.sampleRate} Hz`;
+
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioBuf;
+    startViz(audioCtx, source);
+    source.connect(audioCtx.destination);
+    source.start();
+    currentSource = source;
+
+    source.onended = () => {
+      stopViz();
+      btnSpeak.disabled = false;
+      btnStop.disabled  = true;
+      currentSource = null;
+    };
+  } catch (err) {
+    setStatus("error", "Synthesis error: " + err.message);
+    btnSpeak.disabled = false;
+    btnStop.disabled  = true;
+    stopViz();
+  }
+});
+
+btnStop.addEventListener("click", () => {
+  if (currentSource) { try { currentSource.stop(); } catch(_){} currentSource = null; }
+  stopViz();
+  btnSpeak.disabled = false;
+  btnStop.disabled  = true;
+});
+</script>
+</body>
+</html>
