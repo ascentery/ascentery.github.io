@@ -1,326 +1,318 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#14161f" />
 <title>Support Ascentery</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap">
+<meta name="description" content="Help us keep building Ascentery — one coffee at a time." />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
+  /* ── Ascentery design tokens ── */
   :root {
-    --bg: #f7f4ef;
-    --bg-card: #ffffff;
-    --fg: #1e1a16;
-    --fg-muted: #5c5349;
-    --accent: #8b4513;
-    --accent-soft: #c8885f;
-    --border: #d9d0c4;
-    --shadow: 0 2px 12px rgba(0,0,0,0.08);
-
-    --kofi: #ff5e5b;
-    --bmac: #ffdd00;
-    --patreon: #f96854;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #16120e;
-      --bg-card: #201c18;
-      --fg: #ede5d8;
-      --fg-muted: #9a9086;
-      --accent: #c8885f;
-      --accent-soft: #a8663e;
-      --border: #312c26;
-      --shadow: 0 2px 16px rgba(0,0,0,0.35);
-      color-scheme: dark;
-    }
-  }
-
-  :root[data-theme="dark"] {
-    --bg: #16120e;
-    --bg-card: #201c18;
-    --fg: #ede5d8;
-    --fg-muted: #9a9086;
-    --accent: #c8885f;
-    --accent-soft: #a8663e;
-    --border: #312c26;
-    --shadow: 0 2px 16px rgba(0,0,0,0.35);
-    color-scheme: dark;
+    --ground:  #14161f;
+    --raised:  #1c1f2b;
+    --edge:    #2e3347;
+    --bone:    #e8e0cd;
+    --boneDim: #8b8577;
+    --ochre:   #e3a44f;
+    --clay:    #c0614b;
+    --moss:    #6a9e6a;
+    --serif:   'Newsreader', Georgia, serif;
+    --mono:    'IBM Plex Mono', 'Courier New', monospace;
   }
 
   *, *::before, *::after { box-sizing: border-box; }
-
-  html, body {
-    margin: 0;
-    padding: 0;
-    min-height: 100%;
-  }
-
+  html, body { margin: 0; padding: 0; }
   body {
-    font-family: 'EB Garamond', Georgia, 'Times New Roman', serif;
-    background: var(--bg);
-    color: var(--fg);
-    padding-inline: 24px;
-    padding-block: max(env(safe-area-inset-top, 0px), 32px) max(env(safe-area-inset-bottom, 0px), 48px);
-    line-height: 1.6;
+    background: var(--ground);
+    color: var(--bone);
+    font-family: var(--serif);
+    min-height: 100vh;
   }
 
-  .page {
-    max-width: 680px;
-    margin-inline: auto;
+  /* ── Nav bar — matches TopBar in Shell.jsx ── */
+  header {
+    border-bottom: 1px solid var(--edge);
+    position: sticky;
+    top: 0;
+    background: var(--ground);
+    z-index: 10;
   }
-
-  /* ── Header ── */
-  .header {
-    text-align: center;
-    padding-block: 40px 48px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 48px;
+  .nav-inner {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 22px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    height: 58px;
   }
-
   .wordmark {
-    font-family: 'Cinzel', 'Palatino Linotype', serif;
-    font-size: clamp(1.2rem, 4vw, 1.5rem);
-    letter-spacing: 0.25em;
-    text-transform: uppercase;
-    color: var(--accent);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-family: var(--serif);
+    font-size: 20px;
+    color: var(--bone);
+    text-decoration: none;
+    line-height: 1;
+  }
+  .nav-links {
+    display: flex;
+    gap: 2px;
+    flex: 1;
+  }
+  .nav-link {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 19px 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    white-space: nowrap;
+    color: var(--boneDim);
+    text-decoration: none;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    transition: color 0.12s;
+  }
+  .nav-link:hover { color: var(--bone); }
+  .nav-link.active {
+    color: var(--bone);
+    box-shadow: inset 0 -2px 0 var(--ochre);
+  }
+  .nav-cta {
+    background: var(--ochre);
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    padding: 8px 16px;
+    font-family: var(--mono);
+    font-size: 12.5px;
     font-weight: 600;
-    margin: 0 0 16px;
+    color: #241a08;
+    text-decoration: none;
+    line-height: 1;
+    white-space: nowrap;
+    transition: opacity 0.12s;
+  }
+  .nav-cta:hover { opacity: 0.88; }
+
+  @media (max-width: 640px) {
+    .nav-links { display: none; }
   }
 
-  .header h1 {
-    font-family: 'Cinzel', 'Palatino Linotype', serif;
-    font-size: clamp(1.8rem, 6vw, 2.8rem);
-    font-weight: 600;
-    line-height: 1.2;
-    margin: 0 0 20px;
+  /* ── Page content ── */
+  .page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 56px 22px 80px;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    max-width: 600px;
+    margin-bottom: 56px;
+  }
+  .hero h1 {
+    font-family: var(--serif);
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 400;
+    line-height: 1.15;
+    margin: 0 0 16px;
     text-wrap: balance;
   }
-
-  .header p {
-    font-size: clamp(1rem, 2.5vw, 1.15rem);
-    color: var(--fg-muted);
-    margin: 0;
-    max-width: 52ch;
-    margin-inline: auto;
+  .hero p {
+    font-family: var(--serif);
+    font-size: clamp(1rem, 2vw, 1.15rem);
     font-style: italic;
+    color: var(--boneDim);
+    line-height: 1.7;
+    margin: 0 0 12px;
   }
-
-  /* ── Body copy ── */
-  .lead {
-    font-size: clamp(1rem, 2.5vw, 1.15rem);
-    line-height: 1.75;
-    margin-bottom: 48px;
-  }
-
-  .lead p { margin: 0 0 1.1em; }
-  .lead p:last-child { margin-bottom: 0; }
+  .hero p:last-child { margin-bottom: 0; }
 
   /* ── Platform cards ── */
   .platforms {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 1px; /* hairline gaps between cards */
+    border: 1px solid var(--edge);
+    border-radius: 4px;
+    overflow: hidden;
     margin-bottom: 48px;
   }
 
   .platform-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 28px 28px 24px;
-    box-shadow: var(--shadow);
     display: grid;
     grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto;
-    gap: 6px 24px;
     align-items: center;
+    gap: 16px 24px;
+    padding: 24px 28px;
+    background: var(--raised);
     text-decoration: none;
-    color: inherit;
-    transition: box-shadow 0.18s, transform 0.15s;
+    color: var(--bone);
+    border-bottom: 1px solid var(--edge);
+    transition: background 0.12s;
   }
+  .platform-card:last-child { border-bottom: none; }
+  .platform-card:hover { background: #222636; }
 
-  .platform-card:hover {
-    box-shadow: 0 4px 24px rgba(0,0,0,0.13);
-    transform: translateY(-1px);
-  }
-
-  .platform-card:active { transform: translateY(0); }
+  .platform-info { min-width: 0; }
 
   .platform-name {
-    font-family: 'Cinzel', 'Palatino Linotype', serif;
-    font-size: 1rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    grid-column: 1;
-    grid-row: 1;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--bone);
+    margin: 0 0 5px;
+    letter-spacing: 0.03em;
   }
-
   .platform-desc {
-    font-size: 0.9rem;
-    color: var(--fg-muted);
-    grid-column: 1;
-    grid-row: 2;
-    line-height: 1.5;
+    font-family: var(--serif);
+    font-size: 0.95rem;
+    color: var(--boneDim);
+    line-height: 1.55;
+    font-style: italic;
+    margin: 0;
   }
 
-  .platform-badge {
-    grid-column: 2;
-    grid-row: 1 / 3;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  /* Styled badge buttons (no external images) */
-  .badge-btn {
+  /* Badge buttons */
+  .badge {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px 18px;
-    border-radius: 6px;
-    font-family: 'EB Garamond', Georgia, serif;
-    font-size: 0.9rem;
+    gap: 7px;
+    padding: 9px 16px;
+    border-radius: 2px;
+    font-family: var(--mono);
+    font-size: 11.5px;
     font-weight: 500;
-    text-decoration: none;
     white-space: nowrap;
-    transition: opacity 0.15s;
+    text-decoration: none;
     line-height: 1;
+    flex-shrink: 0;
+    transition: opacity 0.12s;
+    pointer-events: none; /* card handles the click */
   }
+  .badge-kofi    { background: #ff5e5b; color: #fff; }
+  .badge-bmac    { background: #ffdd00; color: #1a1200; }
+  .badge-patreon { background: #ff424d; color: #fff; }
 
-  .badge-btn:hover { opacity: 0.88; }
-
-  .badge-kofi {
-    background: var(--kofi);
-    color: #fff;
-  }
-
-  .badge-bmac {
-    background: var(--bmac);
-    color: #000;
-  }
-
-  .badge-patreon {
-    background: var(--patreon);
-    color: #fff;
-  }
-
-  /* Icon SVGs inline */
-  .badge-icon {
-    width: 18px;
-    height: 18px;
+  .badge svg {
+    width: 15px;
+    height: 15px;
     flex-shrink: 0;
   }
 
   /* ── Divider ── */
   .divider {
     border: none;
-    border-top: 1px solid var(--border);
-    margin: 0 0 40px;
+    border-top: 1px solid var(--edge);
+    margin: 0 0 36px;
   }
 
   /* ── Closing note ── */
   .closing {
-    text-align: center;
+    font-family: var(--serif);
+    font-size: 0.95rem;
     font-style: italic;
-    color: var(--fg-muted);
-    font-size: 1rem;
+    color: var(--boneDim);
     line-height: 1.8;
+    margin: 0;
   }
-
   .closing strong {
     font-style: normal;
-    color: var(--accent);
-    font-family: 'Cinzel', 'Palatino Linotype', serif;
-    letter-spacing: 0.05em;
+    color: var(--ochre);
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
   }
 
-  /* ── Mobile tweaks ── */
-  @media (max-width: 480px) {
+  /* ── Mobile ── */
+  @media (max-width: 520px) {
     .platform-card {
       grid-template-columns: 1fr;
-      grid-template-rows: auto auto auto;
-      padding: 22px 20px;
+      padding: 20px 22px;
     }
-
-    .platform-badge {
-      grid-column: 1;
-      grid-row: 3;
-      justify-content: flex-start;
-      margin-top: 12px;
+    .badge {
+      margin-top: 10px;
+      pointer-events: auto; /* standalone on mobile */
     }
-
-    .platform-desc { grid-row: 2; }
-    .platform-name { grid-row: 1; }
   }
 </style>
 </head>
 <body>
+
+<!-- Nav bar — static version matching TopBar -->
+<header>
+  <div class="nav-inner">
+    <a class="wordmark" href="/">Ascentery</a>
+    <nav class="nav-links">
+      <a class="nav-link" href="/browse">Browse</a>
+    </nav>
+    <a class="nav-cta" href="/">Sign in</a>
+  </div>
+</header>
+
+<!-- Page body -->
 <div class="page">
 
-  <header class="header">
-    <p class="wordmark">Ascentery</p>
-    <h1>Support Our Project</h1>
-    <p>Every contribution helps us keep building the world.</p>
-  </header>
-
-  <div class="lead">
+  <div class="hero">
+    <h1>Support our project</h1>
     <p>Ascentery is a small, independent project — a text adventure engine where the world is written and illustrated by AI, shaped entirely by what you say and do.</p>
-    <p>We work on this because we love building it. Supporting us means we can keep the lights on, improve the experience, add new worlds, and spend more time on the things that make Ascentery worth exploring.</p>
-    <p>There's no obligation, and no tier unlocks what you've already earned. If you've enjoyed wandering through a world we built, and you'd like to say thank you — here's how.</p>
+    <p>There's no obligation, and no tier unlocks what you've already earned. If you've enjoyed a world we built and want to say thank you, here's how.</p>
   </div>
 
   <div class="platforms">
 
-    <!-- Ko-fi -->
     <a class="platform-card" href="https://ko-fi.com/ascentery" target="_blank" rel="noopener noreferrer">
-      <span class="platform-name">Ko-fi</span>
-      <span class="platform-desc">Buy us a coffee — a one-time tip, no account needed.</span>
-      <span class="platform-badge">
-        <span class="badge-btn badge-kofi">
-          <!-- Coffee cup SVG -->
-          <svg class="badge-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4z"/>
-          </svg>
-          Ko-fi
-        </span>
+      <div class="platform-info">
+        <p class="platform-name">Ko-fi</p>
+        <p class="platform-desc">A one-time tip. No account needed — as easy as it gets.</p>
+      </div>
+      <span class="badge badge-kofi">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4z"/>
+        </svg>
+        Ko-fi
       </span>
     </a>
 
-    <!-- Buy Me a Coffee -->
     <a class="platform-card" href="https://buymeacoffee.com/ascentery" target="_blank" rel="noopener noreferrer">
-      <span class="platform-name">Buy Me a Coffee</span>
-      <span class="platform-desc">A quick way to show support — one coffee at a time.</span>
-      <span class="platform-badge">
-        <span class="badge-btn badge-bmac">
-          <!-- Cup SVG -->
-          <svg class="badge-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M18.5 3H6c-1.1 0-2 .9-2 2v5.71c0 3.83 2.95 7.18 6.78 7.29 3.96.12 7.22-3.06 7.22-7V5c0-1.1-.9-2-2-2zm-5 13c0 .55-.45 1-1 1s-1-.45-1-1v-2c0-.55.45-1 1-1s1 .45 1 1v2zm4.5-8H6V5h12v3h-.5z"/>
-          </svg>
-          Buy Me a Coffee
-        </span>
+      <div class="platform-info">
+        <p class="platform-name">Buy Me a Coffee</p>
+        <p class="platform-desc">A quick way to show support, one coffee at a time.</p>
+      </div>
+      <span class="badge badge-bmac">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4z"/>
+        </svg>
+        Buy Me a Coffee
       </span>
     </a>
 
-    <!-- Patreon -->
     <a class="platform-card" href="https://patreon.com/Ascentery" target="_blank" rel="noopener noreferrer">
-      <span class="platform-name">Patreon</span>
-      <span class="platform-desc">Become a patron — monthly support for continued development.</span>
-      <span class="platform-badge">
-        <span class="badge-btn badge-patreon">
-          <!-- Patreon P logo shape -->
-          <svg class="badge-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M14.82 2.41c-3.64 0-6.6 2.96-6.6 6.6 0 3.63 2.96 6.59 6.6 6.59 3.63 0 6.59-2.96 6.59-6.59 0-3.64-2.96-6.6-6.59-6.6M2.59 21.59h3.54V2.41H2.59v19.18z"/>
-          </svg>
-          Patreon
-        </span>
+      <div class="platform-info">
+        <p class="platform-name">Patreon</p>
+        <p class="platform-desc">Monthly support for continued development.</p>
+      </div>
+      <span class="badge badge-patreon">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M14.82 2.41c-3.64 0-6.6 2.96-6.6 6.6 0 3.63 2.96 6.59 6.6 6.59 3.63 0 6.59-2.96 6.59-6.59 0-3.64-2.96-6.6-6.59-6.6M2.59 21.59h3.54V2.41H2.59v19.18z"/>
+        </svg>
+        Patreon
       </span>
     </a>
 
   </div>
 
-  <hr class="divider">
+  <hr class="divider" />
 
   <p class="closing">
     Thank you for playing. Thank you for exploring.<br>
