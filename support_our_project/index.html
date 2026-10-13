@@ -19,8 +19,6 @@
     --bone:    #e8e0cd;
     --boneDim: #8b8577;
     --ochre:   #e3a44f;
-    --clay:    #c0614b;
-    --moss:    #6a9e6a;
     --serif:   'Newsreader', Georgia, serif;
     --mono:    'IBM Plex Mono', 'Courier New', monospace;
   }
@@ -35,7 +33,7 @@
   }
 
   /* ── Nav bar — matches TopBar in Shell.jsx ── */
-  header {
+  .topbar {
     border-bottom: 1px solid var(--edge);
     position: sticky;
     top: 0;
@@ -104,11 +102,12 @@
     .nav-links { display: none; }
   }
 
-  /* ── Page content ── */
+  /* ── Page — original narrow width from first version ── */
   .page {
-    max-width: 1080px;
-    margin: 0 auto;
-    padding: 56px 22px 80px;
+    max-width: 680px;
+    margin-inline: auto;
+    padding-inline: 24px;
+    padding-block: max(env(safe-area-inset-top, 0px), 32px) max(env(safe-area-inset-bottom, 0px), 48px);
   }
 
   /* ── Header ── */
@@ -152,6 +151,7 @@
     font-size: clamp(1rem, 2.5vw, 1.1rem);
     line-height: 1.75;
     margin-bottom: 48px;
+    color: var(--bone);
   }
   .lead p { margin: 0 0 1.1em; }
   .lead p:last-child { margin-bottom: 0; }
@@ -160,66 +160,60 @@
   .platforms {
     display: flex;
     flex-direction: column;
-    gap: 1px;
-    border: 1px solid var(--edge);
-    border-radius: 4px;
-    overflow: hidden;
+    gap: 20px;
     margin-bottom: 48px;
   }
 
   .platform-card {
+    background: var(--raised);
+    border: 1px solid var(--edge);
+    border-radius: 4px;
+    padding: 28px 28px 24px;
     display: grid;
     grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 6px 24px;
     align-items: center;
-    gap: 16px 24px;
-    padding: 24px 28px;
-    background: var(--raised);
     text-decoration: none;
-    color: var(--bone);
-    border-bottom: 1px solid var(--edge);
+    color: inherit;
     transition: background 0.12s;
   }
-  .platform-card:last-child { border-bottom: none; }
   .platform-card:hover { background: #222636; }
-
-  .platform-info { min-width: 0; }
 
   .platform-name {
     font-family: var(--mono);
     font-size: 13px;
     font-weight: 500;
     color: var(--bone);
-    margin: 0 0 5px;
+    grid-column: 1;
+    grid-row: 1;
+    margin: 0;
     letter-spacing: 0.03em;
   }
   .platform-desc {
     font-family: var(--serif);
     font-size: 0.95rem;
     color: var(--boneDim);
+    grid-column: 1;
+    grid-row: 2;
     line-height: 1.55;
     font-style: italic;
     margin: 0;
   }
-
-  .badge {
-    display: inline-flex;
+  .platform-badge {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    display: flex;
     align-items: center;
-    gap: 7px;
-    padding: 9px 16px;
-    border-radius: 2px;
-    font-family: var(--mono);
-    font-size: 11.5px;
-    font-weight: 500;
-    white-space: nowrap;
-    text-decoration: none;
-    line-height: 1;
+    justify-content: center;
     flex-shrink: 0;
-    pointer-events: none;
   }
-  .badge-kofi    { background: #ff5e5b; color: #fff; }
-  .badge-bmac    { background: #ffdd00; color: #1a1200; }
-  .badge-patreon { background: #ff424d; color: #fff; }
-  .badge svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .platform-badge img {
+    display: block;
+    height: 36px;
+    width: auto;
+    max-width: 160px;
+  }
 
   /* ── Divider ── */
   .divider {
@@ -235,6 +229,7 @@
     color: var(--boneDim);
     font-size: 1rem;
     line-height: 1.8;
+    margin: 0;
   }
   .closing strong {
     font-style: normal;
@@ -244,19 +239,25 @@
     letter-spacing: 0.05em;
   }
 
-  @media (max-width: 520px) {
+  @media (max-width: 480px) {
     .platform-card {
       grid-template-columns: 1fr;
-      padding: 20px 22px;
+      grid-template-rows: auto auto auto;
+      padding: 22px 20px;
     }
-    .badge { margin-top: 10px; pointer-events: auto; }
+    .platform-badge {
+      grid-column: 1;
+      grid-row: 3;
+      justify-content: flex-start;
+      margin-top: 12px;
+    }
   }
 </style>
 </head>
 <body>
 
 <!-- Nav bar — static version matching TopBar -->
-<header>
+<header class="topbar">
   <div class="nav-inner">
     <a class="wordmark" href="/">Ascentery</a>
     <nav class="nav-links">
@@ -268,11 +269,11 @@
 
 <div class="page">
 
-  <header class="header">
+  <div class="header">
     <p class="header-wordmark">Ascentery</p>
     <h1>Support Our Project</h1>
     <p>Every contribution helps us keep building the world.</p>
-  </header>
+  </div>
 
   <div class="lead">
     <p>Ascentery is a small, independent project — a text adventure engine where the world is written and illustrated by AI, shaped entirely by what you say and do.</p>
@@ -283,41 +284,26 @@
   <div class="platforms">
 
     <a class="platform-card" href="https://ko-fi.com/ascentery" target="_blank" rel="noopener noreferrer">
-      <div class="platform-info">
-        <p class="platform-name">Ko-fi</p>
-        <p class="platform-desc">Buy us a coffee — a one-time tip, no account needed.</p>
-      </div>
-      <span class="badge badge-kofi">
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4z"/>
-        </svg>
-        Ko-fi
+      <p class="platform-name">Ko-fi</p>
+      <p class="platform-desc">Buy us a coffee — a one-time tip, no account needed.</p>
+      <span class="platform-badge">
+        <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support us on Ko-fi" />
       </span>
     </a>
 
     <a class="platform-card" href="https://buymeacoffee.com/ascentery" target="_blank" rel="noopener noreferrer">
-      <div class="platform-info">
-        <p class="platform-name">Buy Me a Coffee</p>
-        <p class="platform-desc">A quick way to show support — one coffee at a time.</p>
-      </div>
-      <span class="badge badge-bmac">
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 5h-2V5h2v3zM4 19h16v2H4z"/>
-        </svg>
-        Buy Me a Coffee
+      <p class="platform-name">Buy Me a Coffee</p>
+      <p class="platform-desc">A quick way to show support — one coffee at a time.</p>
+      <span class="platform-badge">
+        <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" />
       </span>
     </a>
 
     <a class="platform-card" href="https://patreon.com/Ascentery" target="_blank" rel="noopener noreferrer">
-      <div class="platform-info">
-        <p class="platform-name">Patreon</p>
-        <p class="platform-desc">Become a patron — monthly support for continued development.</p>
-      </div>
-      <span class="badge badge-patreon">
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M14.82 2.41c-3.64 0-6.6 2.96-6.6 6.6 0 3.63 2.96 6.59 6.6 6.59 3.63 0 6.59-2.96 6.59-6.59 0-3.64-2.96-6.6-6.59-6.6M2.59 21.59h3.54V2.41H2.59v19.18z"/>
-        </svg>
-        Patreon
+      <p class="platform-name">Patreon</p>
+      <p class="platform-desc">Become a patron — monthly support for continued development.</p>
+      <span class="platform-badge">
+        <img src="https://c5.patreon.com/external/logo/become_a_patron_button.png" alt="Become a Patron" />
       </span>
     </a>
 
