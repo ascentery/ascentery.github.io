@@ -83,10 +83,6 @@
     transition: color 0.12s;
   }
   .nav-link:hover { color: var(--bone); }
-  .nav-link.active {
-    color: var(--bone);
-    box-shadow: inset 0 -2px 0 var(--ochre);
-  }
   .nav-cta {
     background: var(--ochre);
     border: none;
@@ -115,34 +111,56 @@
     padding: 56px 22px 80px;
   }
 
-  /* ── Hero ── */
-  .hero {
-    max-width: 600px;
-    margin-bottom: 56px;
+  /* ── Header ── */
+  .header {
+    text-align: center;
+    padding-block: 40px 48px;
+    border-bottom: 1px solid var(--edge);
+    margin-bottom: 48px;
   }
-  .hero h1 {
-    font-family: var(--serif);
-    font-size: clamp(2rem, 5vw, 3rem);
-    font-weight: 400;
-    line-height: 1.15;
+
+  .header-wordmark {
+    font-family: var(--mono);
+    font-size: clamp(0.75rem, 2vw, 0.85rem);
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--ochre);
     margin: 0 0 16px;
+  }
+
+  .header h1 {
+    font-family: var(--serif);
+    font-size: clamp(1.8rem, 6vw, 2.8rem);
+    font-weight: 400;
+    line-height: 1.2;
+    margin: 0 0 20px;
     text-wrap: balance;
   }
-  .hero p {
-    font-family: var(--serif);
-    font-size: clamp(1rem, 2vw, 1.15rem);
-    font-style: italic;
+
+  .header p {
+    font-size: clamp(1rem, 2.5vw, 1.1rem);
     color: var(--boneDim);
-    line-height: 1.7;
-    margin: 0 0 12px;
+    margin: 0;
+    max-width: 52ch;
+    margin-inline: auto;
+    font-style: italic;
+    line-height: 1.65;
   }
-  .hero p:last-child { margin-bottom: 0; }
+
+  /* ── Body copy ── */
+  .lead {
+    font-size: clamp(1rem, 2.5vw, 1.1rem);
+    line-height: 1.75;
+    margin-bottom: 48px;
+  }
+  .lead p { margin: 0 0 1.1em; }
+  .lead p:last-child { margin-bottom: 0; }
 
   /* ── Platform cards ── */
   .platforms {
     display: flex;
     flex-direction: column;
-    gap: 1px; /* hairline gaps between cards */
+    gap: 1px;
     border: 1px solid var(--edge);
     border-radius: 4px;
     overflow: hidden;
@@ -183,7 +201,6 @@
     margin: 0;
   }
 
-  /* Badge buttons */
   .badge {
     display: inline-flex;
     align-items: center;
@@ -197,18 +214,12 @@
     text-decoration: none;
     line-height: 1;
     flex-shrink: 0;
-    transition: opacity 0.12s;
-    pointer-events: none; /* card handles the click */
+    pointer-events: none;
   }
   .badge-kofi    { background: #ff5e5b; color: #fff; }
   .badge-bmac    { background: #ffdd00; color: #1a1200; }
   .badge-patreon { background: #ff424d; color: #fff; }
-
-  .badge svg {
-    width: 15px;
-    height: 15px;
-    flex-shrink: 0;
-  }
+  .badge svg { width: 15px; height: 15px; flex-shrink: 0; }
 
   /* ── Divider ── */
   .divider {
@@ -219,31 +230,26 @@
 
   /* ── Closing note ── */
   .closing {
-    font-family: var(--serif);
-    font-size: 0.95rem;
+    text-align: center;
     font-style: italic;
     color: var(--boneDim);
+    font-size: 1rem;
     line-height: 1.8;
-    margin: 0;
   }
   .closing strong {
     font-style: normal;
     color: var(--ochre);
     font-family: var(--mono);
     font-size: 0.85rem;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
   }
 
-  /* ── Mobile ── */
   @media (max-width: 520px) {
     .platform-card {
       grid-template-columns: 1fr;
       padding: 20px 22px;
     }
-    .badge {
-      margin-top: 10px;
-      pointer-events: auto; /* standalone on mobile */
-    }
+    .badge { margin-top: 10px; pointer-events: auto; }
   }
 </style>
 </head>
@@ -260,13 +266,18 @@
   </div>
 </header>
 
-<!-- Page body -->
 <div class="page">
 
-  <div class="hero">
-    <h1>Support our project</h1>
+  <header class="header">
+    <p class="header-wordmark">Ascentery</p>
+    <h1>Support Our Project</h1>
+    <p>Every contribution helps us keep building the world.</p>
+  </header>
+
+  <div class="lead">
     <p>Ascentery is a small, independent project — a text adventure engine where the world is written and illustrated by AI, shaped entirely by what you say and do.</p>
-    <p>There's no obligation, and no tier unlocks what you've already earned. If you've enjoyed a world we built and want to say thank you, here's how.</p>
+    <p>We work on this because we love building it. Supporting us means we can keep the lights on, improve the experience, add new worlds, and spend more time on the things that make Ascentery worth exploring.</p>
+    <p>There's no obligation, and no tier unlocks what you've already earned. If you've enjoyed wandering through a world we built, and you'd like to say thank you — here's how.</p>
   </div>
 
   <div class="platforms">
@@ -274,7 +285,7 @@
     <a class="platform-card" href="https://ko-fi.com/ascentery" target="_blank" rel="noopener noreferrer">
       <div class="platform-info">
         <p class="platform-name">Ko-fi</p>
-        <p class="platform-desc">A one-time tip. No account needed — as easy as it gets.</p>
+        <p class="platform-desc">Buy us a coffee — a one-time tip, no account needed.</p>
       </div>
       <span class="badge badge-kofi">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -287,7 +298,7 @@
     <a class="platform-card" href="https://buymeacoffee.com/ascentery" target="_blank" rel="noopener noreferrer">
       <div class="platform-info">
         <p class="platform-name">Buy Me a Coffee</p>
-        <p class="platform-desc">A quick way to show support, one coffee at a time.</p>
+        <p class="platform-desc">A quick way to show support — one coffee at a time.</p>
       </div>
       <span class="badge badge-bmac">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -300,7 +311,7 @@
     <a class="platform-card" href="https://patreon.com/Ascentery" target="_blank" rel="noopener noreferrer">
       <div class="platform-info">
         <p class="platform-name">Patreon</p>
-        <p class="platform-desc">Monthly support for continued development.</p>
+        <p class="platform-desc">Become a patron — monthly support for continued development.</p>
       </div>
       <span class="badge badge-patreon">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
