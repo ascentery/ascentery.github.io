@@ -210,9 +210,15 @@
   }
   .platform-badge img {
     display: block;
-    height: 36px;
+    height: 40px;
     width: auto;
-    max-width: 160px;
+    max-width: 180px;
+  }
+  /* Ko-fi SVG ships with its own rounded corners; BMAC PNG has ~8px radius.
+     Patreon PNG has sharp corners — clip it to match. */
+  .btn-patreon {
+    border-radius: 8px;
+    overflow: hidden;
   }
 
   /* ── Divider ── */
@@ -287,7 +293,7 @@
       <p class="platform-name">Ko-fi</p>
       <p class="platform-desc">Buy us a coffee — a one-time tip, no account needed.</p>
       <span class="platform-badge">
-        <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support us on Ko-fi" />
+        <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support us on Ko-fi" class="btn-kofi" />
       </span>
     </a>
 
@@ -295,7 +301,7 @@
       <p class="platform-name">Buy Me a Coffee</p>
       <p class="platform-desc">A quick way to show support — one coffee at a time.</p>
       <span class="platform-badge">
-        <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" />
+        <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" class="btn-bmac" />
       </span>
     </a>
 
@@ -303,7 +309,7 @@
       <p class="platform-name">Patreon</p>
       <p class="platform-desc">Become a patron — monthly support for continued development.</p>
       <span class="platform-badge">
-        <img src="https://c5.patreon.com/external/logo/become_a_patron_button.png" alt="Become a Patron" />
+        <img src="https://c5.patreon.com/external/logo/become_a_patron_button.png" alt="Become a Patron" class="btn-patreon" />
       </span>
     </a>
 
