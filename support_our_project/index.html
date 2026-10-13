@@ -214,8 +214,20 @@
     width: auto;
     max-width: 180px;
   }
-  /* Ko-fi SVG ships with its own rounded corners; BMAC PNG has ~8px radius.
-     Patreon PNG has sharp corners — clip it to match. */
+  /* Ko-fi SVG has a hardcoded height attribute that CSS height alone won't
+     override on all browsers. Wrap it in a fixed-height container and use
+     object-fit so it scales up to fill. */
+  .btn-kofi-wrap {
+    display: block;
+    height: 40px;
+    width: auto;
+  }
+  .btn-kofi {
+    height: 100%;
+    width: auto;
+    object-fit: contain;
+  }
+  /* Patreon PNG has sharp corners — clip to match Ko-fi / BMAC. */
   .btn-patreon {
     border-radius: 8px;
     overflow: hidden;
@@ -293,7 +305,7 @@
       <p class="platform-name">Ko-fi</p>
       <p class="platform-desc">Buy us a coffee — a one-time tip, no account needed.</p>
       <span class="platform-badge">
-        <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support us on Ko-fi" class="btn-kofi" />
+        <span class="btn-kofi-wrap"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support us on Ko-fi" class="btn-kofi" /></span>
       </span>
     </a>
 
