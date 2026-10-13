@@ -120,8 +120,9 @@
 
   .header-wordmark {
     font-family: var(--serif);
-    font-size: clamp(0.9rem, 2vw, 1rem);
-    letter-spacing: 0.15em;
+    font-size: 20px;
+    font-style: normal;
+    letter-spacing: normal;
     color: var(--boneDim);
     margin: 0 0 16px;
   }
@@ -214,18 +215,11 @@
     width: auto;
     max-width: 180px;
   }
-  /* Ko-fi SVG has a hardcoded height attribute that CSS height alone won't
-     override on all browsers. Wrap it in a fixed-height container and use
-     object-fit so it scales up to fill. */
-  .btn-kofi-wrap {
-    display: block;
+  .btn-kofi {
     height: 40px;
     width: auto;
-  }
-  .btn-kofi {
-    height: 100%;
-    width: auto;
-    object-fit: contain;
+    border-radius: 8px;
+    overflow: hidden;
   }
   /* Patreon PNG has sharp corners — clip to match Ko-fi / BMAC. */
   .btn-patreon {
@@ -305,7 +299,7 @@
       <p class="platform-name">Ko-fi</p>
       <p class="platform-desc">Buy us a coffee — a one-time tip, no account needed.</p>
       <span class="platform-badge">
-        <span class="btn-kofi-wrap"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support us on Ko-fi" class="btn-kofi" /></span>
+        <img src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Support us on Ko-fi" class="btn-kofi" />
       </span>
     </a>
 
