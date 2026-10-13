@@ -216,10 +216,19 @@
     max-width: 180px;
   }
   .btn-kofi {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
     height: 40px;
-    width: auto;
+    padding: 0 16px;
+    background: #29abe0;
     border-radius: 8px;
-    overflow: hidden;
+    font-family: 'Arial Rounded MT Bold', 'Nunito', Arial, sans-serif;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #fff;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   /* Patreon PNG has sharp corners — clip to match Ko-fi / BMAC. */
   .btn-patreon {
@@ -299,7 +308,13 @@
       <p class="platform-name">Ko-fi</p>
       <p class="platform-desc">Buy us a coffee — a one-time tip, no account needed.</p>
       <span class="platform-badge">
-        <img src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Support us on Ko-fi" class="btn-kofi" />
+        <span class="btn-kofi" aria-label="Support us on Ko-fi">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 5h-2V5h2v3z" fill="white"/>
+            <circle cx="10.5" cy="10" r="2" fill="#ff5f5f"/>
+          </svg>
+          Support me on Ko-fi
+        </span>
       </span>
     </a>
 
